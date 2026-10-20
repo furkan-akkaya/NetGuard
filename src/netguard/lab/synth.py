@@ -1,0 +1,129 @@
+"""Build Ethernet frames for tests and lab scenarios.
+
+Using real encoded frames (rather than hand-made ``Packet`` objects) means the
+scenarios exercise the full pipeline: pcap reader -> decoder -> detectors.
+"""
+
+from __future__ import annotations
+
+import socket
+from collections.abc import Iterable
+from pathlib import Path
+
+import dpkt
+
+from netguard.models import ACK, RST, SYN
+
+Frame = tuple[float, bytes]
+
+BROADCAST = "ff:ff:ff:ff:ff:ff"
+
+
+def _mac(mac: str) -> bytes:
+    return bytes(int(x, 16) for x in mac.split(":"))
+
+
+def _ip4(ip: str) -> bytes:
+    return socket.inet_aton(ip)
+
+
+def _eth(src_mac: str, dst_mac: str, etype: int, payload: dpkt.Packet) -> bytes:
+    return bytes(dpkt.ethernet.Ethernet(src=_mac(src_mac), dst=_mac(dst_mac), type=etype, data=payload))
+
+
+def _ipv4(src: str, dst: str, proto: int, payload: dpkt.Packet) -> dpkt.ip.IP:
+    ip = dpkt.ip.IP(src=_ip4(src), dst=_ip4(dst), p=proto, ttl=64, data=payload)
+    ip.len = len(ip)  # dpkt fills in lengths/checksums when serialized
+    return ip
+
+
+class Host:
+    """A lab host with fixed IP/MAC, to keep scenarios readable."""
+
+    def __init__(self, ip: str, mac: str) -> None:
+        self.ip = ip
+        self.mac = mac
+
+    def tcp(self, dst: Host, sport: int, dport: int, flags: int, payload: bytes = b"") -> bytes:
+        seg = dpkt.tcp.TCP(sport=sport, dport=dport, flags=flags, seq=1000, data=payload)
+        return _eth(self.mac, dst.mac, dpkt.ethernet.ETH_TYPE_IP, _ipv4(self.ip, dst.ip, dpkt.ip.IP_PROTO_TCP, seg))
+
+    def tcp_to_ip(self, gateway: Host, dst_ip: str, sport: int, dport: int, flags: int) -> bytes:
+        """TCP to an off-link IP: L2 destination is the gateway."""
+        seg = dpkt.tcp.TCP(sport=sport, dport=dport, flags=flags, seq=1000)
+        return _eth(self.mac, gateway.mac, dpkt.ethernet.ETH_TYPE_IP, _ipv4(self.ip, dst_ip, dpkt.ip.IP_PROTO_TCP, seg))
+
+    def udp(self, dst: Host, sport: int, dport: int, payload: bytes = b"") -> bytes:
+        dgram = dpkt.udp.UDP(sport=sport, dport=dport, data=payload)
+        dgram.ulen = len(dgram)
+        return _eth(self.mac, dst.mac, dpkt.ethernet.ETH_TYPE_IP, _ipv4(self.ip, dst.ip, dpkt.ip.IP_PROTO_UDP, dgram))
+
+    def dns_query(self, resolver: Host, name: str, sport: int = 53000, qid: int = 1) -> bytes:
+        q = dpkt.dns.DNS(id=qid, qd=[dpkt.dns.DNS.Q(name=name, type=dpkt.dns.DNS_A, cls=dpkt.dns.DNS_IN)])
+        return self.udp(resolver, sport, 53, bytes(q))
+
+    def icmp_echo(self, dst_ip: str, dst_mac: str, reply: bool = False, seq: int = 1) -> bytes:
+        echo = dpkt.icmp.ICMP.Echo(id=0x4242, seq=seq, data=b"netguard")
+        msg = dpkt.icmp.ICMP(type=0 if reply else 8, code=0, data=echo)
+        return _eth(self.mac, dst_mac, dpkt.ethernet.ETH_TYPE_IP, _ipv4(self.ip, dst_ip, dpkt.ip.IP_PROTO_ICMP, msg))
+
+    def arp_request(self, target_ip: str) -> bytes:
+        arp = dpkt.arp.ARP(
+            op=dpkt.arp.ARP_OP_REQUEST,
+            sha=_mac(self.mac),
+            spa=_ip4(self.ip),
+            tha=b"\x00" * 6,
+            tpa=_ip4(target_ip),
+        )
+        return _eth(self.mac, BROADCAST, dpkt.ethernet.ETH_TYPE_ARP, arp)
+
+    def arp_reply(self, to: Host, claimed_ip: str | None = None) -> bytes:
+        """ARP reply "``claimed_ip`` is at my MAC". Spoofing = claiming someone else's IP."""
+        arp = dpkt.arp.ARP(
+            op=dpkt.arp.ARP_OP_REPLY,
+            sha=_mac(self.mac),
+            spa=_ip4(claimed_ip or self.ip),
+            tha=_mac(to.mac),
+            tpa=_ip4(to.ip),
+        )
+        return _eth(self.mac, to.mac, dpkt.ethernet.ETH_TYPE_ARP, arp)
+
+
+def tcp_handshake(client: Host, server: Host, ts: float, sport: int, dport: int, data: int = 3) -> list[Frame]:
+    """A complete, benign TCP connection: handshake, some data, FIN close."""
+    frames = [
+        (ts, client.tcp(server, sport, dport, SYN)),
+        (ts + 0.001, server.tcp(client, dport, sport, SYN | ACK)),
+        (ts + 0.002, client.tcp(server, sport, dport, ACK)),
+    ]
+    t = ts + 0.003
+    for i in range(data):
+        frames.append((t, client.tcp(server, sport, dport, ACK | 0x08, b"GET / HTTP/1.1\r\n" * (i + 1))))
+        frames.append((t + 0.001, server.tcp(client, dport, sport, ACK | 0x08, b"x" * 512)))
+        t += 0.01
+    frames.append((t, client.tcp(server, sport, dport, ACK | 0x01)))
+    frames.append((t + 0.001, server.tcp(client, dport, sport, ACK | 0x01)))
+    frames.append((t + 0.002, client.tcp(server, sport, dport, ACK)))
+    return frames
+
+
+def syn_probe(scanner: Host, target: Host, ts: float, dport: int, open_: bool, flags: int = SYN) -> list[Frame]:
+    """One scan probe and the target's reply (SYN-ACK if open, RST-ACK if closed)."""
+    sport = 40000 + dport % 20000
+    frames = [(ts, scanner.tcp(target, sport, dport, flags))]
+    if flags == SYN and open_:
+        frames.append((ts + 0.0005, target.tcp(scanner, dport, sport, SYN | ACK)))
+        frames.append((ts + 0.0007, scanner.tcp(target, sport, dport, RST)))  # half-open scan resets
+    elif flags == SYN or not open_:
+        frames.append((ts + 0.0005, target.tcp(scanner, dport, sport, RST | ACK)))
+    return frames
+
+
+def write_pcap(path: str | Path, frames: Iterable[Frame]) -> int:
+    count = 0
+    with open(path, "wb") as fh:
+        writer = dpkt.pcap.Writer(fh, linktype=dpkt.pcap.DLT_EN10MB)
+        for ts, buf in sorted(frames, key=lambda f: f[0]):
+            writer.writepkt(buf, ts=ts)
+            count += 1
+    return count
