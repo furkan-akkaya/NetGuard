@@ -1,0 +1,11 @@
+#!/bin/sh
+# Reject commit messages that attribute authorship to AI assistants.
+# Enable with: git config core.hooksPath .githooks
+if grep -Eiq '^(co-authored-by|signed-off-by):.*(claude|anthropic|codex|chatgpt|openai|copilot|gemini|cursor)' "$1"; then
+  echo "commit-msg: AI co-author/sign-off trailers are not allowed in this repository." >&2
+  exit 1
+fi
+if grep -Eiq 'generated with \[?claude code' "$1"; then
+  echo "commit-msg: AI attribution footers are not allowed in this repository." >&2
+  exit 1
+fi

@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+dist/
+build/
+*.egg-info/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Captures may contain sensitive traffic: never commit them by accident
+captures/
+lab-pcaps/
+*.pcap
+*.pcapng
+*.cap
+
+# Local config
+netguard.toml
+.claude/settings.local.json
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/
