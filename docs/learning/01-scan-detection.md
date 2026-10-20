@@ -76,10 +76,11 @@ ileri-geri gidip gelme, kritik IP) önem derecesini belirleriz.
 
 ```python
 def add(self, ts, item):
-    self._events.append((ts, item))   # deque: zaman sırasına göre olaylar
-    self._counts[item] += 1           # Counter: eleman -> penceredeki tekrar sayısı
+    self._events.append((ts, item))  # deque: zaman sırasına göre olaylar
+    self._counts[item] += 1  # Counter: eleman -> penceredeki tekrar sayısı
     ...
     self.evict(ts)
+
 
 def evict(self, now):
     cutoff = now - self.window
@@ -87,10 +88,11 @@ def evict(self, now):
         _, old = self._events.popleft()
         self._counts[old] -= 1
         if self._counts[old] == 0:
-            del self._counts[old]     # artık penceredeki hiçbir olay bu porta ait değil
+            del self._counts[old]  # artık penceredeki hiçbir olay bu porta ait değil
+
 
 def distinct(self):
-    return len(self._counts)          # O(1)
+    return len(self._counts)  # O(1)
 ```
 
 **Neden amortize O(1)?** Her olay deque'ye *bir kez* eklenir ve *en fazla bir
