@@ -17,7 +17,7 @@ Owner: **F** = Furkan (learning-critical, hands-on), **C** = shared/assisted.
 ## Next: Phase 2
 
 ### Setup
-- [ ] **2.0** Create the GitHub repository (private) and push `main` (F)
+- [x] **2.0** Create the GitHub repository (private) and push `main` (F)
 - [ ] **2.1** Build the UTM lab: Kali (attacker) + Ubuntu (victim) on an isolated host-only network ([LAB_SETUP.md](LAB_SETUP.md)) (F)
 
 ### Validation
