@@ -1,0 +1,27 @@
+# NetGuard example configuration.
+# Usage: netguard analyze -c netguard.toml capture.pcap
+# Every value shown is the default unless noted.
+
+# Sources allowed to scan: vulnerability scanners, monitoring servers.
+# Single IPs or CIDR networks. Allowlisted sources never trigger scan alerts.
+allowlist = []
+
+[portscan]
+enabled = true
+window_seconds = 60          # sliding window length
+min_distinct_ports = 15      # distinct ports on one target within the window -> incident
+idle_timeout_seconds = 10    # incident is reported after this much silence
+high_severity_ports = 100    # incidents with at least this many ports are HIGH
+
+[hostsweep]
+enabled = true
+window_seconds = 60
+min_distinct_hosts = 15
+idle_timeout_seconds = 10
+high_severity_hosts = 100
+tcp_private_only = true      # ignore TCP SYNs to public IPs (web browsing looks like a sweep)
+
+[arpspoof]
+enabled = true
+realert_seconds = 300        # one alert per IP per period, unless severity escalates
+critical_ips = []            # e.g. ["192.168.1.1"] for your default gateway -> HIGH severity
