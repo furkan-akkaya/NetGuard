@@ -24,5 +24,9 @@ uv run pytest --cov
 - **Commits:** imperative, scoped subjects (`portscan: report open ports`).
   Commits are authored by humans. AI co-author/attribution trailers are
   rejected by the `commit-msg` hook.
+- **Signed commits:** commits on `main` are SSH-signed and show as
+  "Verified" on GitHub. Setup: `git config gpg.format ssh`,
+  `git config user.signingkey <key.pub>`, `git config commit.gpgsign true`,
+  and register the key on GitHub as a *signing* key.
 - **Third-party code and data:** keep the original license and attribution.
   Do not commit captures you are not allowed to redistribute.
