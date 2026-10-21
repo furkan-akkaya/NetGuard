@@ -203,7 +203,7 @@ SCENARIOS: list[Scenario] = [
         "benign",
         passive_ftp.__doc__ or "",
         passive_ftp,
-        note="Expected false positive: counting SYNs ignores that every connection succeeded (see TRW, Phase 2).",
+        note="Expected false positive: counting SYNs ignores that every connection succeeded (see TRW, roadmap 4.1).",
     ),
     Scenario(
         "syn_scan_1000", "attack", syn_scan_1000.__doc__ or "", syn_scan_1000, {("portscan", "10.0.0.66->10.0.0.10")}

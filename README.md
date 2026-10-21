@@ -13,7 +13,7 @@ threshold it crossed, what the attacker likely learned, and which MITRE ATT&CK
 technique it maps to.
 
 > **Status:** v0.1 MVP. Three detectors, tested on labelled synthetic scenarios.
-> Validation on real lab captures is in progress (see the [roadmap](docs/ROADMAP.md)).
+> Validation on real lab captures is in progress (see the [roadmap](ROADMAP.md)).
 
 ```text
 $ netguard analyze syn_scan.pcap
@@ -92,7 +92,7 @@ scenarios (6 attack, 5 benign). Scoring is per entity. See
 All of these numbers come from synthetic traffic that we designed ourselves.
 They show the detection logic works as intended and expose the known blind
 spots. They are not a claim about accuracy on real networks.
-Validation on real captures is part of [Phase 2](docs/ROADMAP.md).
+Validation on real captures is part of [Phase 2](ROADMAP.md).
 
 ## Architecture
 
@@ -115,7 +115,7 @@ See [ARCHITECTURE.md](docs/ARCHITECTURE.md) and the [decision records](docs/adr/
 
 | | |
 |---|---|
-| [Roadmap](docs/ROADMAP.md) | Phases, goals, learning objectives, exit criteria |
+| [Roadmap](ROADMAP.md) | Current state, phases, MVP scope, exit criteria, test strategy (Turkish) |
 | [Tasks](docs/TASKS.md) | Current task board |
 | [Architecture](docs/ARCHITECTURE.md) | Components, data flow, extension points |
 | [ADRs](docs/adr/) | Why Python + dpkt, why tcpdump for capture, why incidents |

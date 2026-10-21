@@ -70,7 +70,7 @@ ileri-geri gidip gelme, kritik IP) önem derecesini belirleriz.
 | Deque + her pakette yeniden say | O(n) | O(n) | Yavaş, tarama sırasında n büyür |
 | **Deque + Counter (seçilen)** | **O(1) amortize** | O(n), üst sınırlı | Kesin sayım. Bellek pencere içindeki olay sayısı kadar |
 | HyperLogLog | O(1) | O(1) (~KB) | Yaklaşık sayım, eleman *silinemez*, pencere için ek yapı gerekir |
-| TRW (Threshold Random Walk) | O(1) | O(1) | Bağlantı *sonucuna* bakar, ayrı bir model (Faz 2) |
+| TRW (Threshold Random Walk) | O(1) | O(1) | Bağlantı *sonucuna* bakar, ayrı bir model (Faz 4) |
 
 ### 3.2 Nasıl çalışıyor? (`SlidingDistinct`)
 

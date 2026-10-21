@@ -96,4 +96,4 @@ sequenceDiagram
 ```
 
 A future version may map these fields to the Elastic Common Schema (ECS) for
-direct SIEM ingestion. See the roadmap.
+direct SIEM ingestion. See the [roadmap](../ROADMAP.md).

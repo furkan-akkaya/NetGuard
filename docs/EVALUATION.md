@@ -67,8 +67,8 @@ change in detection quality fails CI until this document is updated.
   not accuracy on real networks. Real traffic is messier: retransmissions,
   NAT, scanners with jitter and decoys, chatty IoT devices.
 - The three false positives are **known and explained**. Each one has a
-  mitigation on the roadmap (allowlist today; TRW and DHCP correlation in
-  Phases 2–3).
+  mitigation on the [roadmap](../ROADMAP.md) (allowlist today; TRW in
+  Phase 4, DHCP correlation in Phase 9).
 - The missed slow scan shows the basic trade-off of window-based detection.
   A 60 s window keeps memory low and alerts fast, but an attacker who knows
   the window can stay under it.
@@ -102,15 +102,15 @@ fits home and lab networks, low-traffic servers, and offline forensic analysis.
 
 | Limitation | Impact | Planned fix |
 |---|---|---|
-| Fixed 60 s window | Slow scans evade detection | Long-horizon detector (Phase 2.5) |
-| Outcome-blind counting | Bursts of successful connections (passive FTP, some P2P) look like scans | TRW (Phase 2.4) |
-| No UDP scan detection | `nmap -sU` is invisible | Phase 2.6 |
-| ARP: one change = alert | DHCP re-assignment and VRRP failover raise MEDIUM alerts | DHCP/lease correlation, flip-flop-only mode (Phase 3) |
-| Spoofed source IPs | Decoy scans (`nmap -D`) split one scan into many sources | Target-centric correlation (Phase 3) |
-| Idle-timeout reporting | Live alerts arrive ≥ 10 s after the scan pauses | Early-warning alerts (Phase 3) |
-| No IP fragment reassembly | Fragmented probes (`nmap -f`) are not parsed as TCP | Reassembly or a fragment-anomaly detector (Phase 2+) |
+| Fixed 60 s window | Slow scans evade detection | Long-horizon detector (4.4) |
+| Outcome-blind counting | Bursts of successful connections (passive FTP, some P2P) look like scans | TRW (4.1) |
+| No UDP scan detection | `nmap -sU` is invisible | UDP scan detector (4.3) |
+| ARP: one change = alert | DHCP re-assignment and VRRP failover raise MEDIUM alerts | DHCP/lease correlation, flip-flop-only mode (Phase 9) |
+| Spoofed source IPs | Decoy scans (`nmap -D`) split one scan into many sources | Target-centric correlation (Phase 9) |
+| Idle-timeout reporting | Live alerts arrive ≥ 10 s after the scan pauses | Early-warning alerts (8.1) |
+| No IP fragment reassembly | Fragmented probes (`nmap -f`) are not parsed as TCP | Reassembly or a fragment-anomaly detector (Phase 10) |
 
 ## 6. Real captures
 
-*Not yet measured.* This section will hold the results of Phase 2
+*Not yet measured.* This section will hold the results of roadmap Phase 2
 (UTM lab: Kali → Ubuntu) and of public datasets.
