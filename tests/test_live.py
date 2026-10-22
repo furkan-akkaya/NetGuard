@@ -1,0 +1,248 @@
+"""Alert lifecycle (early/final, max age, reported_at), engine clock and the live pipeline."""
+
+import json
+import sys
+
+import pytest
+
+from netguard.cli import EXIT_ERROR, EXIT_OK, main
+from netguard.config import AlertsConfig, Config
+from netguard.engine import Engine, analyze_frames, analyze_packets
+from netguard.lab.scenarios import get
+from netguard.lab.synth import write_pcap
+from netguard.live import CaptureSpec, LiveSession, ReplaySource, SourceError, TcpdumpSource, tcpdump_command
+from netguard.models import SYN
+from netguard.sources import open_capture
+
+from .helpers import icmp, tcp
+
+SCANNER, TARGET = "10.0.0.66", "10.0.0.10"
+
+
+def _early_config(**kw) -> Config:
+    return Config(alerts=AlertsConfig(early_warning=True, **kw))
+
+
+def _pcap(tmp_path, scenario: str):
+    path = tmp_path / f"{scenario}.pcap"
+    write_pcap(path, get(scenario).build())
+    return path
+
+
+# --- engine clock and lifecycle ----------------------------------------------------------
+
+
+def test_advance_closes_incidents_during_silence():
+    engine = Engine()
+    for i in range(30):
+        engine.process(icmp(i * 0.01, SCANNER, f"10.0.1.{i}"))
+    assert engine.alerts == []  # still open: no packet has moved the clock past the idle timeout
+    engine.advance(30.0)
+    assert [a.rule_id for a in engine.alerts] == ["NG-SWEEP-001"]
+    assert engine.alerts[0].reported_at == 30.0
+
+
+def test_advance_never_moves_the_clock_backwards():
+    engine = Engine()
+    engine.process(icmp(100.0, SCANNER, "10.0.1.1"))
+    engine.advance(50.0)
+    engine.advance(100.0)
+    assert engine._now == 100.0
+
+
+def test_early_warning_then_final_share_the_alert_id():
+    pkts = [tcp(i * 0.01, SCANNER, TARGET, 1000 + i, SYN) for i in range(20)]
+    pkts.append(tcp(1.5, "10.9.9.9", TARGET, 80, SYN))  # a tick while the scan is still running
+    pkts += [tcp(2 + i * 0.01, SCANNER, TARGET, 2000 + i, SYN) for i in range(20)]
+    pkts.append(tcp(30.0, "10.9.9.9", TARGET, 81, SYN))  # moves the clock past the idle timeout
+    alerts = [a for a in analyze_packets(pkts, _early_config()).alerts if a.rule_id == "NG-SCAN-001"]
+    assert [a.stage for a in alerts] == ["early", "final"]
+    early, final = alerts
+    assert early.alert_id == final.alert_id
+    assert early.reported_at is not None
+    assert final.reported_at is not None
+    assert early.reported_at < final.reported_at
+    assert early.evidence["distinct_ports"] < final.evidence["distinct_ports"]
+
+
+def test_no_early_alerts_by_default():
+    pkts = [tcp(i * 0.01, SCANNER, TARGET, 1000 + i, SYN) for i in range(40)]
+    assert {a.stage for a in analyze_packets(pkts).alerts} == {"final"}
+
+
+def test_max_incident_age_splits_endless_activity():
+    # One ICMP probe to a new host every 0.5 s for 50 s: never idle.
+    pkts = [icmp(i * 0.5, SCANNER, f"10.{i // 250}.{i % 250}.1") for i in range(100)]
+    alerts = analyze_packets(pkts, Config(alerts=AlertsConfig(max_incident_age_seconds=20))).alerts
+    sweeps = [a for a in alerts if a.rule_id == "NG-SWEEP-001"]
+    assert len(sweeps) >= 2
+    assert all(a.last_seen - a.first_seen <= 21 for a in sweeps)
+
+
+@pytest.mark.parametrize(
+    ("scenario", "rule"),
+    [
+        ("syn_flood_spoofed", "NG-SYN-001"),
+        ("slow_scan", "NG-SCAN-002"),
+        ("fragmented_scan", "NG-FRAG-001"),
+        ("connection_burst", "NG-RATE-001"),
+    ],
+)
+def test_every_rule_family_can_warn_early(tmp_path, scenario, rule):
+    engine = Engine(_early_config())
+    last = 0.0
+    with open_capture(_pcap(tmp_path, scenario)) as frames:
+        for ts, buf, linktype in frames:
+            engine.process_frame(ts, buf, linktype)
+            last = ts
+    for second in range(1, 121):  # live silence after the traffic: the clock keeps ticking
+        engine.advance(last + second)
+    alerts = engine.finish().alerts
+    stages = [a.stage for a in alerts if a.rule_id == rule]
+    assert stages[0] == "early"
+    assert "final" in stages
+
+
+# --- live session --------------------------------------------------------------------------
+
+
+def _finals(alerts):
+    return sorted((a.alert_id, a.summary) for a in alerts if a.stage == "final")
+
+
+def test_replay_as_fast_as_possible_equals_offline_analysis(tmp_path):
+    path = _pcap(tmp_path, "arp_spoof_mitm")
+    with open_capture(path) as frames:
+        offline = analyze_frames(frames, Config()).alerts
+    session = LiveSession(ReplaySource(path, speed=0), _early_config(), clock_rate=0)
+    live = session.run().result.alerts
+    assert _finals(live) == _finals(offline)
+
+
+def test_paced_replay_sleeps_by_capture_time(tmp_path):
+    fake_now = [0.0]
+    slept: list[float] = []
+
+    def sleep(seconds: float) -> None:
+        slept.append(seconds)
+        fake_now[0] += seconds
+
+    source = ReplaySource(_pcap(tmp_path, "monitoring_poller"), speed=1000, sleep=sleep, clock=lambda: fake_now[0])
+    LiveSession(source, Config(), clock_rate=0).run()
+    # The capture spans 121.45 s; at 1000x that is 0.12145 s of pacing in total.
+    assert sum(slept) == pytest.approx(0.12145, abs=1e-6)
+
+
+def test_duration_stops_a_session(tmp_path):
+    source = ReplaySource(_pcap(tmp_path, "slow_scan"), speed=1)  # 1500 s of traffic
+    outcome = LiveSession(source, Config(), duration=0.3, idle_advance=0.05).run()
+    assert outcome.stopped_by == "duration reached"
+    assert outcome.seconds < 1.5  # pacing waits on the stop event, so stopping is immediate
+
+
+def _fake_tcpdump(pcap) -> list[str]:
+    """Stands in for tcpdump: writes a pcap to stdout, like `tcpdump -w -`."""
+    code = f"import sys; sys.stdout.buffer.write(open({str(pcap)!r}, 'rb').read())"
+    return [sys.executable, "-c", code]
+
+
+def test_tcpdump_source_pipeline_and_pcap_writing(tmp_path):
+    pcap = _pcap(tmp_path, "syn_scan_1000")
+    out = tmp_path / "saved.pcap"
+    source = TcpdumpSource(CaptureSpec("en0"), write_to=out, command=_fake_tcpdump(pcap))
+    outcome = LiveSession(source, Config()).run()
+    assert outcome.error is None
+    assert {a.rule_id for a in outcome.result.alerts} == {"NG-SCAN-001", "NG-SCAN-002"}
+    assert out.read_bytes() == pcap.read_bytes()
+    assert out.stat().st_mode & 0o777 == 0o600
+    assert outcome.source["written_bytes"] == pcap.stat().st_size
+
+
+def test_pcap_writing_stops_at_its_limit(tmp_path):
+    pcap = _pcap(tmp_path, "syn_scan_1000")
+    out = tmp_path / "saved.pcap"
+    source = TcpdumpSource(CaptureSpec("en0"), write_to=out, write_limit=10_000, command=_fake_tcpdump(pcap))
+    outcome = LiveSession(source, Config()).run()
+    assert out.stat().st_size <= 10_000
+    assert "write_truncated" in outcome.source
+    assert outcome.result.stats.packets == 2003  # analysis continued past the write limit
+
+
+def test_tcpdump_failure_is_explained(tmp_path):
+    cmd = [
+        sys.executable,
+        "-c",
+        "import sys; sys.stderr.write('tcpdump: en9: You don\\'t have permission\\n'); sys.exit(1)",
+    ]
+    outcome = LiveSession(TcpdumpSource(CaptureSpec("en9"), command=cmd), Config()).run()
+    assert outcome.error is not None
+    assert "no permission" in outcome.error
+
+
+def test_tcpdump_kernel_statistics_are_reported(tmp_path):
+    pcap = _pcap(tmp_path, "ping_sweep")
+    code = (
+        f"import sys; sys.stdout.buffer.write(open({str(pcap)!r}, 'rb').read()); "
+        "sys.stderr.write('259 packets captured\\n300 packets received by filter\\n41 packets dropped by kernel\\n')"
+    )
+    outcome = LiveSession(TcpdumpSource(CaptureSpec("en0"), command=[sys.executable, "-c", code]), Config()).run()
+    assert outcome.source["kernel_dropped_by_kernel"] == 41
+    assert outcome.source["kernel_captured"] == 259
+
+
+def test_tcpdump_command_is_an_argument_vector():
+    cmd = tcpdump_command(CaptureSpec("eth0", "tcp and port 443; reboot", max_packets=10), "tcpdump")
+    assert cmd == [
+        "tcpdump",
+        "-i",
+        "eth0",
+        "-U",
+        "-n",
+        "-s",
+        "262144",
+        "-w",
+        "-",
+        "-c",
+        "10",
+        "tcp and port 443; reboot",
+    ]
+
+
+def test_sudo_drops_privileges_to_the_user(monkeypatch):
+    monkeypatch.setenv("USER", "analyst")
+    monkeypatch.delenv("SUDO_USER", raising=False)
+    cmd = tcpdump_command(CaptureSpec("eth0", use_sudo=True), "tcpdump")
+    assert cmd[:3] == ["sudo", "-n", "tcpdump"]
+    assert cmd[-2:] == ["-Z", "analyst"]
+
+
+@pytest.mark.parametrize("iface", ["any", "", "en0; reboot", "a" * 65, "../../dev/x"])
+def test_interface_names_are_validated(iface):
+    with pytest.raises(SourceError):
+        tcpdump_command(CaptureSpec(iface))
+
+
+# --- CLI ------------------------------------------------------------------------------------
+
+
+def test_monitor_requires_an_interface_and_refuses_root(monkeypatch, capsys):
+    assert main(["monitor"]) == EXIT_ERROR
+    assert "-i" in capsys.readouterr().err
+    monkeypatch.setattr("os.geteuid", lambda: 0)
+    assert main(["monitor", "-i", "eth0"]) == EXIT_ERROR
+    assert "do not run NetGuard as root" in capsys.readouterr().err
+
+
+def test_replay_cli_streams_jsonl_with_stages(tmp_path, capsys):
+    path = _pcap(tmp_path, "syn_scan_1000")
+    assert main(["replay", "--speed", "0", "-f", "jsonl", "--status-every", "0", str(path)]) == EXIT_OK
+    captured = capsys.readouterr()
+    alerts = [json.loads(line) for line in captured.out.splitlines()]
+    assert {a["rule_id"] for a in alerts} == {"NG-SCAN-001", "NG-SCAN-002"}
+    assert all(a["stage"] in ("early", "final") for a in alerts)
+    assert "detection delay" in captured.err
+
+
+def test_replay_missing_file_is_a_clean_error(tmp_path, capsys):
+    assert main(["replay", str(tmp_path / "nope.pcap")]) == EXIT_ERROR
+    assert "no such capture" in capsys.readouterr().err

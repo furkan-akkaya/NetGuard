@@ -6,6 +6,8 @@ netguard analyze --format html capture.pcap > report.html
 sudo tcpdump -i eth0 -U -w - | netguard analyze --format jsonl -
 netguard flows --format csv capture.pcap > flows.csv
 netguard rules
+netguard monitor -i en0 --filter 'not port 22' --duration 600   # live, via tcpdump
+netguard replay capture.pcap --speed 10
 netguard serve --data-dir ./netguard-data          # REST API on 127.0.0.1:8000
 netguard lab list | generate DIR | evaluate
 """
@@ -15,6 +17,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import signal
 import sys
 from collections.abc import Sequence
 from pathlib import Path
@@ -24,11 +27,20 @@ from netguard.config import ConfigError, load_config
 from netguard.decode import UnsupportedLinkType
 from netguard.detectors import DETECTORS
 from netguard.engine import Engine
-from netguard.output import FlowWriter, render_json, render_text, use_color, write_jsonl_alert
+from netguard.models import Alert
+from netguard.output import FlowWriter, format_alert, render_json, render_text, use_color, write_jsonl_alert
 from netguard.report import render_report
 from netguard.sources import CaptureFormatError, CaptureInfo, open_capture
 
 EXIT_OK, EXIT_ERROR = 0, 2
+
+
+def _session_args(p: argparse.ArgumentParser) -> None:
+    p.add_argument("-c", "--config", type=Path, help="TOML configuration file")
+    p.add_argument("-f", "--format", choices=("text", "jsonl"), default="text", help="alert output format")
+    p.add_argument("--no-early-warning", action="store_true", help="report incidents only when they close")
+    p.add_argument("--status-every", type=float, default=30.0, help="status line interval in seconds (0 = off)")
+    p.add_argument("--no-color", action="store_true", help="disable ANSI colors")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -59,6 +71,24 @@ def build_parser() -> argparse.ArgumentParser:
     ru = sub.add_parser("rules", help="list the detection rules and whether the configuration enables them")
     ru.add_argument("-c", "--config", type=Path, help="TOML configuration file")
     ru.add_argument("-f", "--format", choices=("text", "json"), default="text")
+
+    mo = sub.add_parser("monitor", help="analyse live traffic from one network interface (via tcpdump)")
+    mo.add_argument("-i", "--interface", help="interface to capture on (required; see --list)")
+    mo.add_argument("--list", action="store_true", help="list capture interfaces and exit")
+    mo.add_argument("--filter", default="", help="BPF capture filter, e.g. 'not port 22'")
+    mo.add_argument("--duration", type=float, help="stop after this many seconds")
+    mo.add_argument("--count", type=int, help="stop after this many packets")
+    mo.add_argument("--snaplen", type=int, default=262_144, help="bytes captured per packet")
+    mo.add_argument("--write", type=Path, help="also save the capture to this pcap file (mode 0600)")
+    mo.add_argument("--write-limit-mb", type=int, default=1024, help="stop writing the pcap beyond this size")
+    mo.add_argument("--sudo", action="store_true", help="run tcpdump via `sudo -n` (drops to your user with -Z)")
+    _session_args(mo)
+
+    rp = sub.add_parser("replay", help="feed a capture through the live pipeline at its recorded pace")
+    rp.add_argument("capture", type=Path)
+    rp.add_argument("--speed", type=float, default=1.0, help="pace multiplier (1 = real time, 0 = as fast as possible)")
+    rp.add_argument("--duration", type=float, help="stop after this many seconds")
+    _session_args(rp)
 
     sv = sub.add_parser("serve", help="run the REST API (needs: pip install 'netguard[web]')")
     sv.add_argument("--data-dir", type=Path, default=Path("netguard-data"), help="database and stored captures")
@@ -148,6 +178,115 @@ def cmd_rules(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def _run_session(args: argparse.Namespace, source: object, clock_rate: float) -> int:
+    from netguard.live import LiveSession, ReplaySource, TcpdumpSource
+
+    assert isinstance(source, TcpdumpSource | ReplaySource)
+    config = load_config(args.config)
+    config.alerts.early_warning = not args.no_early_warning
+    color = use_color(sys.stdout) and not args.no_color
+
+    def show(alert: Alert) -> None:
+        if args.format == "jsonl":
+            write_jsonl_alert(alert)
+        else:
+            print(format_alert(alert, color) + "\n", flush=True)
+
+    def status(engine: Engine) -> None:
+        s = engine.stats
+        print(
+            f"[status] packets {s.packets:,}  bytes {s.bytes:,}  active flows {len(engine.flows):,}  "
+            f"alerts {len(engine.alerts):,}",
+            file=sys.stderr,
+            flush=True,
+        )
+
+    session = LiveSession(
+        source,
+        config,
+        on_alert=show,
+        duration=args.duration,
+        clock_rate=clock_rate,
+        on_status=status,
+        status_every=args.status_every or None,
+    )
+
+    def request_stop(signum: int, frame: object) -> None:
+        session.stop()
+
+    previous = {sig: signal.signal(sig, request_stop) for sig in (signal.SIGINT, signal.SIGTERM)}
+    try:
+        outcome = session.run()
+    finally:
+        for sig, handler in previous.items():
+            signal.signal(sig, handler)
+    if outcome.error:
+        print(f"netguard: error: {outcome.error}", file=sys.stderr)
+        return EXIT_ERROR
+    s = outcome.result.stats
+    finals = [a for a in outcome.result.alerts if a.stage == "final"]
+    # Detection delay: from the incident's first packet to its *first* alert
+    # (the early warning when there was one); stages share the alert_id.
+    first_report: dict[str, float] = {}
+    for a in outcome.result.alerts:
+        if a.reported_at is not None:
+            first_report[a.alert_id] = min(first_report.get(a.alert_id, a.reported_at), a.reported_at)
+    delays = [first_report[a.alert_id] - a.first_seen for a in finals if a.alert_id in first_report]
+    summary = (
+        f"{outcome.source['source']}: {outcome.stopped_by} after {outcome.seconds:.1f}s; "
+        f"{s.packets:,} packets, {s.flows_total:,} flows, {len(finals)} alerts"
+    )
+    if delays:
+        summary += f" (detection delay median {sorted(delays)[len(delays) // 2]:.1f}s, max {max(delays):.1f}s)"
+    extra = {k: v for k, v in outcome.source.items() if k != "source"}
+    if extra:
+        summary += "; " + ", ".join(f"{k.replace('_', ' ')}: {v}" for k, v in extra.items())
+    print(summary, file=sys.stderr)
+    return EXIT_OK
+
+
+def cmd_monitor(args: argparse.Namespace) -> int:
+    from netguard.live import CaptureSpec, SourceError, TcpdumpSource, list_interfaces
+
+    if args.list:
+        for line in list_interfaces():
+            print(line)
+        return EXIT_OK
+    if not args.interface:
+        print("netguard: error: name the interface to capture on with -i (see --list)", file=sys.stderr)
+        return EXIT_ERROR
+    if os.geteuid() == 0:
+        print(
+            "netguard: error: do not run NetGuard as root. It parses untrusted traffic; give tcpdump the "
+            "capture permission instead, or use --sudo (see docs/LIVE_CAPTURE.md).",
+            file=sys.stderr,
+        )
+        return EXIT_ERROR
+    spec = CaptureSpec(args.interface, args.filter, args.snaplen, args.count, args.sudo)
+    try:
+        source = TcpdumpSource(spec, args.write, args.write_limit_mb * 1024 * 1024)
+    except SourceError as exc:
+        print(f"netguard: error: {exc}", file=sys.stderr)
+        return EXIT_ERROR
+    target = f"{args.interface}" + (f" (filter: {args.filter})" if args.filter else "")
+    print(
+        f"Capturing on {target}. Only monitor networks you own or are authorised to assess. Ctrl-C to stop.",
+        file=sys.stderr,
+    )
+    return _run_session(args, source, clock_rate=1.0)
+
+
+def cmd_replay(args: argparse.Namespace) -> int:
+    from netguard.live import ReplaySource, SourceError
+
+    try:
+        source = ReplaySource(args.capture, args.speed)
+        return _run_session(args, source, clock_rate=args.speed)
+    except SourceError as exc:
+        print(f"netguard: error: {exc}", file=sys.stderr)
+        return EXIT_ERROR
+
+
 def cmd_serve(args: argparse.Namespace) -> int:
     try:
         import uvicorn
@@ -210,6 +349,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             return cmd_rules(args)
         if args.command == "serve":
             return cmd_serve(args)
+        if args.command == "monitor":
+            return cmd_monitor(args)
+        if args.command == "replay":
+            return cmd_replay(args)
         return cmd_lab(args)
     except (ConfigError, CaptureFormatError, UnsupportedLinkType, KeyError) as exc:
         print(f"netguard: error: {exc}", file=sys.stderr)
