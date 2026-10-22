@@ -74,23 +74,65 @@ def test_drain_returns_open_incidents():
     assert t.drain() == []
 
 
-def test_key_limit_drops_new_keys_instead_of_growing():
+def test_key_limit_evicts_least_recently_active_key():
     t: BurstTracker[str, int] = BurstTracker(window=60, threshold=5, idle_timeout=5, max_keys=2)
     t.observe("a", 0.0, 1)
     t.observe("b", 0.0, 1)
-    t.observe("c", 0.0, 1)
+    t.observe("a", 0.5, 2)  # "a" is active again, so "b" is now the oldest
+    t.observe("c", 1.0, 1)
     assert t.tracked_keys == 2
-    assert t.dropped_keys == 1
+    assert t.evicted_keys == 1
+    assert t.window_of("b") is None
+    assert t.window_of("a") is not None
+
+
+def test_full_tracker_costs_constant_time_per_new_key():
+    """Regression: a full table used to rescan every window for each new key."""
+    t: BurstTracker[int, int] = BurstTracker(window=60, threshold=5, idle_timeout=5, max_keys=1000)
+    calls = 0
+    original = SlidingDistinct.evict
+
+    def counting_evict(self, now):
+        nonlocal calls
+        calls += 1
+        original(self, now)
+
+    for k in range(1000):
+        t.observe(k, 0.0, 1)
+    SlidingDistinct.evict = counting_evict  # type: ignore[method-assign]
+    try:
+        for k in range(1000, 3000):
+            t.observe(k, 1.0, 1)
+    finally:
+        SlidingDistinct.evict = original  # type: ignore[method-assign]
+    # One GC probe of the oldest key per insert (plus the insert's own evict), not 1000.
+    assert calls <= 2 * 2000 + 10
+    assert t.evicted_keys == 2000
 
 
 def test_gc_frees_idle_keys_when_limit_is_hit():
     t: BurstTracker[str, int] = BurstTracker(window=10, threshold=5, idle_timeout=5, max_keys=1)
     t.observe("a", 0.0, 1)
     t.observe("b", 100.0, 1)  # "a" has no events in the window any more
-    assert t.dropped_keys == 0
+    assert t.evicted_keys == 0
     assert t.window_of("a") is None
 
 
 def test_threshold_must_be_positive():
     with pytest.raises(ValueError, match="threshold"):
         BurstTracker(window=1, threshold=0, idle_timeout=1)
+
+
+def test_closed_incident_events_are_not_reused_by_the_next_incident():
+    """Regression: the next burst re-opened an incident from already-reported events."""
+    t: BurstTracker[str, int] = BurstTracker(window=60, threshold=5, idle_timeout=5)
+    for i in range(10):
+        t.observe("a", i * 0.1, i, "ICMP")
+    (first,) = t.expire(20.0)
+    assert first.events == 10
+    for i in range(10):
+        t.observe("a", 30 + i * 0.1, i, "ICMP")
+    (second,) = t.drain()
+    assert second.first_seen == 30.0
+    assert second.events == 10
+    assert second.tags == {"ICMP": 10}
