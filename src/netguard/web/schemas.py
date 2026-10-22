@@ -86,6 +86,8 @@ class AlertOut(BaseModel):
     analysis_id: str
     schema_version: str
     alert_id: str
+    stage: Literal["early", "final"] = "final"
+    reported_at: str | None = None
     rule_id: str
     detector: str
     title: str

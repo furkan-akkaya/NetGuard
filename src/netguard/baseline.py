@@ -82,6 +82,8 @@ class IntervalBaselines:
         sensitivity: float,
         min_value: float,
         max_entities: int,
+        max_age: float | None = None,
+        track_opened: bool = False,
     ) -> None:
         self.interval = interval
         self.alpha = smoothing
@@ -94,6 +96,9 @@ class IntervalBaselines:
         self._baselines: OrderedDict[str, Ewma] = OrderedDict()  # least recently active first
         self._open: dict[str, Anomaly] = {}
         self.evicted = 0
+        self.max_age = max_age
+        self.track_opened = track_opened
+        self.opened: list[Anomaly] = []  # anomalies that just started (early warnings)
 
     def add(self, entity: str, ts: float, amount: float) -> list[Anomaly]:
         ended = self.roll(ts)
@@ -140,16 +145,24 @@ class IntervalBaselines:
                     anomaly = self._open[entity] = Anomaly(
                         entity, start, end, 0, 0.0, 0.0, base.mean, base.dev, base.n, limit
                     )
+                    if self.track_opened:
+                        self.opened.append(anomaly)
                 anomaly.last_seen = end
                 anomaly.intervals += 1
                 anomaly.total += x
                 anomaly.peak = max(anomaly.peak, x)
                 base.update(limit, self.alpha)  # clipped: do not learn the attack at full strength
+                if self.max_age is not None and end - anomaly.first_seen >= self.max_age:
+                    ended.append(self._open.pop(entity))  # report long anomalies in chunks
             else:
                 if entity in self._open:
                     ended.append(self._open.pop(entity))
                 base.update(x, self.alpha)
         return ended
+
+    def take_opened(self) -> list[Anomaly]:
+        opened, self.opened = self.opened, []
+        return opened
 
     def drain(self) -> list[Anomaly]:
         """End of input: close the current interval and every open anomaly."""

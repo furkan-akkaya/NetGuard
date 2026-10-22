@@ -26,7 +26,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 
 from netguard.config import Config
-from netguard.detectors.base import Detector, RuleInfo
+from netguard.detectors.base import Detector, RuleInfo, as_early
 from netguard.models import Alert, Packet, Severity, Technique
 
 T1599 = Technique("T1599", "Network Boundary Bridging")
@@ -56,6 +56,9 @@ class FragmentDetector(Detector):
         self.global_cfg = config
         self._incidents: OrderedDict[Key, _Incident] = OrderedDict()  # least recently updated first
         self.evicted = 0
+        self.early_warning = config.alerts.early_warning
+        self.max_age = config.alerts.max_incident_age_seconds
+        self._opened: list[Key] = []  # incidents that just reached min_fragments
 
     def _kind(self, pkt: Packet) -> str | None:
         size = pkt.payload_len if pkt.payload_len is not None else 0
@@ -86,6 +89,8 @@ class FragmentDetector(Detector):
             self._incidents.move_to_end(key)
         inc.last_seen = max(inc.last_seen, pkt.ts)
         inc.kinds[kind] += 1
+        if self.early_warning and sum(inc.kinds.values()) == self.cfg.min_fragments:
+            self._opened.append(key)
         assert pkt.ip_proto is not None
         inc.protocols[_PROTO_NAMES.get(pkt.ip_proto, str(pkt.ip_proto))] += 1
         size = pkt.payload_len or 0
@@ -93,13 +98,17 @@ class FragmentDetector(Detector):
         return ()
 
     def tick(self, now: float) -> Iterable[Alert]:
-        alerts = []
+        opened, self._opened = self._opened, []
+        alerts = as_early(a for k in opened if k in self._incidents for a in self._report(k, self._incidents[k]))
         while self._incidents:
             key, inc = next(iter(self._incidents.items()))
             if now - inc.last_seen <= self.cfg.idle_timeout_seconds:
                 break
             del self._incidents[key]
             alerts += self._report(key, inc)
+        # Long-running activity: close incidents past the maximum age (at most max_keys of them).
+        for key in [k for k, inc in self._incidents.items() if now - inc.first_seen > self.max_age]:
+            alerts += self._report(key, self._incidents.pop(key))
         return alerts
 
     def flush(self) -> Iterable[Alert]:

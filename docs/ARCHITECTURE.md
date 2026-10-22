@@ -57,6 +57,24 @@ sequenceDiagram
 | `output.py` | Text, JSON and JSONL alerts; CSV/JSONL flow export | `FlowWriter` |
 | `lab/` | Frame builders, labelled scenarios, evaluation harness | `Scenario`, `run_all` |
 
+## Live capture and replay (Phase 6)
+
+```mermaid
+flowchart LR
+    T[tcpdump -i IFACE -w -<br/>own capture privilege] -- pcap stream --> R[reader thread<br/>iter_frames, optional pcap tee]
+    F[capture file<br/>paced by timestamps] --> R
+    R -- bounded queue --> M[LiveSession main loop]
+    M -- frames --> E[Engine]
+    M -- queue idle 1 s --> A[Engine.advance(clock)]
+    E -- early / final alerts --> O[text / JSONL]
+```
+
+`live.py` holds the sources (`TcpdumpSource`, `ReplaySource`) and
+`LiveSession`. The engine stays single-threaded; the queue bounds memory and
+turns overload into kernel drops that tcpdump reports. `Engine.advance()`
+moves the capture clock during silence so incidents close live. Alerts carry
+`stage` (`early`/`final`) and `reported_at` (ADR-0010).
+
 ## Backend (Phase 4)
 
 ```mermaid
@@ -139,20 +157,23 @@ Testing Library (formatting, profile diffing, page states, hostile strings).
 
 ## Data model
 
-`Alert` is the stable external contract (JSON keys, `schema_version` 1.0).
+`Alert` is the stable external contract (JSON keys, `schema_version` 1.1;
+1.1 added `stage` and `reported_at`).
 Adding a field bumps the minor version; renaming or removing one bumps the
 major. `tests/test_cli.py::test_alert_contract_v1` pins the key set.
 
 ```json
 {
-  "schema_version": "1.0",
+  "schema_version": "1.1",
   "alert_id": "4b41e3294d7a7b7e3717",
+  "stage": "final",
   "rule_id": "NG-SCAN-001",
   "detector": "portscan",
   "title": "TCP port scan",
   "severity": "HIGH",
   "first_seen": "2025-10-09T08:53:20.000+00:00",
   "last_seen": "2025-10-09T08:53:20.999+00:00",
+  "reported_at": "2025-10-09T08:53:20.999+00:00",
   "src": "10.0.0.66",
   "dst": "10.0.0.10",
   "summary": "10.0.0.66 probed 1000 distinct TCP ports on 10.0.0.10 in 1.0s (...)",

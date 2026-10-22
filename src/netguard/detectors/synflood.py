@@ -32,7 +32,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 
 from netguard.config import Config
-from netguard.detectors.base import Detector, RuleInfo
+from netguard.detectors.base import Detector, RuleInfo, as_early
 from netguard.flows import ANSWERED, ATTEMPT, ESTABLISHED, REJECTED, Flow
 from netguard.models import Alert, Severity, Technique
 
@@ -77,6 +77,9 @@ class SynFloodDetector(Detector):
         self._intervals: OrderedDict[Target, _Interval] = OrderedDict()  # least recently updated first
         self._incidents: dict[Target, _Incident] = {}
         self.evicted_targets = 0
+        self.early_warning = config.alerts.early_warning
+        self.max_age = config.alerts.max_incident_age_seconds
+        self._opened: list[Target] = []  # incidents awaiting an early warning
 
     def _slot(self, ts: float) -> float:
         return (ts // self.cfg.interval_seconds) * self.cfg.interval_seconds
@@ -125,6 +128,8 @@ class SynFloodDetector(Detector):
         inc = self._incidents.get(target)
         if inc is None:
             inc = self._incidents[target] = _Incident(target=target, first_seen=iv.start, last_seen=end)
+            if self.early_warning:
+                self._opened.append(target)
         inc.last_seen = end
         inc.attempts += iv.attempts
         inc.answered += iv.answered
@@ -148,8 +153,14 @@ class SynFloodDetector(Detector):
                 break
             del self._intervals[target]
             self._close_interval(target, iv)
-        done = [t for t, inc in self._incidents.items() if now - inc.last_seen > self.cfg.idle_timeout_seconds]
-        return [self._alert(self._incidents.pop(t)) for t in done]
+        opened, self._opened = self._opened, []
+        early = as_early(self._alert(self._incidents[t]) for t in opened if t in self._incidents)
+        done = [
+            t
+            for t, inc in self._incidents.items()
+            if now - inc.last_seen > self.cfg.idle_timeout_seconds or now - inc.first_seen > self.max_age
+        ]
+        return early + [self._alert(self._incidents.pop(t)) for t in done]
 
     def flush(self) -> Iterable[Alert]:
         for target, iv in list(self._intervals.items()):

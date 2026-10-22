@@ -78,6 +78,16 @@ export function AlertDetail() {
                   {formatTime(alert.first_seen)} → {formatTime(alert.last_seen)} ({formatDuration(seconds)})
                 </td>
               </tr>
+              {alert.reported_at ? (
+                <tr>
+                  <th scope="row">Reported</th>
+                  <td>
+                    {formatTime(alert.reported_at)} · detection delay{" "}
+                    {formatDuration((new Date(alert.reported_at).getTime() - new Date(alert.first_seen).getTime()) / 1000)}
+                    {alert.stage === "early" ? " · early warning (incident still open)" : ""}
+                  </td>
+                </tr>
+              ) : null}
               <tr>
                 <th scope="row">Rule</th>
                 <td>

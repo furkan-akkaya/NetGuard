@@ -153,6 +153,8 @@ class BurstTracker(Generic[K, T]):
         idle_timeout: float,
         max_keys: int = 100_000,
         max_events_per_key: int = 10_000,
+        max_age: float | None = None,
+        track_opened: bool = False,
     ) -> None:
         if threshold < 1:
             raise ValueError("threshold must be >= 1")
@@ -171,6 +173,11 @@ class BurstTracker(Generic[K, T]):
         # probe tags live in the window's events instead.
         self._pending: dict[K, Incident[K, T]] = {}
         self.evicted_keys = 0  # observability: how often the key cap forced an early eviction
+        # Incidents older than max_age are closed even while active (ADR-0010).
+        self.max_age = max_age
+        # Newly opened incidents, for early-warning alerts; only kept when asked for.
+        self.track_opened = track_opened
+        self._opened: list[Incident[K, T]] = []
 
     def observe(self, key: K, ts: float, item: T, tag: str | None = None) -> Incident[K, T] | None:
         win = self._windows.get(key)
@@ -201,6 +208,8 @@ class BurstTracker(Generic[K, T]):
             for seen in win.items():
                 incident.add_item(seen)
             self._incidents[key] = incident
+            if self.track_opened:
+                self._opened.append(incident)
         else:
             incident.events += 1
             incident.add_item(item)
@@ -228,7 +237,12 @@ class BurstTracker(Generic[K, T]):
 
     def expire(self, now: float) -> list[Incident[K, T]]:
         """Close incidents idle for longer than ``idle_timeout``; GC empty windows."""
-        closed = [inc for inc in self._incidents.values() if now - inc.last_seen > self.idle_timeout]
+        closed = [
+            inc
+            for inc in self._incidents.values()
+            if now - inc.last_seen > self.idle_timeout
+            or (self.max_age is not None and now - inc.first_seen > self.max_age)
+        ]
         for inc in closed:
             del self._incidents[inc.key]
             # Each event belongs to at most one incident: start the key afresh,
@@ -237,6 +251,11 @@ class BurstTracker(Generic[K, T]):
             self._windows.pop(inc.key, None)
         self._gc(now)
         return closed
+
+    def take_opened(self) -> list[Incident[K, T]]:
+        """Incidents opened since the last call (still open; for early warnings)."""
+        opened, self._opened = self._opened, []
+        return opened
 
     def drain(self) -> list[Incident[K, T]]:
         """Close every open incident (end of input)."""

@@ -23,6 +23,11 @@ export function AlertTable({ alerts, showAnalysis = false }: { alerts: Alert[]; 
             <tr key={a.id}>
               <td>
                 <SeverityBadge severity={a.severity} />
+                {a.stage === "early" ? (
+                  <span className="badge" title="Early warning: the incident was still open">
+                    early
+                  </span>
+                ) : null}
               </td>
               <td className="wrap">
                 <Link to={`/alerts/${a.id}`}>{a.title}</Link>

@@ -17,7 +17,11 @@ from netguard.dns import DnsInfo
 
 #: Version of the alert JSON contract. Bump the major on breaking changes
 #: (renamed/removed fields), the minor when fields are added.
-ALERT_SCHEMA_VERSION = "1.0"
+ALERT_SCHEMA_VERSION = "1.1"
+
+#: Alert stages (ADR-0010). ``early``: the incident just crossed its threshold
+#: and is still open; ``final``: the incident closed. Both share one alert_id.
+STAGE_EARLY, STAGE_FINAL = "early", "final"
 
 # The unspecified address: used as ARP sender IP by hosts without an address yet.
 UNSPECIFIED_IPV4 = "0.0.0.0"  # noqa: S104 - compared against, never bound
@@ -126,6 +130,10 @@ class Alert:
     dst: str | None = None
     technique: Technique | None = None
     evidence: dict[str, Any] = field(default_factory=dict)
+    stage: str = STAGE_FINAL
+    # Capture-clock time at which the alert was emitted (set by the engine);
+    # reported_at - first_seen is the detection delay.
+    reported_at: float | None = None
 
     @property
     def alert_id(self) -> str:
@@ -142,12 +150,14 @@ class Alert:
         return {
             "schema_version": ALERT_SCHEMA_VERSION,
             "alert_id": self.alert_id,
+            "stage": self.stage,
             "rule_id": self.rule_id,
             "detector": self.detector,
             "title": self.title,
             "severity": str(self.severity),
             "first_seen": iso_ts(self.first_seen),
             "last_seen": iso_ts(self.last_seen),
+            "reported_at": iso_ts(self.reported_at) if self.reported_at is not None else None,
             "src": self.src,
             "dst": self.dst,
             "summary": self.summary,

@@ -33,6 +33,8 @@ def format_alert(alert: Alert, color: bool = False) -> str:
         sev = f"{_COLORS[alert.severity]}{sev}{_RESET}"
     target = f"{alert.src or '?'} -> {alert.dst}" if alert.dst else (alert.src or "?")
     technique = f"  {alert.technique.id} {alert.technique.name}" if alert.technique else ""
+    if alert.stage == "early":
+        sev = f"{sev} EARLY"  # provisional: the incident is still open
     dim, reset = (_DIM, _RESET) if color else ("", "")
     return (
         f"{sev} {alert.title}: {target}{dim}{technique}{reset}\n"

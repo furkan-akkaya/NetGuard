@@ -94,6 +94,10 @@ sensitivity = 6
 warmup_intervals = 10
 smoothing = 0.1
 
+[alerts]                     # alert lifecycle (ADR-0010)
+early_warning = false        # provisional alert when an incident opens; `monitor`/`replay` turn it on
+max_incident_age_seconds = 3600   # report and restart incidents older than this, even while active
+
 [flows]
 # Flow table memory bound. ~0.3-0.5 KB per flow; when full, the least recently
 # seen flow is ended early ("evicted") and counted in the report.

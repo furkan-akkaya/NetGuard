@@ -13,15 +13,15 @@ single **explainable alert**. Every alert states what was observed, which
 threshold it crossed, what the attacker likely learned, and which MITRE ATT&CK
 technique it maps to.
 
-> **Status:** v0.5.0 (MVP) — packet ingestion, flow engine, eleven detection
-> rules tested on 24 labelled synthetic scenarios, a REST API with persistent
-> storage, and a web dashboard. Live capture and validation on real lab
-> captures are next (see the [roadmap](ROADMAP.md)).
+> **Status:** v0.6.0 — packet ingestion, flow engine, eleven detection rules
+> tested on 24 labelled synthetic scenarios, a REST API, a web dashboard, and
+> live capture with early warnings. Validation on real lab captures is next
+> (see the [roadmap](ROADMAP.md)).
 
 ```text
 $ netguard analyze syn_scan.pcap
 
-NetGuard 0.5.0 — syn_scan.pcap
+NetGuard 0.6.0 — syn_scan.pcap
 
 Packets: 2,003   Bytes: 108,162   Duration: 1.0s   Flows: 1,000   Decode errors: 0
 Protocols: tcp 2,003
@@ -101,8 +101,9 @@ netguard analyze -c netguard.toml capture.pcap           # custom thresholds / a
 netguard flows capture.pcap > flows.csv                  # connection records (CSV)
 netguard flows -f jsonl capture.pcap | jq 'select(.state=="S0")'
 
-# Live: tcpdump captures (as root), NetGuard analyzes (as your user)
-sudo tcpdump -i eth0 -U -w - 'not port 22' | netguard analyze -f jsonl -
+# Live: NetGuard starts tcpdump on one interface and alerts as incidents open and close
+netguard monitor -i eth0 --filter 'not port 22' --duration 3600
+netguard replay capture.pcap --speed 10      # recorded traffic through the live pipeline
 ```
 
 ### Dashboard and REST API
@@ -124,7 +125,13 @@ The same functions are available through the REST API: [docs/API.md](docs/API.md
 `netguard analyze -f html capture.pcap > report.html` writes the same
 single-file report from the command line.
 
-`-f jsonl` writes one JSON alert per line as soon as an incident closes. This
+`monitor` needs tcpdump to have capture permission; NetGuard itself never runs
+as root. See [docs/LIVE_CAPTURE.md](docs/LIVE_CAPTURE.md) for permissions,
+options and measured detection delays.
+
+`-f jsonl` writes one JSON alert per line as soon as it is emitted: in live
+mode an `early` alert when an incident crosses its threshold and a `final`
+one with the same `alert_id` when it closes. This
 format fits `jq`, Filebeat, Vector or a SIEM. The default thresholds are listed
 in [`netguard.example.toml`](netguard.example.toml).
 
@@ -170,6 +177,7 @@ See [ARCHITECTURE.md](docs/ARCHITECTURE.md) and the [decision records](docs/adr/
 | [Tasks](docs/TASKS.md) | Current task board |
 | [Architecture](docs/ARCHITECTURE.md) | Components, data flow, extension points |
 | [API](docs/API.md) | REST API v1 reference, examples, ECS export |
+| [Live capture](docs/LIVE_CAPTURE.md) | `monitor` and `replay`: permissions, options, alert lifecycle |
 | [Contributing](CONTRIBUTING.md) | Development setup (Python and dashboard), checks before committing |
 | [ADRs](docs/adr/) | Python + dpkt, tcpdump capture, incidents, flow semantics, own capture readers, connection events, baselines |
 | [Rule catalog](docs/rules/README.md) | One page per detection rule |

@@ -113,6 +113,8 @@ export interface Alert {
   analysis_id: string;
   schema_version: string;
   alert_id: string;
+  stage: "early" | "final";
+  reported_at: string | null;
   rule_id: string;
   detector: string;
   title: string;

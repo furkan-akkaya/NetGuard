@@ -8,11 +8,11 @@ every detector trivially unit-testable with hand-built ``Packet`` objects.
 from __future__ import annotations
 
 from collections.abc import Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from netguard.config import Config
 from netguard.flows import Flow
-from netguard.models import Alert, Packet, Technique
+from netguard.models import STAGE_EARLY, Alert, Packet, Technique
 
 
 @dataclass(frozen=True, slots=True)
@@ -55,3 +55,8 @@ class Detector:
     def flush(self) -> Iterable[Alert]:
         """End of input: emit everything still pending."""
         return ()
+
+
+def as_early(alerts: Iterable[Alert | None]) -> list[Alert]:
+    """Mark alerts built from a still-open incident as provisional (ADR-0010)."""
+    return [replace(a, stage=STAGE_EARLY) for a in alerts if a is not None]

@@ -80,18 +80,20 @@ def test_alert_contract_v1(scan_pcap, capsys):
     """The alert JSON fields are a public contract: changing them breaks consumers."""
     assert main(["analyze", "-f", "json", str(scan_pcap)]) == EXIT_OK
     doc = json.loads(capsys.readouterr().out)
-    assert doc["schema_version"] == "1.0"
+    assert doc["schema_version"] == "1.1"
     assert doc["capture"] == {"format": "pcap", "linktypes": [1], "truncated": False, "skipped_blocks": 0}
     alert = doc["alerts"][0]
     assert set(alert) == {
         "schema_version",
         "alert_id",
+        "stage",
         "rule_id",
         "detector",
         "title",
         "severity",
         "first_seen",
         "last_seen",
+        "reported_at",
         "src",
         "dst",
         "summary",
@@ -99,6 +101,7 @@ def test_alert_contract_v1(scan_pcap, capsys):
         "evidence",
     }
     assert alert["rule_id"] == "NG-SCAN-001"
+    assert alert["stage"] == "final"
     assert len(alert["alert_id"]) == 20
 
 

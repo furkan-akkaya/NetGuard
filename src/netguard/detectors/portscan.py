@@ -25,7 +25,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 
 from netguard.config import Config
-from netguard.detectors.base import Detector, RuleInfo
+from netguard.detectors.base import Detector, RuleInfo, as_early
 from netguard.models import ACK, FIN, PSH, RST, SYN, URG, Alert, Packet, Severity, Technique
 from netguard.window import BurstTracker, Incident
 
@@ -63,6 +63,8 @@ class PortScanDetector(Detector):
             threshold=self.cfg.min_distinct_ports,
             idle_timeout=self.cfg.idle_timeout_seconds,
             max_keys=self.cfg.max_keys,
+            max_age=config.alerts.max_incident_age_seconds,
+            track_opened=config.alerts.early_warning,
         )
         self.suppressed = 0  # incidents not reported because most ports were open
 
@@ -86,7 +88,8 @@ class PortScanDetector(Detector):
         return ()
 
     def tick(self, now: float) -> Iterable[Alert]:
-        return self._report(self.tracker.expire(now))
+        early = as_early(self._report(self.tracker.take_opened()))
+        return early + self._report(self.tracker.expire(now))
 
     def flush(self) -> Iterable[Alert]:
         return self._report(self.tracker.drain())

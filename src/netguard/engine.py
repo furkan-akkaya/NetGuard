@@ -11,7 +11,7 @@ deterministic: the same pcap and config always produce the same output.
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from netguard.config import Config
 from netguard.decode import UnsupportedLinkType, decode
@@ -45,6 +45,7 @@ class Engine:
         self._on_alert = on_alert
         self._on_flow = on_flow
         self._next_tick: float | None = None
+        self._now: float | None = None  # capture clock: last packet time or advance() time
         # Only detectors that implement a hook are called for it; on_packet is
         # further dispatched by protocol (Detector.packet_protos).
         self._conn_detectors = [d for d in self.detectors if type(d).on_conn_event is not Detector.on_conn_event]
@@ -53,6 +54,8 @@ class Engine:
 
     def _emit(self, alerts: Iterable[Alert]) -> None:
         for alert in alerts:
+            if alert.reported_at is None and self._now is not None:
+                alert = replace(alert, reported_at=self._now)
             self.alerts.append(alert)
             if self._on_alert:
                 self._on_alert(alert)
@@ -65,16 +68,33 @@ class Engine:
             if self._on_flow:
                 self._on_flow(flow)
 
+    def _tick(self, now: float) -> None:
+        self._end_flows(self.flows.expire(now))
+        for det in self.detectors:
+            self._emit(det.tick(now))
+        self._next_tick = now + TICK_SECONDS
+
+    def advance(self, now: float) -> None:
+        """Move the capture clock forward without a packet (live capture during silence).
+
+        Offline, time advances with packets; live, a scan followed by silence
+        must still close its incidents. Times earlier than the clock are ignored.
+        """
+        if self._next_tick is None or (self._now is not None and now <= self._now):
+            return
+        self._now = now
+        if now >= self._next_tick:
+            self._tick(now)
+
     def process(self, pkt: Packet) -> None:
         # Tick *before* handing the packet to detectors: an incident that has been
         # idle must be closed first, otherwise this packet would extend it.
+        if self._now is None or pkt.ts > self._now:
+            self._now = pkt.ts
         if self._next_tick is None:
             self._next_tick = pkt.ts + TICK_SECONDS
         elif pkt.ts >= self._next_tick:
-            self._end_flows(self.flows.expire(pkt.ts))
-            for det in self.detectors:
-                self._emit(det.tick(pkt.ts))
-            self._next_tick = pkt.ts + TICK_SECONDS
+            self._tick(pkt.ts)
         self.stats.add(pkt)
         self._end_flows(self.flows.add(pkt))
         event, flow = self.flows.event, self.flows.current

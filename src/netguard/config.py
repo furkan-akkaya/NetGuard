@@ -166,6 +166,18 @@ class ArpSpoofConfig:
 
 
 @dataclass
+class AlertsConfig:
+    """Alert lifecycle (ADR-0010)."""
+
+    # Emit a provisional "early" alert as soon as an incident crosses its
+    # threshold, before the final one. Off for offline analysis; `monitor` and
+    # `replay` turn it on.
+    early_warning: bool = False
+    # Close and report incidents older than this even while activity continues.
+    max_incident_age_seconds: float = 3600.0
+
+
+@dataclass
 class FlowConfig:
     """Flow table limits and idle timeouts (defaults follow Zeek's, see ADR-0004)."""
 
@@ -196,6 +208,7 @@ class Config:
     connrate: ConnRateConfig = field(default_factory=ConnRateConfig)
     volume: VolumeConfig = field(default_factory=VolumeConfig)
     flows: FlowConfig = field(default_factory=FlowConfig)
+    alerts: AlertsConfig = field(default_factory=AlertsConfig)
 
     def __post_init__(self) -> None:
         try:
@@ -223,6 +236,7 @@ _SECTIONS: dict[str, type] = {
     "connrate": ConnRateConfig,
     "volume": VolumeConfig,
     "flows": FlowConfig,
+    "alerts": AlertsConfig,
 }
 
 
