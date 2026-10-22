@@ -48,14 +48,15 @@ uv run netguard lab evaluate
 `tests/test_scenarios.py` pins the expected TP/FP/FN of every scenario. Any
 change in detection quality fails CI until this document is updated.
 
-## 2. Results: synthetic scenarios (v0.3.0)
+## 2. Results: synthetic scenarios (v0.7.0)
 
 | Scenario | Type | Packets | Alerts | TP | FP | FN | Outcome | Note |
 |---|---|---:|---:|---:|---:|---:|---|---|
 | `benign_office` | benign | 462 | 0 | 0 | 0 | 0 | quiet (correct) |  |
 | `monitoring_poller` | benign | 180 | 3 | 0 | 1 | 0 | false positive | Expected false positive with default config: indistinguishable from a ping sweep by rate alone. |
 | `monitoring_poller_allowlisted` | benign | 180 | 0 | 0 | 0 | 0 | quiet (correct) |  |
-| `dhcp_reassignment` | benign | 2 | 1 | 0 | 1 | 0 | false positive | Expected false positive (MEDIUM): a single binding change cannot be told apart from spoofing. |
+| `dhcp_reassignment` | benign | 2 | 1 | 0 | 1 | 0 | false positive | Expected false positive: no DHCP visible, a single binding change cannot be told apart from spoofing. |
+| `dhcp_reassignment_seen` | benign | 4 | 0 | 0 | 0 | 0 | quiet (correct) | DHCP lease correlation explains the change (ADR-0011). |
 | `passive_ftp` | benign | 266 | 0 | 0 | 0 | 0 | quiet (correct) | Every connection succeeds: the window rule suppresses it (max_open_ratio), TRW sees only successes. |
 | `flash_crowd` | benign | 6400 | 0 | 0 | 0 | 0 | quiet (correct) | SYN-flood look-alike |
 | `voip_call` | benign | 200 | 0 | 0 | 0 | 0 | quiet (correct) | UDP-scan look-alike |
@@ -70,6 +71,8 @@ change in detection quality fails CI until this document is updated.
 | `arp_sweep` | attack | 259 | 1 | 1 | 0 | 0 | detected |  |
 | `arp_spoof_mitm` | attack | 70 | 4 | 2 | 0 | 0 | detected |  |
 | `fragmented_scan` | attack | 150 | 1 | 1 | 0 | 0 | detected | Probes themselves are invisible to the scan rules (no reassembly); the fragmentation is detected. |
+| `compromised_workstation` | attack | 582 | 4 | 4 | 0 | 0 | detected | Multi-stage: correlation groups the four alerts into one incident (C2, Discovery, Defense Evasion). |
+| `arp_spoof_with_rogue_dhcp` | attack | 14 | 1 | 1 | 0 | 0 | detected | A forged DHCP ACK from an untrusted server does not explain the change. |
 | `udp_scan` | attack | 204 | 1 | 1 | 0 | 0 | detected |  |
 | `syn_flood_spoofed` | attack | 12000 | 1 | 1 | 0 | 0 | detected |  |
 | `dns_tunnel` | attack | 300 | 1 | 1 | 0 | 0 | detected |  |
@@ -77,9 +80,9 @@ change in detection quality fails CI until this document is updated.
 | `connection_burst` | attack | 4500 | 1 | 1 | 0 | 0 | detected |  |
 | `exfil_volume` | attack | 25159 | 1 | 1 | 0 | 0 | detected |  |
 
-**Totals:** TP=15, FP=3, FN=1 — precision 0.83, recall 0.94 (entity level, synthetic scenarios).
+**Totals:** TP=20, FP=3, FN=1 — precision 0.87, recall 0.95 (entity level, synthetic scenarios).
 
-**Scenarios:** 13/13 attack scenarios detected by at least one expected rule; 8/11 benign scenarios without false positives.
+**Scenarios:** 15/15 attack scenarios detected by at least one expected rule; 9/12 benign scenarios without false positives.
 
 ### How to read this
 
@@ -93,9 +96,12 @@ change in detection quality fails CI until this document is updated.
   (flash crowd for SYN flood, VoIP for UDP scan, CDN lookups for DNS tunnel,
   MTU fragmentation for fragment evasion, gradual growth for connection rate).
 - The three false positives are **known and explained**: the monitoring
-  poller (allowlist today, baselining in Phase 7), DHCP re-assignment (DHCP
-  correlation in Phase 7), a wrong DNS search suffix (the evidence shows one
-  domain with readable names; no automatic fix planned yet).
+  poller (allowlist), DHCP re-assignment *without visible DHCP* (with the DHCP
+  ACK visible it is explained since v0.7: `dhcp_reassignment_seen`), a wrong
+  DNS search suffix (one domain, readable names). All three score **low
+  confidence** (25–30) while every true positive scores 45–95 — see
+  [CONFIDENCE.md](CONFIDENCE.md) for why this is a consistency check rather
+  than an accuracy claim.
 - The remaining FN is the window rule on `slow_scan`; TRW detects the same
   scenario, so the scenario counts as detected.
 - `benign_office` was made more realistic in v0.3: its 40 HTTPS connections
@@ -129,6 +135,11 @@ uv run python benchmarks/detection_delay.py
 | `arp_spoof_mitm` | NG-ARP-001 | `10.0.0.1` | 0.0 s | final | 68.0 s |
 | `arp_spoof_mitm` | NG-ARP-001 | `10.0.0.20` | 0.0 s | final | 68.0 s |
 | `fragmented_scan` | NG-FRAG-001 | `10.0.0.66` | 1.5 s | early | 0.5 s |
+| `compromised_workstation` | NG-DNS-001 | `10.0.0.20` | 20.4 s | early | 70.2 s |
+| `compromised_workstation` | NG-FRAG-001 | `10.0.0.20` | 1.2 s | early | 70.2 s |
+| `compromised_workstation` | NG-SCAN-001 | `10.0.0.20->10.0.0.10` | 0.6 s | early | 70.2 s |
+| `compromised_workstation` | NG-SCAN-002 | `10.0.0.20` | 0.6 s | early | 70.2 s |
+| `arp_spoof_with_rogue_dhcp` | NG-ARP-001 | `10.0.0.1` | 0.0 s | final | 88.0 s |
 | `udp_scan` | NG-SCAN-003 | `10.0.0.66->10.0.0.10` | 1.0 s | early | 2.0 s |
 | `syn_flood_spoofed` | NG-SYN-001 | `10.0.0.10` | 11.0 s | early | 6.0 s |
 | `dns_tunnel` | NG-DNS-001 | `10.0.0.20` | 20.4 s | early | 119.6 s |
@@ -147,6 +158,18 @@ How to read it:
 - ARP spoofing is reported at the first conflicting reply (0 s, no early stage).
 - Without early warnings, the first alert comes only when the incident closes
   (idle timeout or end of capture): for the slow scan that was 1485 s.
+
+## Confidence and correlation (v0.7.0)
+
+| Measure | Value |
+|---|---|
+| True-positive alerts, confidence | 22 alerts, 45–95 |
+| False-positive alerts, confidence | 5 alerts, 25–30 (all `low`) |
+| Alerts → incidents, attack scenarios with several alerts | `syn_scan_1000` 2 → 1, `arp_spoof_mitm` 4 → 1, `compromised_workstation` 4 → 1 (3 ATT&CK tactics) |
+
+Method and factor justifications: [CONFIDENCE.md](CONFIDENCE.md). Reproduce
+with `netguard analyze -f json` (each alert's `confidence`, the document's
+`incidents`).
 
 ## 3. Performance
 

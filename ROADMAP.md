@@ -1,6 +1,6 @@
 # NetGuard Yol Haritası
 
-> Son güncelleme: **2026-10-22** · Mevcut sürüm: **v0.6.0** · Aktif faz: **Faz 7 — İleri tespit** (👤 Faz 8 lab doğrulaması bekliyor)
+> Son güncelleme: **2026-10-22** · Mevcut sürüm: **v0.7.0** · Aktif faz: **Faz 8 — Değerlendirme** (👤 lab yakalamaları) ve **Faz 9 — Sertleştirme**
 >
 > Bu dosya projenin **tek** yol haritasıdır. Güncel iş listesi
 > [docs/TASKS.md](docs/TASKS.md), ölçülmüş sonuçlar
@@ -51,18 +51,17 @@ mikroservis yok.
 | 4 | Backend, kalıcılık, API | ✅ | **v0.4.0** |
 | 5 | Web dashboard | ✅ | **v0.5.0 = MVP** |
 | 6 | Canlı yakalama ve replay | ✅ (👤 lab doğrulaması) | **v0.6.0** |
-| 7 | İleri tespit ve tehdit istihbaratı | 🔄 | v0.7.0 |
+| 7 | İleri tespit ve tehdit istihbaratı | ✅ | **v0.7.0** |
 | 8 | Test, benchmark, değerlendirme | 🔄 sürekli · 👤 lab | v0.8.0 |
 | 9 | Güvenlik sertleştirme ve CI/CD | 🔄 sürekli | v0.9.0 |
 | 10 | Dokümantasyon, release, portföy | ⏳ | **v1.0.0** |
 
-**Ölçülmüş durum (v0.6.0):** 11 tespit kuralı, REST API, web dashboard,
-canlı yakalama ve replay; 290 Python testi ve 12 frontend testi, kapsama
-%92; ruff, mypy `--strict`, TypeScript strict temiz. 242k paketlik referans
-pcap 11 kuralla ~2,45 sn / 36 MB (M1). Sentetik senaryolar: 13/13 saldırı
-tespit, 11 benign senaryonun 8'i alarmsız (3 bilinen yanlış pozitif). Canlı
-modda tespit gecikmesi hızlı taramalarda ~1–2 sn, yavaş taramada 76 sn
-(`benchmarks/detection_delay.py`). Ayrıntı: [EVALUATION.md](docs/EVALUATION.md).
+**Ölçülmüş durum (v0.7.0):** 11 tespit kuralı (açıklanabilir güven puanı
+ve olay korelasyonu ile), REST API, web dashboard, canlı yakalama; 316 Python
+testi ve 12 frontend testi, kapsama %93; ruff, mypy `--strict`, TypeScript
+strict temiz. Sentetik senaryolar (27): 15/15 saldırı tespit, 12 benign
+senaryonun 9'u alarmsız; 3 yanlış pozitifin hepsi düşük güven (25–30), tüm
+doğru pozitifler 45–95. Ayrıntı: [EVALUATION.md](docs/EVALUATION.md).
 
 **Gerçek dünyada doğrulama yok:** tüm tespit sonuçları şimdilik sentetik
 senaryolardan. Lab yakalamaları (Faz 8) kullanıcının UTM ortamını gerektirir.
@@ -78,7 +77,7 @@ flowchart LR
     F4 --> F5[5 ✅ Dashboard<br/>= MVP]
     F4 --> F6[6 ✅ Canlı & replay]
     F5 --> F6
-    F3 --> F7[7 İleri tespit]
+    F3 --> F7[7 ✅ İleri tespit]
     F4 --> F7
     F8[8 Değerlendirme<br/>sürekli] -.-> F3
     F8 -.-> F7
@@ -267,13 +266,24 @@ pcap yüklenebilir); IPv6 parça birleştirme yok.
 
 **Öğrenme notu:** [07 — Canlı trafik: yetki, zaman ve gecikme](docs/learning/07-live-capture.md).
 
-### Faz 7 — İleri tespit ve tehdit istihbaratı ⏳ (v0.7.0)
+### Faz 7 — İleri tespit ✅ (v0.7.0)
 
-Her özellik ölçülebilir değerine göre seçilir. Adaylar: davranışsal baseline,
-alarm tekilleştirme ve korelasyon (decoy tarama, DHCP korelasyonuyla ARP FP
-azaltma), açıklanabilir güven/şiddet puanı, beaconing ve veri sızdırma,
-Zeek `conn.log`/Suricata EVE JSON girdisi, kural içe/dışa aktarma, offline
-IoC listeleri. ML yalnızca somut ve ölçülmüş bir kullanım durumu varsa.
+Adaylar ölçülebilir değere göre seçildi ([ADR-0011](docs/adr/0011-phase-7-feature-selection.md)):
+
+| # | İş | Karar / durum |
+|---|---|---|
+| 7.1 | Alarm korelasyonu: aktör ve zamana göre olaylar, ATT&CK taktikleri (`correlate.py`, API, dashboard, rapor) | ✅ (ör. 4 alarm → 1 olay, 3 taktik) |
+| 7.2 | Açıklanabilir güven puanı: kural tabanı + gerekçeli faktörler, 5–95 ([CONFIDENCE.md](docs/CONFIDENCE.md)), sözleşme 1.2 | ✅ (YP'ler 25–30, DP'ler 45–95; tutarlılık kontrolü) |
+| 7.3 | DHCP kira korelasyonu: güvenilen sunucunun ACK'i ARP değişikliğini açıklar; sahte DHCP sunucusu açıklayamaz | ✅ |
+| 7.4 | Profil içe/dışa aktarma (TOML), `netguard config` | ✅ |
+| 7.5 | Zeek `conn.log` / Suricata EVE girdisi | ⏸ v1.x (ölçecek veri yok) |
+| 7.6 | ICMP tünel kuralı, onaysız resolver politikası, mevsimsel baseline | ⏸ ertelendi (gerekçe ADR-0011) |
+| — | Makine öğrenmesi | ✗ şimdilik reddedildi (etiketli gerçek veri yok, açıklanamaz) |
+
+**Kabul kriterleri:** ✅ her özellik için ölçüm EVALUATION.md'de; ✅ sınırlamalar
+belgelendi (TOFU, IP/MAC aktör ayrımı, tutarlılık kontrolü ≠ doğruluk).
+
+**Öğrenme notu:** [08 — Alarmdan karara](docs/learning/08-confidence-correlation.md).
 
 ### Faz 8 — Test, benchmark ve değerlendirme 🔄 sürekli · 👤 lab
 
@@ -342,10 +352,10 @@ Kapsama eşiği %90 (CI'da zorunlu). Gerçek pcap'ler git'e girmez (`.gitignore`
 
 | Sorun | Etki | Hedef |
 |---|---|---|
-| Tek ARP bağlama değişikliği alarm üretiyor | `dhcp_reassignment` FP | Faz 7 (DHCP korelasyonu) |
-| İzleme sunucusu ping sweep gibi görünüyor | `monitoring_poller` FP (allowlist ile çözülüyor) | Faz 7 (baseline) |
-| Yanlış DNS arama son eki DGA gibi görünüyor | `search_suffix_nxdomain` FP (kanıt farkı gösteriyor) | Faz 7 |
-| Aynı aktivite için birden çok kural | SYN taraması NG-SCAN-001 ve NG-SCAN-002 üretiyor | Faz 7 (korelasyon) |
+| DHCP görünmüyorsa tek ARP bağlama değişikliği alarm üretiyor | `dhcp_reassignment` FP (düşük güven); DHCP görünürse açıklanıyor | Sensör yerleşimi |
+| İzleme sunucusu ping sweep gibi görünüyor | `monitoring_poller` FP (allowlist; düşük güven) | Allowlist |
+| Yanlış DNS arama son eki DGA gibi görünüyor | `search_suffix_nxdomain` FP (düşük güven) | Allowlist / yapılandırma |
+| Saldırgan IP ve MAC ile iki ayrı aktör | Tarama (IP) ve ARP (MAC) alarmları iki olay | v1.x (IP↔MAC eşleme) |
 | Baseline kuralları ısınma istiyor | 10 dakikadan kısa yakalamalarda hız/hacim alarmı yok | Faz 4 (kalıcı baseline) |
 | Decoy/sahte kaynaklı taramalar | Bir tarama birçok kaynağa bölünüyor | Faz 7 |
 | IP fragment birleştirme yok | Parçalı probe'lar analiz edilmiyor; NG-FRAG-001 atlatmayı raporluyor | Faz 7 (gerekirse) |
@@ -365,6 +375,9 @@ Kapsama eşiği %90 (CI'da zorunlu). Gerçek pcap'ler git'e girmez (`.gitignore`
 
 ### Değişiklik kaydı
 
+- **2026-10-22:** Faz 7 tamamlandı (v0.7.0): güven puanı, korelasyon, DHCP
+  kira korelasyonu, profil TOML içe/dışa aktarma. Zeek/Suricata girdisi ve ML
+  ölçülebilir değer gösterilene kadar ertelendi.
 - **2026-10-22:** Faz 6 tamamlandı (v0.6.0): `monitor`, `replay`, erken uyarı,
   azami incident yaşı, tespit gecikmesi ölçümü. Gerçek arayüzde doğrulama 👤 lab.
 - **2026-10-22:** Faz 5 tamamlandı (v0.5.0 = MVP): web dashboard, kural

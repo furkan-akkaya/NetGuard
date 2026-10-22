@@ -50,6 +50,9 @@ sequenceDiagram
 | `dns.py` | Bounded DNS header + first-question parser; registered-domain heuristic; Shannon entropy | `DnsInfo`, `parse_dns` |
 | `window.py` | Sliding-window distinct counting and incident aggregation. Shared by the window-based rules. | `SlidingDistinct`, `BurstTracker`, `Incident` |
 | `baseline.py` | Per-entity EWMA mean/deviation per interval, clipped learning (ADR-0007) | `IntervalBaselines`, `Ewma` |
+| `dhcp.py` | Bounded DHCPv4 parser (message type, client MAC, assigned IP, server) | `DhcpInfo`, `parse_dhcp` |
+| `confidence.py` | Explainable per-alert confidence from evidence (ADR-0011, CONFIDENCE.md) | `assess` |
+| `correlate.py` | Groups alerts into incidents by actor and time, with ATT&CK tactics | `correlate` |
 | `detectors/` | One file per detection. Each one is a pure state machine with no I/O and no wall clock. | `Detector` (`on_packet`, `on_conn_event`, `on_flow_end`, `tick`, `flush`), `RuleInfo`, `DETECTORS` |
 | `engine.py` | Order of operations, capture-time ticking, alert and flow fan-out | `Engine`, `AnalysisResult` |
 | `stats.py` | Bounded statistics: protocols, packet sizes, adaptive time series, flow states, services, top flows, endpoints | `TrafficStats` |
@@ -157,14 +160,14 @@ Testing Library (formatting, profile diffing, page states, hostile strings).
 
 ## Data model
 
-`Alert` is the stable external contract (JSON keys, `schema_version` 1.1;
-1.1 added `stage` and `reported_at`).
+`Alert` is the stable external contract (JSON keys, `schema_version` 1.2;
+1.1 added `stage` and `reported_at`, 1.2 added `confidence`).
 Adding a field bumps the minor version; renaming or removing one bumps the
 major. `tests/test_cli.py::test_alert_contract_v1` pins the key set.
 
 ```json
 {
-  "schema_version": "1.1",
+  "schema_version": "1.2",
   "alert_id": "4b41e3294d7a7b7e3717",
   "stage": "final",
   "rule_id": "NG-SCAN-001",
@@ -177,6 +180,7 @@ major. `tests/test_cli.py::test_alert_contract_v1` pins the key set.
   "src": "10.0.0.66",
   "dst": "10.0.0.10",
   "summary": "10.0.0.66 probed 1000 distinct TCP ports on 10.0.0.10 in 1.0s (...)",
+  "confidence": {"score": 90, "level": "high", "base": 60, "factors": [{"reason": "at least 90% of probed ports were closed or silent: ...", "weight": 20}, {"reason": "100 or more ports on one host", "weight": 10}]},
   "technique": {"id": "T1046", "name": "Network Service Discovery", "url": "https://attack.mitre.org/techniques/T1046/"},
   "evidence": {"distinct_ports": 1000, "open_ports": [22, 80, 443], "...": "..."}
 }

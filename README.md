@@ -13,15 +13,15 @@ single **explainable alert**. Every alert states what was observed, which
 threshold it crossed, what the attacker likely learned, and which MITRE ATT&CK
 technique it maps to.
 
-> **Status:** v0.6.0 — packet ingestion, flow engine, eleven detection rules
-> tested on 24 labelled synthetic scenarios, a REST API, a web dashboard, and
-> live capture with early warnings. Validation on real lab captures is next
-> (see the [roadmap](ROADMAP.md)).
+> **Status:** v0.7.0 — packet ingestion, flow engine, eleven detection rules
+> with explainable confidence, alert correlation, a REST API, a web dashboard
+> and live capture, tested on 27 labelled synthetic scenarios. Validation on
+> real lab captures is next (see the [roadmap](ROADMAP.md)).
 
 ```text
 $ netguard analyze syn_scan.pcap
 
-NetGuard 0.6.0 — syn_scan.pcap
+NetGuard 0.7.0 — syn_scan.pcap
 
 Packets: 2,003   Bytes: 108,162   Duration: 1.0s   Flows: 1,000   Decode errors: 0
 Protocols: tcp 2,003
@@ -57,6 +57,12 @@ aborted with RST (a half-open scan).
 | [NG-FRAG-001](docs/rules/NG-FRAG-001.md) | Fragmentation evasion (`nmap -f`) | [T1599](https://attack.mitre.org/techniques/T1599/) | Tiny first fragments, TCP header split at offset 8, sub-MTU fragments (RFC 1858). |
 | [NG-RATE-001](docs/rules/NG-RATE-001.md) | Unusual connection frequency | — | New connections per host vs. the host's own EWMA baseline. |
 | [NG-VOL-001](docs/rules/NG-VOL-001.md) | Abnormal outbound volume | — | Bytes sent per host vs. the host's own EWMA baseline. |
+
+Every alert carries an **explainable confidence** (5–95, with the evidence
+factors that raised or lowered it), and alerts about the same actor are
+**correlated into incidents** with their ATT&CK tactics ([CONFIDENCE.md](docs/CONFIDENCE.md)).
+ARP alerts consult DHCP leases from a trusted server, so a device simply
+re-assigned an IP is not reported as spoofing.
 
 Each rule is documented in the [rule catalog](docs/rules/README.md) (signal,
 thresholds, evidence, known false positives and negatives, tuning);
@@ -99,6 +105,7 @@ netguard analyze capture.pcapng
 netguard analyze -f json capture.pcap > report.json      # one JSON document
 netguard analyze -c netguard.toml capture.pcap           # custom thresholds / allowlist
 netguard flows capture.pcap > flows.csv                  # connection records (CSV)
+netguard config > netguard.toml                          # the full effective configuration, to edit
 netguard flows -f jsonl capture.pcap | jq 'select(.state=="S0")'
 
 # Live: NetGuard starts tcpdump on one interface and alerts as incidents open and close
@@ -137,14 +144,14 @@ in [`netguard.example.toml`](netguard.example.toml).
 
 ## Measured results
 
-From `netguard lab evaluate` on 24 labelled synthetic scenarios (13 attacks,
-11 benign look-alikes). Scoring is per entity; see
+From `netguard lab evaluate` on 27 labelled synthetic scenarios (15 attacks,
+12 benign look-alikes). Scoring is per entity; see
 [EVALUATION.md](docs/EVALUATION.md) for the method and full table.
 
 | | Result |
 |---|---|
-| Attack scenarios detected | 13 / 13 (the slow scan only by the outcome-based TRW rule, not the window rule) |
-| Benign scenarios without false positives | 8 / 11 (known FPs: monitoring poller, DHCP re-assignment, wrong DNS search suffix) |
+| Attack scenarios detected | 15 / 15 (the slow scan only by the outcome-based TRW rule, not the window rule) |
+| Benign scenarios without false positives | 9 / 12 (known FPs: monitoring poller, DHCP re-assignment without visible DHCP, wrong DNS search suffix — all three scored *low* confidence) |
 | Throughput | ~97k packets/s incl. start-up with all 11 rules, 36 MB RSS (242k-packet reference pcap, Apple M1, single core) |
 | Worst case | 500k-source spoofed SYN flood: 469 MB peak RSS, bounded by configuration |
 
@@ -178,6 +185,7 @@ See [ARCHITECTURE.md](docs/ARCHITECTURE.md) and the [decision records](docs/adr/
 | [Architecture](docs/ARCHITECTURE.md) | Components, data flow, extension points |
 | [API](docs/API.md) | REST API v1 reference, examples, ECS export |
 | [Live capture](docs/LIVE_CAPTURE.md) | `monitor` and `replay`: permissions, options, alert lifecycle |
+| [Confidence](docs/CONFIDENCE.md) | How confidence is computed (every factor justified) and how alerts become incidents |
 | [Contributing](CONTRIBUTING.md) | Development setup (Python and dashboard), checks before committing |
 | [ADRs](docs/adr/) | Python + dpkt, tcpdump capture, incidents, flow semantics, own capture readers, connection events, baselines |
 | [Rule catalog](docs/rules/README.md) | One page per detection rule |
