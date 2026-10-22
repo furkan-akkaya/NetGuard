@@ -2,6 +2,37 @@
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning: [SemVer](https://semver.org/).
 
+## [0.3.0] - 2026-10-22
+
+Phase 3 (detection engine): eight new rules, each with an attack scenario, a
+benign look-alike, unit tests and a rule page.
+
+### Added
+- **NG-SCAN-002** `trw`: scan detection by connection outcome (Threshold Random Walk, Jung et al. 2004); catches slow scans the window rule misses.
+- **NG-SCAN-003** `udpscan`: UDP port scans with open/closed/filtered evidence from UDP replies and ICMP unreachables.
+- **NG-SYN-001** `synflood`: many attempts, few completed handshakes per target, with source-diversity (spoofing) evidence.
+- **NG-DNS-001** `dnstunnel`: many long unique subdomains of one registered domain (tunnelling/exfiltration indicators).
+- **NG-DNS-002** `nxdomain`: bursts of NXDOMAIN responses (DGA indicator) with domain-spread and entropy evidence.
+- **NG-FRAG-001** `fragments`: tiny and header-splitting IPv4 fragments (RFC 1858, `nmap -f`).
+- **NG-RATE-001** `connrate` and **NG-VOL-001** `volume`: per-host EWMA baselines of new connections and bytes sent (ADR-0007).
+- Connection events from the flow table (`attempt`, `answered`, `rejected`, `established`; UDP first datagram / first reply) and the `on_conn_event` detector hook (ADR-0006).
+- Own DNS parser (`dns.py`): header, rcode, qtype, responses; pointer-loop safe; non-ASCII bytes kept as visible escapes.
+- Decoder: DNS info on queries and responses, port quoted in ICMP unreachables, ICMP payload length, IP protocol number, fragment offset and More-Fragments flag.
+- `netguard rules` (text/JSON) with per-rule state from the configuration; rule metadata on every detector.
+- Configurable `max_keys` for the window detectors; ratios and probabilities validated (≤ 1, TRW ordering).
+- 13 new lab scenarios (7 attacks, 6 benign look-alikes); scenario-level detection line in the scorecard.
+- ADR-0006, ADR-0007, learning notes 03 and 04 (Turkish), 8 rule pages.
+
+### Changed
+- NG-SCAN-001 is outcome-aware: incidents in which more than `max_open_ratio` (0.8) of the ports were open are not reported. Fixes the `passive_ftp` false positive.
+- The engine dispatches `on_packet` by protocol (`Detector.packet_protos`) and only calls hooks a detector implements.
+- `Packet.dns_query` is now a property over the new `Packet.dns` field.
+- Lab scenario `benign_office`: its 40 HTTPS connections now complete (they used to be SYNs without any answer, which no real browsing produces).
+
+### Measured
+- Synthetic scorecard: 13/13 attack scenarios detected, 8/11 benign scenarios quiet; entity-level precision 0.83, recall 0.94.
+- Reference benchmark with 11 rules: ~2.45 s (v0.2.0 with 3 rules: 2.2 s). Worst-case flood: 469 MB peak.
+
 ## [0.2.0] - 2026-10-22
 
 Phase 2 (flow and feature extraction) plus Phase 1 hardening.

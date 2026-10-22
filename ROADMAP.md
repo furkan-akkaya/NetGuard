@@ -1,6 +1,6 @@
 # NetGuard Yol Haritası
 
-> Son güncelleme: **2026-10-22** · Mevcut sürüm: **v0.2.0** · Aktif faz: **Faz 3 — Tespit motoru**
+> Son güncelleme: **2026-10-22** · Mevcut sürüm: **v0.3.0** · Aktif faz: **Faz 4 — Backend, kalıcılık, API**
 >
 > Bu dosya projenin **tek** yol haritasıdır. Güncel iş listesi
 > [docs/TASKS.md](docs/TASKS.md), ölçülmüş sonuçlar
@@ -47,8 +47,8 @@ mikroservis yok.
 | 0 | Araştırma, mimari, temel | ✅ | v0.1.0 |
 | 1 | Paket alma ve protokol analizi | ✅ | v0.1.0 + v0.2.0 |
 | 2 | Flow ve özellik çıkarımı | ✅ | **v0.2.0** |
-| 3 | Tespit motoru (genişletme) | 🔄 | v0.3.0 |
-| 4 | Backend, kalıcılık, API | ⏳ | v0.4.0 |
+| 3 | Tespit motoru (genişletme) | ✅ | **v0.3.0** |
+| 4 | Backend, kalıcılık, API | 🔄 | v0.4.0 |
 | 5 | Web dashboard | ⏳ | v0.5.0 = **MVP** |
 | 6 | Canlı yakalama ve replay | ⏳ | v0.6.0 |
 | 7 | İleri tespit ve tehdit istihbaratı | ⏳ | v0.7.0 |
@@ -56,10 +56,12 @@ mikroservis yok.
 | 9 | Güvenlik sertleştirme ve CI/CD | 🔄 sürekli | v0.9.0 |
 | 10 | Dokümantasyon, release, portföy | ⏳ | **v1.0.0** |
 
-**Ölçülmüş durum (v0.2.0):** 161 test, kapsama %94,8; ruff, mypy `--strict`
-temiz; 242k paketlik referans pcap ~2,2 sn / 35 MB (M1, ~110k paket/s);
-sahte kaynaklı 500k flow saldırısında tepe bellek 349 MB. Ayrıntı:
-[EVALUATION.md §3](docs/EVALUATION.md#3-performance).
+**Ölçülmüş durum (v0.3.0):** 11 tespit kuralı, 220 test, kapsama %95;
+ruff, mypy `--strict` temiz; 242k paketlik referans pcap 11 kuralla ~2,45 sn /
+36 MB (M1, ~97k paket/s); sahte kaynaklı 500k flow saldırısında tepe bellek
+469 MB. Sentetik senaryolar: 13/13 saldırı senaryosu tespit edildi, 11 benign
+senaryonun 8'i alarmsız (3 bilinen ve açıklanmış yanlış pozitif). Ayrıntı:
+[EVALUATION.md](docs/EVALUATION.md).
 
 **Gerçek dünyada doğrulama yok:** tüm tespit sonuçları şimdilik sentetik
 senaryolardan. Lab yakalamaları (Faz 8) kullanıcının UTM ortamını gerektirir.
@@ -70,8 +72,8 @@ senaryolardan. Lab yakalamaları (Faz 8) kullanıcının UTM ortamını gerektir
 flowchart LR
     F0[0 ✅ Temel] --> F1[1 ✅ Paket alma]
     F1 --> F2[2 ✅ Flow]
-    F2 --> F3[3 🔄 Tespit motoru]
-    F3 --> F4[4 Backend & API]
+    F2 --> F3[3 ✅ Tespit motoru]
+    F3 --> F4[4 🔄 Backend & API]
     F4 --> F5[5 Dashboard<br/>= MVP]
     F4 --> F6[6 Canlı & replay]
     F5 --> F6
@@ -163,32 +165,34 @@ ile aynı (bilinçli incident düzeltmesi hariç). Lab doğrulaması 👤 Faz 8'
 
 **Öğrenme notu:** [02 — Paketten bağlantıya](docs/learning/02-flows-and-tcp-state.md).
 
-### Faz 3 — Tespit motoru 🔄 (v0.3.0)
+### Faz 3 — Tespit motoru ✅ (v0.3.0)
 
 **Amaç:** istenen tespit kategorilerinin tamamını, her biri için gözlenebilir
 davranış, mantık, eşik, kanıt, test ve FP/FN belgesiyle tamamlamak.
 
-| # | İş | Kategori |
-|---|---|---|
-| 3.1 | DNS decoder genişlemesi: tüm sorular, `qtype`, yanıt, `rcode`, cevap sayısı, ID ile sorgu-yanıt eşleştirme; DNS istatistikleri | DNS |
-| 3.2 | **TRW tarama dedektörü** (Jung vd., 2004): flow sonuçlarıyla (SF vs S0/REJ) ardışık hipotez testi; pencere tabanlı dedektörle karşılaştırma ve ADR. `passive_ftp` FP'sini hedefler | Port tarama |
-| 3.3 | UDP tarama: ICMP port-unreachable'ı "kapalı port" sinyali olarak kullanma | Port tarama |
-| 3.4 | Yavaş tarama: uzun ufuklu, düşük eşikli ikinci pencere; bellek bütçesi | Port tarama |
-| 3.5 | **SYN flood:** hedef `ip:port` başına S0 oranı ve SYN hızı, kaynak çeşitliliği (spoofing göstergesi). T1499.001 | SYN |
-| 3.6 | ICMP anomalileri: anormal tip/kod dağılımı, büyük/fragment'lı ICMP, ICMP hızı | ICMP |
-| 3.7 | DNS anomalileri: tünelleme göstergeleri (label uzunluğu, entropi, alt domain sayısı, TXT oranı), NXDOMAIN/DGA oranı, onaysız resolver | DNS |
-| 3.8 | Olağan dışı bağlantı sıklığı: kaynak başına yeni flow hızı (EWMA baseline + robust sapma) | Bağlantı |
-| 3.9 | Olağan dışı trafik hacmi: host başına bps/pps sapması ("normalin N katı") | Hacim |
-| 3.10 | Fragment anomalisi: küçük/çakışan fragment'lar (`nmap -f` göstergesi) | Diğer |
-| 3.11 | Her kural için senaryo + benign benzeri + `docs/rules/<rule_id>.md` | Hepsi |
-| 3.12 | Kural yapılandırması: kural bazında aç/kapa ve eşikler TOML'da; kural listesi CLI'da (`netguard rules`) | Motor |
+| # | İş | Kural | Durum |
+|---|---|---|---|
+| 3.1 | DNS ayrıştırıcı (`dns.py`): başlık, `rcode`, `qtype`, yanıtlar; sıkıştırma döngüsüne dayanıklı | — | ✅ |
+| 3.2 | **TRW tarama dedektörü** (Jung vd., 2004), bağlantı olayları; pencere kuralı sonuca duyarlı (`max_open_ratio`) ([ADR-0006](docs/adr/0006-connection-events-and-outcome-aware-scans.md)) | NG-SCAN-002 | ✅ |
+| 3.3 | UDP tarama (ICMP port unreachable, yanıt veren portlar) | NG-SCAN-003 | ✅ |
+| 3.4 | Yavaş tarama | NG-SCAN-002 (TRW, 1 saatlik ufuk) | ✅ |
+| 3.5 | **SYN flood:** hedef başına tamamlanmayan el sıkışmalar | NG-SYN-001 | ✅ |
+| 3.6 | ICMP anomalileri | NG-SWEEP-001 (ICMP sweep) mevcut; ICMP tünel/payload kuralı Faz 7'ye ertelendi | 🔶 kısmi |
+| 3.7 | DNS anomalileri: tünelleme, NXDOMAIN/DGA | NG-DNS-001, NG-DNS-002 | ✅ (onaysız resolver politikası Faz 7'ye) |
+| 3.8 | Olağan dışı bağlantı sıklığı (host başına EWMA baseline, [ADR-0007](docs/adr/0007-per-host-baselines.md)) | NG-RATE-001 | ✅ |
+| 3.9 | Olağan dışı trafik hacmi | NG-VOL-001 | ✅ |
+| 3.10 | Parçalama ile atlatma (RFC 1858, `nmap -f`) | NG-FRAG-001 | ✅ |
+| 3.11 | Her kural için saldırı + benign benzeri senaryo + kural sayfası | — | ✅ (24 senaryo, 11 sayfa) |
+| 3.12 | `netguard rules`, kural bazında aç/kapa ve eşikler, ayarlanabilir `max_keys`, örnek config = varsayılanlar testi | — | ✅ |
 
-**Kabul kriterleri:** her kategori için en az bir kural; her kural saldırı ve
-benign senaryoda test edilmiş; kural sayfaları FP/FN ve ayar önerisi içeriyor;
-skor tablosu güncel; şüphe ifadesi kanıta uygun.
+**Kabul kriterleri:** ✅ brief'teki her kategori için en az bir kural; ✅ her
+kural saldırı ve benign benzeri senaryoda test edildi; ✅ kural sayfaları
+FP/FN ve ayar önerisi içeriyor; ✅ skor tablosu güncel; ✅ şüphe ifadesi kanıta
+uygun ("possible …"); ✅ performans bütçesi (%20) içinde. Gerçek trafikte
+doğrulama 👤 Faz 8'de.
 
-**Öğrenme notları:** 03 TRW ve ardışık hipotez testi; 04 DNS kötüye kullanımı,
-entropi ve robust istatistik.
+**Öğrenme notları:** [03 — TRW ve ardışık hipotez testi](docs/learning/03-trw-and-sequential-testing.md),
+[04 — DNS, baseline'lar ve parçalama](docs/learning/04-dns-baselines-fragments.md).
 
 ### Faz 4 — Backend, kalıcılık ve API ⏳ (v0.4.0)
 
@@ -273,6 +277,8 @@ uyum iddia edilmez.
 | Canlı yakalama | `tcpdump`/`dumpcap` alt süreci; NetGuard root çalışmaz | ADR-0002 |
 | Alarm modeli | Incident birleştirme, `rule_id`, deterministik `alert_id`, şema 1.0 | ADR-0003 |
 | Flow modeli | Zeek `conn_state` sözlüğü, zaman aşımı sınıfları, LRU | ADR-0004 |
+| Sonuca duyarlı tespit | Bağlantı olayları, TRW + pencere kuralı, protokol bazlı dağıtım | ADR-0006 |
+| Anomali baseline'ları | Host başına EWMA ortalama + mutlak sapma, kırpma | ADR-0007 |
 | Depolama | SQLite (aday) | Faz 4 ADR |
 | API | FastAPI (aday) | Faz 4 ADR |
 | Dashboard | htmx vs React/Vite | Faz 5 ADR |
@@ -295,15 +301,14 @@ Kapsama eşiği %90 (CI'da zorunlu). Gerçek pcap'ler git'e girmez (`.gitignore`
 
 | Sorun | Etki | Hedef |
 |---|---|---|
-| Sonuca bakmayan SYN sayımı | `passive_ftp` FP | 3.2 TRW |
-| Sabit 60 sn pencere | `slow_scan` kaçıyor | 3.4 |
-| UDP tarama tespiti yok | `nmap -sU` görünmüyor | 3.3 |
 | Tek ARP bağlama değişikliği alarm üretiyor | `dhcp_reassignment` FP | Faz 7 (DHCP korelasyonu) |
 | İzleme sunucusu ping sweep gibi görünüyor | `monitoring_poller` FP (allowlist ile çözülüyor) | Faz 7 (baseline) |
+| Yanlış DNS arama son eki DGA gibi görünüyor | `search_suffix_nxdomain` FP (kanıt farkı gösteriyor) | Faz 7 |
+| Aynı aktivite için birden çok kural | SYN taraması NG-SCAN-001 ve NG-SCAN-002 üretiyor | Faz 7 (korelasyon) |
+| Baseline kuralları ısınma istiyor | 10 dakikadan kısa yakalamalarda hız/hacim alarmı yok | Faz 4 (kalıcı baseline) |
 | Decoy/sahte kaynaklı taramalar | Bir tarama birçok kaynağa bölünüyor | Faz 7 |
 | Idle-timeout gecikmesi | Canlı alarmlar ≥ 10 sn gecikiyor | 6.4 |
-| IP fragment birleştirme yok | `nmap -f` probe'ları TCP olarak ayrıştırılmıyor | 3.10 |
-| Dedektör `max_keys` TOML'dan ayarlanamıyor | 4 GB sunucuda bellek ayarı yalnız `max_flows` ile | 3.12 |
+| IP fragment birleştirme yok | Parçalı probe'lar analiz edilmiyor; NG-FRAG-001 atlatmayı raporluyor | Faz 7 (gerekirse) |
 
 ## 9. Kullanıcı gerektiren işler 👤
 
@@ -320,6 +325,10 @@ Kapsama eşiği %90 (CI'da zorunlu). Gerçek pcap'ler git'e girmez (`.gitignore`
 
 ### Değişiklik kaydı
 
+- **2026-10-22:** Faz 3 tamamlandı (v0.3.0): 8 yeni kural (TRW, UDP tarama,
+  SYN flood, DNS tünelleme, NXDOMAIN/DGA, parçalama, bağlantı sıklığı, hacim).
+  ICMP tünel kuralı ve onaysız resolver politikası ölçülebilir değer
+  gösterilene kadar Faz 7'ye ertelendi.
 - **2026-10-22:** Yol haritası, proje brief'indeki 0–10 faz yapısına göre
   yeniden düzenlendi. Eski Faz 2 (lab) → Faz 8; eski Faz 3 (flow) → Faz 2;
   eski Faz 4–5 (tarama, SYN flood, DNS, hacim) → Faz 3; eski Faz 6–7 (rapor,
