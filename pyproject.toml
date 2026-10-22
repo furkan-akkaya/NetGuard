@@ -1,6 +1,6 @@
 [project]
 name = "netguard"
-version = "0.2.0"
+version = "0.3.0"
 description = "Network intrusion detection & traffic analyzer with explainable, measurable detections."
 readme = "README.md"
 license = "MIT"
@@ -49,6 +49,8 @@ ignore = ["S101"]  # asserts are used for type narrowing
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S", "PT011"]
+# Synthetic lab traffic uses seeded random.Random on purpose: reproducible, not secret.
+"src/netguard/lab/**" = ["S311"]
 
 [tool.mypy]
 strict = true

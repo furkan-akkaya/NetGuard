@@ -1,6 +1,8 @@
+from dataclasses import fields
+
 import pytest
 
-from netguard.config import ConfigError, load_config
+from netguard.config import Config, ConfigError, load_config
 
 
 def _write(tmp_path, text):
@@ -56,3 +58,26 @@ def test_example_config_in_repo_is_valid():
 def test_invalid_files(tmp_path, text, message):
     with pytest.raises(ConfigError, match=message):
         load_config(_write(tmp_path, text))
+
+
+def test_ratios_and_probabilities_are_bounded(tmp_path):
+    cfg = tmp_path / "c.toml"
+    cfg.write_text("[synflood]\nmax_completion_ratio = 1.5\n")
+    with pytest.raises(ConfigError, match="<= 1"):
+        load_config(cfg)
+
+
+def test_trw_probabilities_must_be_ordered(tmp_path):
+    cfg = tmp_path / "c.toml"
+    cfg.write_text("[trw]\nscanner_success_probability = 0.9\n")
+    with pytest.raises(ConfigError, match="trw"):
+        load_config(cfg)
+
+
+def test_example_config_matches_the_code_defaults():
+    """The documented example must never drift from the real defaults."""
+    example = load_config("netguard.example.toml")
+    defaults = Config()
+    for f in fields(Config):
+        if f.name != "allowlist":
+            assert getattr(example, f.name) == getattr(defaults, f.name), f.name

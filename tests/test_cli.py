@@ -3,6 +3,7 @@ import io
 import json
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -21,8 +22,9 @@ def scan_pcap(tmp_path):
 def test_analyze_text(scan_pcap, capsys):
     assert main(["analyze", str(scan_pcap)]) == EXIT_OK
     out = capsys.readouterr().out
-    assert "Alerts: 1 (1 HIGH)" in out
+    assert "Alerts: 2 (2 HIGH)" in out  # the window rule and TRW both see the scan
     assert "TCP port scan: 10.0.0.66 -> 10.0.0.10" in out
+    assert "Scan detected by connection outcomes (TRW): 10.0.0.66 -> 10.0.0.10" in out
     assert "Open: 22, 80, 443" in out
 
 
@@ -37,8 +39,7 @@ def test_analyze_json(scan_pcap, capsys):
 def test_analyze_jsonl(scan_pcap, capsys):
     assert main(["analyze", "-f", "jsonl", str(scan_pcap)]) == EXIT_OK
     lines = capsys.readouterr().out.strip().splitlines()
-    assert len(lines) == 1
-    assert json.loads(lines[0])["detector"] == "portscan"
+    assert sorted(json.loads(line)["detector"] for line in lines) == ["portscan", "trw"]
 
 
 def test_missing_file_is_a_clean_error(tmp_path, capsys):
@@ -103,9 +104,11 @@ def test_alert_contract_v1(scan_pcap, capsys):
 
 def test_alert_ids_are_deterministic(scan_pcap, capsys):
     main(["analyze", "-f", "jsonl", str(scan_pcap)])
-    first = json.loads(capsys.readouterr().out)["alert_id"]
+    first = capsys.readouterr().out
     main(["analyze", "-f", "jsonl", str(scan_pcap)])
-    assert json.loads(capsys.readouterr().out)["alert_id"] == first
+    assert [json.loads(x)["alert_id"] for x in capsys.readouterr().out.splitlines()] == [
+        json.loads(x)["alert_id"] for x in first.splitlines()
+    ]
 
 
 def test_truncated_capture_warns(scan_pcap, tmp_path, capsys):
@@ -137,3 +140,15 @@ def test_closed_stdout_pipe_is_not_an_error(scan_pcap):
     assert proc.wait(timeout=30) == EXIT_OK
     assert b"Broken pipe" not in err
     assert b"Traceback" not in err
+
+
+def test_rules_lists_every_rule_with_its_state(tmp_path, capsys):
+    cfg = tmp_path / "c.toml"
+    cfg.write_text("[volume]\nenabled = false\n")
+    assert main(["rules", "-f", "json", "-c", str(cfg)]) == EXIT_OK
+    rows = {r["rule_id"]: r for r in json.loads(capsys.readouterr().out)}
+    assert len(rows) == 11
+    assert rows["NG-VOL-001"]["enabled"] is False
+    assert rows["NG-SYN-001"]["technique"] == "T1499.001"
+    for r in rows.values():
+        assert (Path(__file__).parent.parent / r["doc"]).exists(), r["doc"]

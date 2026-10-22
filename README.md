@@ -13,14 +13,14 @@ single **explainable alert**. Every alert states what was observed, which
 threshold it crossed, what the attacker likely learned, and which MITRE ATT&CK
 technique it maps to.
 
-> **Status:** v0.2.0 — packet ingestion, flow engine and three detectors, tested
-> on labelled synthetic scenarios. More detectors, API and dashboard are next;
+> **Status:** v0.3.0 — packet ingestion, flow engine and eleven detection rules,
+> tested on 24 labelled synthetic scenarios. API and dashboard are next;
 > validation on real lab captures is pending (see the [roadmap](ROADMAP.md)).
 
 ```text
 $ netguard analyze syn_scan.pcap
 
-NetGuard 0.2.0 — syn_scan.pcap
+NetGuard 0.3.0 — syn_scan.pcap
 
 Packets: 2,003   Bytes: 108,162   Duration: 1.0s   Flows: 1,000   Decode errors: 0
 Protocols: tcp 2,003
@@ -43,18 +43,28 @@ aborted with RST (a half-open scan).
 
 ## Features
 
-| Detector | Detects | ATT&CK | How |
+| Rule | Detects | ATT&CK | How |
 |---|---|---|---|
-| `portscan` | SYN, connect, NULL, FIN, XMAS port scans | [T1046](https://attack.mitre.org/techniques/T1046/) | Distinct destination ports per (source, target) in a sliding window, aggregated into one incident per scan. Reports open/closed ports from the target's replies. |
-| `hostsweep` | ICMP ping sweeps, ARP sweeps, horizontal TCP scans | [T1018](https://attack.mitre.org/techniques/T1018/) | Distinct destination hosts per source in a sliding window. Reports which hosts replied (were found alive). |
-| `arpspoof` | ARP cache poisoning / MITM | [T1557.002](https://attack.mitre.org/techniques/T1557/002/) | Learns IP→MAC bindings and flags changes. Adds context: unsolicited replies, flip-flopping, critical IPs. Identifies the suspect MAC. |
+| [NG-SCAN-001](docs/rules/NG-SCAN-001.md) | SYN, connect, NULL, FIN, XMAS port scans | [T1046](https://attack.mitre.org/techniques/T1046/) | Distinct ports per (source, target) in a sliding window, one incident per scan; reports open/closed ports; ignores incidents where most ports were open (a client, not a scanner). |
+| [NG-SCAN-002](docs/rules/NG-SCAN-002.md) | Scans by connection outcome, incl. slow scans | [T1046](https://attack.mitre.org/techniques/T1046/) | Threshold Random Walk (sequential hypothesis test) over first-contact successes and failures. No time window. |
+| [NG-SCAN-003](docs/rules/NG-SCAN-003.md) | UDP port scans | [T1046](https://attack.mitre.org/techniques/T1046/) | Distinct UDP ports per (originator, target); open/closed/filtered from UDP replies and ICMP unreachables. |
+| [NG-SWEEP-001](docs/rules/NG-SWEEP-001.md) | ICMP/ARP ping sweeps, horizontal TCP scans | [T1018](https://attack.mitre.org/techniques/T1018/) | Distinct hosts per source in a sliding window; reports which hosts were found alive. |
+| [NG-SYN-001](docs/rules/NG-SYN-001.md) | TCP SYN floods | [T1499.001](https://attack.mitre.org/techniques/T1499/001/) | Many attempts, few completed handshakes per target; source-diversity evidence for spoofing. |
+| [NG-ARP-001](docs/rules/NG-ARP-001.md) | ARP cache poisoning / MITM | [T1557.002](https://attack.mitre.org/techniques/T1557/002/) | IP→MAC binding changes with context: unsolicited replies, flip-flopping, critical IPs, suspect MAC. |
+| [NG-DNS-001](docs/rules/NG-DNS-001.md) | DNS tunnelling / exfiltration | [T1071.004](https://attack.mitre.org/techniques/T1071/004/) | Many long, unique subdomains of one registered domain; entropy and record types as evidence. |
+| [NG-DNS-002](docs/rules/NG-DNS-002.md) | DGA malware | [T1568.002](https://attack.mitre.org/techniques/T1568/002/) | Bursts of NXDOMAIN responses; domain spread tells DGA from a wrong search suffix. |
+| [NG-FRAG-001](docs/rules/NG-FRAG-001.md) | Fragmentation evasion (`nmap -f`) | [T1599](https://attack.mitre.org/techniques/T1599/) | Tiny first fragments, TCP header split at offset 8, sub-MTU fragments (RFC 1858). |
+| [NG-RATE-001](docs/rules/NG-RATE-001.md) | Unusual connection frequency | — | New connections per host vs. the host's own EWMA baseline. |
+| [NG-VOL-001](docs/rules/NG-VOL-001.md) | Abnormal outbound volume | — | Bytes sent per host vs. the host's own EWMA baseline. |
 
-Each alert has a stable rule id documented in the [rule catalog](docs/rules/README.md)
-(signal, thresholds, evidence, known false positives, tuning).
+Each rule is documented in the [rule catalog](docs/rules/README.md) (signal,
+thresholds, evidence, known false positives and negatives, tuning);
+`netguard rules` lists them with their state in your configuration.
 
 Traffic analysis:
 
 - **Flows:** bidirectional connections with originator, per-direction packets/bytes/payload, duration, TCP history, Zeek-style `conn_state` (`S0`, `REJ`, `SF`, `RSTO`, …), retransmission and sequence-gap counts. Export with `netguard flows`.
+- **DNS:** queries and responses (name, type, response code) from NetGuard's own bounded parser.
 - **Statistics:** protocol and packet-size distributions, time series, flow states, top services, top flows, top endpoints (sent/received).
 - **Capture formats:** pcap and pcapng, including multi-interface pcapng with different link types; Ethernet, Linux SLL, BSD loopback, raw IP; IPv4/IPv6; TCP, UDP, ICMP, ICMPv6, ARP, DNS query names.
 
@@ -99,21 +109,21 @@ in [`netguard.example.toml`](netguard.example.toml).
 
 ## Measured results
 
-The following comes from `netguard lab evaluate` on 11 labelled synthetic
-scenarios (6 attack, 5 benign). Scoring is per entity. See
+From `netguard lab evaluate` on 24 labelled synthetic scenarios (13 attacks,
+11 benign look-alikes). Scoring is per entity; see
 [EVALUATION.md](docs/EVALUATION.md) for the method and full table.
 
 | | Result |
 |---|---|
-| Attacks detected | 5 / 6 (the missed one is a deliberate *slow scan*: 1 probe every 15 s) |
-| Benign scenarios with false positives | 3 / 5 (monitoring poller, DHCP re-assignment, passive FTP) |
-| Throughput | ~110k packets/s incl. start-up, 35 MB RSS (242k-packet reference pcap, Apple M1, single core) |
-| Worst case | 500k-source spoofed SYN flood: 349 MB peak RSS, bounded by configuration |
+| Attack scenarios detected | 13 / 13 (the slow scan only by the outcome-based TRW rule, not the window rule) |
+| Benign scenarios without false positives | 8 / 11 (known FPs: monitoring poller, DHCP re-assignment, wrong DNS search suffix) |
+| Throughput | ~97k packets/s incl. start-up with all 11 rules, 36 MB RSS (242k-packet reference pcap, Apple M1, single core) |
+| Worst case | 500k-source spoofed SYN flood: 469 MB peak RSS, bounded by configuration |
 
-All of these numbers come from synthetic traffic that we designed ourselves.
-They show the detection logic works as intended and expose the known blind
-spots. They are not a claim about accuracy on real networks.
-Validation on real captures is part of [Phase 8](ROADMAP.md).
+All of these numbers come from synthetic traffic that we designed ourselves,
+together with the rules. They show the detection logic works as intended and
+expose the known blind spots. They are not a claim about accuracy on real
+networks. Validation on real captures is part of [Phase 8](ROADMAP.md).
 
 ## Architecture
 
@@ -123,10 +133,9 @@ flowchart LR
     B --> C[decode<br/>fast path / dpkt → Packet]
     C --> D[engine]
     D --> E[flow table<br/>conn_state] --> S[statistics]
-    D --> F1[portscan]
-    D --> F2[hostsweep]
-    D --> F3[arpspoof]
-    F1 & F2 & F3 --> G[Alert<br/>summary + evidence + ATT&CK]
+    E -- connection events --> F2[outcome rules<br/>TRW, SYN flood, UDP scan, rate]
+    D --> F1[packet rules<br/>window scan, sweep, ARP, DNS, fragments, volume]
+    F1 & F2 --> G[Alert<br/>rule id + summary + evidence + ATT&CK]
     G --> H[text / JSON / JSONL]
 ```
 
@@ -139,7 +148,7 @@ See [ARCHITECTURE.md](docs/ARCHITECTURE.md) and the [decision records](docs/adr/
 | [Roadmap](ROADMAP.md) | Current state, phases, MVP scope, exit criteria, test strategy (Turkish) |
 | [Tasks](docs/TASKS.md) | Current task board |
 | [Architecture](docs/ARCHITECTURE.md) | Components, data flow, extension points |
-| [ADRs](docs/adr/) | Python + dpkt, tcpdump for capture, incidents, flow semantics, own capture readers |
+| [ADRs](docs/adr/) | Python + dpkt, tcpdump capture, incidents, flow semantics, own capture readers, connection events, baselines |
 | [Rule catalog](docs/rules/README.md) | One page per detection rule |
 | [Evaluation](docs/EVALUATION.md) | Method, scorecard, benchmark, limitations |
 | [Lab setup](docs/LAB_SETUP.md) | Building a safe UTM/Kali/Ubuntu lab to validate detections |

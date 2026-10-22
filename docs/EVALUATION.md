@@ -13,9 +13,14 @@ Each one is either **attack** or **benign**, and each lists the alerts it
 
 | Detector | Entity |
 |---|---|
-| `portscan` | `scanner->target` |
-| `hostsweep` | `scanner` |
+| `portscan`, `udpscan` | `scanner->target` |
+| `hostsweep`, `trw`, `fragments` | `scanner` |
+| `dnstunnel`, `nxdomain`, `connrate`, `volume` | client / source host |
+| `synflood` | target host |
 | `arpspoof` | hijacked IP |
+
+An attack scenario counts as **detected** when at least one of its expected
+`(rule, entity)` pairs fired (e.g. a slow scan seen by TRW but not by the window rule).
 
 Scenarios are written to real pcap files and analysed through the full
 pipeline: reader → decoder → engine → detectors.
@@ -43,35 +48,63 @@ uv run netguard lab evaluate
 `tests/test_scenarios.py` pins the expected TP/FP/FN of every scenario. Any
 change in detection quality fails CI until this document is updated.
 
-## 2. Results: synthetic scenarios (v0.2.0, unchanged since v0.1.0)
+## 2. Results: synthetic scenarios (v0.3.0)
 
 | Scenario | Type | Packets | Alerts | TP | FP | FN | Outcome | Note |
 |---|---|---:|---:|---:|---:|---:|---|---|
-| `benign_office` | benign | 142 | 0 | 0 | 0 | 0 | quiet (correct) | 40 public HTTPS servers + internal SMB/RDP/HTTP |
-| `monitoring_poller` | benign | 180 | 3 | 0 | 1 | 0 | false positive | Indistinguishable from a ping sweep by rate alone |
-| `monitoring_poller_allowlisted` | benign | 180 | 0 | 0 | 0 | 0 | quiet (correct) | Same traffic, monitoring host allowlisted |
-| `dhcp_reassignment` | benign | 2 | 1 | 0 | 1 | 0 | false positive | A single binding change cannot be told apart from spoofing |
-| `passive_ftp` | benign | 266 | 1 | 0 | 1 | 0 | false positive | SYN counting ignores that every connection succeeded |
-| `syn_scan_1000` | attack | 2003 | 1 | 1 | 0 | 0 | detected | Open ports 22/80/443 correctly reported |
-| `xmas_scan` | attack | 398 | 1 | 1 | 0 | 0 | detected | Flagged as stealth scan |
-| `slow_scan` | attack | 201 | 0 | 0 | 0 | 1 | **missed** | At most 5 probes in any 60 s window (threshold 15) |
-| `ping_sweep` | attack | 259 | 1 | 1 | 0 | 0 | detected | Alive hosts reported |
-| `arp_sweep` | attack | 259 | 1 | 1 | 0 | 0 | detected | |
-| `arp_spoof_mitm` | attack | 70 | 4 | 2 | 0 | 0 | detected | 2 IPs × (MEDIUM, then HIGH escalation) |
+| `benign_office` | benign | 462 | 0 | 0 | 0 | 0 | quiet (correct) |  |
+| `monitoring_poller` | benign | 180 | 3 | 0 | 1 | 0 | false positive | Expected false positive with default config: indistinguishable from a ping sweep by rate alone. |
+| `monitoring_poller_allowlisted` | benign | 180 | 0 | 0 | 0 | 0 | quiet (correct) |  |
+| `dhcp_reassignment` | benign | 2 | 1 | 0 | 1 | 0 | false positive | Expected false positive (MEDIUM): a single binding change cannot be told apart from spoofing. |
+| `passive_ftp` | benign | 266 | 0 | 0 | 0 | 0 | quiet (correct) | Every connection succeeds: the window rule suppresses it (max_open_ratio), TRW sees only successes. |
+| `flash_crowd` | benign | 6400 | 0 | 0 | 0 | 0 | quiet (correct) | SYN-flood look-alike |
+| `voip_call` | benign | 200 | 0 | 0 | 0 | 0 | quiet (correct) | UDP-scan look-alike |
+| `cdn_lookups` | benign | 160 | 0 | 0 | 0 | 0 | quiet (correct) | DNS-tunnel look-alike |
+| `search_suffix_nxdomain` | benign | 60 | 1 | 0 | 1 | 0 | false positive | Expected false positive: indistinguishable from DGA by count; evidence shows one domain, readable names. |
+| `fragmented_udp` | benign | 60 | 0 | 0 | 0 | 0 | quiet (correct) | Fragmentation look-alike |
+| `growing_workload` | benign | 6870 | 0 | 0 | 0 | 0 | quiet (correct) | Connection-rate look-alike: the baseline adapts to gradual growth. |
+| `syn_scan_1000` | attack | 2003 | 2 | 2 | 0 | 0 | detected |  |
+| `xmas_scan` | attack | 398 | 1 | 1 | 0 | 0 | detected |  |
+| `slow_scan` | attack | 201 | 1 | 1 | 0 | 1 | detected (partly) | Window rule misses it (at most 5 probes per 60s, threshold 15); TRW has no window and detects it. |
+| `ping_sweep` | attack | 259 | 1 | 1 | 0 | 0 | detected |  |
+| `arp_sweep` | attack | 259 | 1 | 1 | 0 | 0 | detected |  |
+| `arp_spoof_mitm` | attack | 70 | 4 | 2 | 0 | 0 | detected |  |
+| `fragmented_scan` | attack | 150 | 1 | 1 | 0 | 0 | detected | Probes themselves are invisible to the scan rules (no reassembly); the fragmentation is detected. |
+| `udp_scan` | attack | 204 | 1 | 1 | 0 | 0 | detected |  |
+| `syn_flood_spoofed` | attack | 12000 | 1 | 1 | 0 | 0 | detected |  |
+| `dns_tunnel` | attack | 300 | 1 | 1 | 0 | 0 | detected |  |
+| `dga_nxdomain` | attack | 120 | 1 | 1 | 0 | 0 | detected |  |
+| `connection_burst` | attack | 4500 | 1 | 1 | 0 | 0 | detected |  |
+| `exfil_volume` | attack | 25159 | 1 | 1 | 0 | 0 | detected |  |
 
-**Totals:** TP = 6, FP = 3, FN = 1. Precision 0.67, recall 0.86 (entity level).
+**Totals:** TP=15, FP=3, FN=1 — precision 0.83, recall 0.94 (entity level, synthetic scenarios).
+
+**Scenarios:** 13/13 attack scenarios detected by at least one expected rule; 8/11 benign scenarios without false positives.
 
 ### How to read this
 
-- These numbers measure **the logic against scenarios we designed**. They are
-  not accuracy on real networks. Real traffic is messier: retransmissions,
-  NAT, scanners with jitter and decoys, chatty IoT devices.
-- The three false positives are **known and explained**. Each one has a
-  mitigation on the [roadmap](../ROADMAP.md) (allowlist today; TRW in
-  Phase 3, DHCP correlation in Phase 7).
-- The missed slow scan shows the basic trade-off of window-based detection.
-  A 60 s window keeps memory low and alerts fast, but an attacker who knows
-  the window can stay under it.
+- These numbers measure **the logic against scenarios we designed**, and the
+  same person designed the rules and the scenarios. Read them as a
+  regression-tested specification ("this rule fires on this behaviour and not
+  on that look-alike"), not as accuracy on real networks. Real traffic is
+  messier: retransmissions, NAT, scanners with jitter and decoys, chatty IoT
+  devices.
+- Each new rule comes with at least one attack and one **benign look-alike**
+  (flash crowd for SYN flood, VoIP for UDP scan, CDN lookups for DNS tunnel,
+  MTU fragmentation for fragment evasion, gradual growth for connection rate).
+- The three false positives are **known and explained**: the monitoring
+  poller (allowlist today, baselining in Phase 7), DHCP re-assignment (DHCP
+  correlation in Phase 7), a wrong DNS search suffix (the evidence shows one
+  domain with readable names; no automatic fix planned yet).
+- The remaining FN is the window rule on `slow_scan`; TRW detects the same
+  scenario, so the scenario counts as detected.
+- `benign_office` was made more realistic in v0.3: its 40 HTTPS connections
+  now complete. Before, they were SYNs that never got an answer, which no
+  real browsing session produces and which TRW correctly treated as 40 failed
+  connections. This changes test data, so it is recorded here and in the
+  changelog.
+- The baseline rules (NG-RATE-001, NG-VOL-001) need 10 minutes of history;
+  their scenarios are 16–20 minutes long for that reason.
 
 ## 3. Performance
 
@@ -96,6 +129,8 @@ uv run python benchmarks/make_bench_pcap.py /tmp/bench.pcap
 | v0.2.0, first flow-table version (dpkt decode) | 4.5–5.0 s | 33 MB | ~48–54k pkt/s — **rejected: +28%, over the 20% budget** |
 | v0.2.0 (`struct` fast path, ADR-0005) | 2.2 s (one 3.1 s outlier) | 35 MB | ~110k pkt/s |
 | v0.2.0 `netguard flows` (export only) | 2.15 s | 31 MB | ~113k pkt/s |
+| v0.3.0, 11 rules, before protocol dispatch | 2.6–2.7 s | 36 MB | ~90k pkt/s |
+| v0.3.0, 11 rules (protocol dispatch, ADR-0006) | 2.45–2.5 s (first run 3.0 s) | 36 MB | ~97k pkt/s |
 
 v0.2.0 does strictly more work per packet (flow table, connection state,
 sequence tracking, richer statistics) and is still ~1.6× faster than v0.1.0.
@@ -115,11 +150,13 @@ uv run python benchmarks/flood_memory.py 500000
 | Version | 100k packets | 500k packets |
 |---|---|---|
 | Before the tracker fixes (flow table already bounded) | 519 MB peak RSS | did not finish in 120 s (O(max_keys) work per packet once full) |
-| v0.2.0 | 219 MB, 1.5 s | 349 MB, 8.7 s (~57k pkt/s); 300 000 flows evicted, endpoint table approximate |
+| v0.2.0 (3 rules) | 219 MB, 1.5 s | 349 MB, 8.7 s (~57k pkt/s); 300 000 flows evicted, endpoint table approximate |
+| v0.3.0 (11 rules) | 263 MB, 2.3 s | 469 MB, 11.6 s (~43k pkt/s) |
 
-Peak memory is bounded by `[flows] max_flows` (200 000) and the detectors'
-`max_keys` (100 000 per detector), not by traffic volume. On the 4 GB Ubuntu
-host this worst case uses under 10% of RAM.
+Peak memory is bounded by `[flows] max_flows` (200 000) and each rule's key
+limit (`max_keys`, `max_sources`, `max_targets`), not by traffic volume. On the
+4 GB Ubuntu host the v0.3.0 worst case uses about 12% of RAM; lowering
+`max_flows` and the per-rule limits shrinks it further.
 
 For scale: a fully loaded 1 Gbit/s link carries roughly 80k–1.4M packets/s
 depending on packet size, so NetGuard is **not** a line-rate sensor. It fits
@@ -131,7 +168,13 @@ home and lab networks, low-traffic servers, and offline forensic analysis.
   feeds 5 000 randomly mutated and truncated frames through the decoder. It
   must never raise. `test_fast_path_matches_dpkt_path` checks that the `struct`
   fast path and dpkt produce identical packets for every frame the fast path
-  accepts (>1000 of 5 000 mutants).
+  accepts (>1000 of 5 000 mutants; seeds include DNS responses, ICMP errors and
+  fragments). A one-off campaign of 250 000 mutants per release found no
+  mismatch (v0.3.0: 131 536 accepted, 0 mismatches, 0 exceptions). It found
+  one during development: a quoted inner IP length smaller than its header,
+  which the fast path now declines.
+- **Malformed DNS:** `tests/test_dns.py` covers compression-pointer loops,
+  labels running past the end, reserved label types and names over 255 bytes.
 - **Malformed capture files:** `tests/test_formats.py` covers hostile length
   fields (pcap `caplen = 0xFFFFFFFF`, pcapng block lengths that are too small,
   unaligned or over 16 MiB), packets referencing undefined interfaces,
@@ -142,17 +185,21 @@ home and lab networks, low-traffic servers, and offline forensic analysis.
   time series. When a cap is hit, NetGuard degrades to *missed detections*
   (fail-open), counts it in the output, and never grows without bound.
 
-## 5. Known limitations (v0.2.0)
+## 5. Known limitations (v0.3.0)
 
 | Limitation | Impact | Planned fix |
 |---|---|---|
-| Fixed 60 s window | Slow scans evade detection | Long-horizon detector (3.4) |
-| Outcome-blind counting | Bursts of successful connections (passive FTP, some P2P) look like scans | TRW using Phase 2 flow states (3.2) |
-| No UDP scan detection | `nmap -sU` is invisible | UDP scan detector (3.3) |
+| Window rule (NG-SCAN-001) has a fixed 60 s window | Slow scans evade it | TRW (NG-SCAN-002) covers them up to its 1 h state horizon |
+| TRW needs SYN-based probes | NULL/FIN/XMAS scans are only seen by the window rule | — (by design) |
+| UDP scans and Linux ICMP rate limiting | Closed UDP ports mostly look silent | Evidence only; the rule does not depend on ICMP |
+| Baseline rules need warm-up | No rate/volume alerts in captures shorter than 10 min | Persistent baselines once Phase 4 stores history |
+| DNS over HTTPS/TLS | Tunnels and DGA lookups inside DoH/DoT are invisible | Out of scope (encrypted) |
+| Registered domain heuristic | Multi-level public suffixes may be keyed one level too high | Optional Public Suffix List (Phase 7) |
+| Overlapping alerts | A SYN scan raises NG-SCAN-001 and NG-SCAN-002 | Correlation (Phase 7) |
 | ARP: one change = alert | DHCP re-assignment and VRRP failover raise MEDIUM alerts | DHCP/lease correlation, flip-flop-only mode (Phase 7) |
 | Spoofed source IPs | Decoy scans (`nmap -D`) split one scan into many sources | Target-centric correlation (Phase 7) |
 | Idle-timeout reporting | Live alerts arrive ≥ 10 s after the scan pauses | Early-warning alerts (6.4) |
-| No IP fragment reassembly | Fragmented probes (`nmap -f`) are not parsed as TCP; fragments are now flagged and counted | Fragment-anomaly rule (3.10) or reassembly (Phase 7) |
+| No IP fragment reassembly | Probes inside fragments (`nmap -f`) are not analysed; NG-FRAG-001 reports the evasion itself. IPv6 fragments not inspected | Reassembly only if lab data shows the need (Phase 7) |
 | Flow orientation without a SYN | Mid-stream flows keep the first sender as originator | Port heuristics only if lab data shows the need |
 | Retransmission vs. reordering | Late out-of-order segments are counted as retransmissions | Inherent to passive observation; documented (ADR-0004) |
 

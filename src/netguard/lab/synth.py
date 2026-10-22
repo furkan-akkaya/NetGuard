@@ -60,9 +60,17 @@ class Host:
         dgram.ulen = len(dgram)
         return _eth(self.mac, dst.mac, dpkt.ethernet.ETH_TYPE_IP, _ipv4(self.ip, dst.ip, dpkt.ip.IP_PROTO_UDP, dgram))
 
-    def dns_query(self, resolver: Host, name: str, sport: int = 53000, qid: int = 1) -> bytes:
-        q = dpkt.dns.DNS(id=qid, qd=[dpkt.dns.DNS.Q(name=name, type=dpkt.dns.DNS_A, cls=dpkt.dns.DNS_IN)])
+    def dns_query(
+        self, resolver: Host, name: str, sport: int = 53000, qid: int = 1, qtype: int = dpkt.dns.DNS_A
+    ) -> bytes:
+        q = dpkt.dns.DNS(id=qid, qd=[dpkt.dns.DNS.Q(name=name, type=qtype, cls=dpkt.dns.DNS_IN)])
         return self.udp(resolver, sport, 53, bytes(q))
+
+    def icmp_unreachable(self, to: Host, offending: bytes, code: int = 3) -> bytes:
+        """ICMP destination unreachable quoting the IP header + 8 bytes of ``offending`` (an Ethernet frame)."""
+        quote = bytes(dpkt.ethernet.Ethernet(offending).data)[:28]
+        msg = dpkt.icmp.ICMP(type=3, code=code, data=dpkt.icmp.ICMP.Unreach(data=quote))
+        return _eth(self.mac, to.mac, dpkt.ethernet.ETH_TYPE_IP, _ipv4(self.ip, to.ip, dpkt.ip.IP_PROTO_ICMP, msg))
 
     def icmp_echo(self, dst_ip: str, dst_mac: str, reply: bool = False, seq: int = 1) -> bytes:
         echo = dpkt.icmp.ICMP.Echo(id=0x4242, seq=seq, data=b"netguard")
@@ -89,6 +97,24 @@ class Host:
             tpa=_ip4(to.ip),
         )
         return _eth(self.mac, to.mac, dpkt.ethernet.ETH_TYPE_ARP, arp)
+
+
+def dns_response(
+    resolver: Host, client: Host, name: str, qid: int = 1, rcode: int = 0, dport: int = 53000, answers: int = 1
+) -> bytes:
+    """A DNS response; NOERROR responses carry ``answers`` A records."""
+    an = [
+        dpkt.dns.DNS.RR(name=name, type=dpkt.dns.DNS_A, cls=dpkt.dns.DNS_IN, ttl=60, ip=bytes([93, 184, 0, i + 1]))
+        for i in range(answers if rcode == 0 else 0)
+    ]
+    r = dpkt.dns.DNS(
+        id=qid,
+        qr=dpkt.dns.DNS_R,
+        rcode=rcode,
+        qd=[dpkt.dns.DNS.Q(name=name, type=dpkt.dns.DNS_A, cls=dpkt.dns.DNS_IN)],
+        an=an,
+    )
+    return resolver.udp(client, 53, dport, bytes(r))
 
 
 def tcp_handshake(client: Host, server: Host, ts: float, sport: int, dport: int, data: int = 3) -> list[Frame]:
@@ -138,3 +164,53 @@ def write_pcap(path: str | Path, frames: Iterable[Frame]) -> int:
             writer.writepkt(buf, ts=ts)
             count += 1
     return count
+
+
+def bulk_transfer(
+    client: Host, server: Host, ts: float, sport: int, dport: int, nbytes: int, duration: float, mss: int = 1448
+) -> list[Frame]:
+    """A TCP connection in which ``client`` uploads ``nbytes`` evenly over ``duration`` seconds.
+
+    The server ACKs every 8th segment (delayed ACKs); enough realism for flow
+    and volume statistics without doubling the frame count.
+    """
+    c, s = 1000, 5000
+    frames = [
+        (ts, client.tcp(server, sport, dport, SYN, seq=c)),
+        (ts + 0.001, server.tcp(client, dport, sport, SYN | ACK, seq=s, ack=c + 1)),
+        (ts + 0.002, client.tcp(server, sport, dport, ACK, seq=c + 1, ack=s + 1)),
+    ]
+    c += 1
+    segments = max(1, -(-nbytes // mss))
+    step = duration / segments
+    chunk = b"\x00" * mss
+    for i in range(segments):
+        t = ts + 0.003 + i * step
+        size = min(mss, nbytes - i * mss)
+        frames.append((t, client.tcp(server, sport, dport, ACK | PSH, chunk[:size], seq=c, ack=s + 1)))
+        c += size
+        if i % 8 == 7:
+            frames.append((t + step / 2, server.tcp(client, dport, sport, ACK, seq=s + 1, ack=c)))
+    t = ts + 0.004 + duration
+    frames.append((t, client.tcp(server, sport, dport, ACK | FIN, seq=c, ack=s + 1)))
+    frames.append((t + 0.001, server.tcp(client, dport, sport, ACK | FIN, seq=s + 1, ack=c + 1)))
+    frames.append((t + 0.002, client.tcp(server, sport, dport, ACK, seq=c + 1, ack=s + 2)))
+    return frames
+
+
+def fragment(frame: bytes, size: int) -> list[bytes]:
+    """Split an Ethernet/IPv4 frame's IP payload into fragments of ``size`` bytes (like ``nmap -f``: 8)."""
+    if size % 8:
+        raise ValueError("fragment payload size must be a multiple of 8")
+    eth = dpkt.ethernet.Ethernet(frame)
+    ip = eth.data
+    payload = bytes(ip.data)
+    out = []
+    for off in range(0, len(payload), size):
+        chunk = payload[off : off + size]
+        frag = dpkt.ip.IP(src=ip.src, dst=ip.dst, p=ip.p, ttl=ip.ttl, id=0x4E47, data=chunk)
+        frag.offset = off
+        frag.mf = int(off + size < len(payload))
+        frag.len = 20 + len(chunk)
+        out.append(bytes(dpkt.ethernet.Ethernet(src=eth.src, dst=eth.dst, type=eth.type, data=frag)))
+    return out

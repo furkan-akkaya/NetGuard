@@ -18,7 +18,7 @@ from collections.abc import Iterable
 from functools import lru_cache
 
 from netguard.config import Config
-from netguard.detectors.base import Detector
+from netguard.detectors.base import Detector, RuleInfo
 from netguard.detectors.portscan import probe_type
 from netguard.models import ACK, RST, SYN, UNSPECIFIED_IPV4, Alert, Packet, Severity, Technique
 from netguard.window import BurstTracker, Incident
@@ -45,6 +45,8 @@ def _is_unicast(ip: str) -> bool:
 
 class HostSweepDetector(Detector):
     name = "hostsweep"
+    packet_protos = frozenset({"arp", "icmp", "icmp6", "tcp"})
+    rules = (RuleInfo(RULE_ID, "Host discovery sweep", T1018),)
 
     def __init__(self, config: Config) -> None:
         self.cfg = config.hostsweep
@@ -53,6 +55,7 @@ class HostSweepDetector(Detector):
             window=self.cfg.window_seconds,
             threshold=self.cfg.min_distinct_hosts,
             idle_timeout=self.cfg.idle_timeout_seconds,
+            max_keys=self.cfg.max_keys,
         )
 
     def on_packet(self, pkt: Packet) -> Iterable[Alert]:
@@ -116,7 +119,7 @@ class HostSweepDetector(Detector):
         return Alert(
             detector=self.name,
             rule_id=RULE_ID,
-            title="Host discovery sweep",
+            title=self.rules[0].title,
             severity=severity,
             first_seen=inc.first_seen,
             last_seen=inc.last_seen,

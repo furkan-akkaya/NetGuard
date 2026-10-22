@@ -13,6 +13,7 @@ from netguard.decode import (
     decode,
 )
 from netguard.lab.scenarios import ATTACKER, GATEWAY, RESOLVER, SERVER, WORKSTATION
+from netguard.lab.synth import dns_response, fragment
 from netguard.models import ACK, SYN
 
 
@@ -138,7 +139,7 @@ def test_invalid_utf8_dns_name_does_not_hide_the_packet():
     assert pkt is not None
     assert pkt.proto == "udp"
     assert pkt.dst_port == 53
-    assert pkt.dns_query is None
+    assert pkt.dns_query == "\\xc6bcdef.example.org"  # kept, visibly escaped
 
 
 def _mutants(n: int, seed: int) -> list[bytes]:
@@ -148,7 +149,11 @@ def _mutants(n: int, seed: int) -> list[bytes]:
         ATTACKER.tcp(SERVER, 40000, 80, ACK, b"payload" * 20, seq=7, ack=9),
         WORKSTATION.udp(RESOLVER, 5000, 123, b"ntp"),
         WORKSTATION.dns_query(RESOLVER, "a.example.org"),
+        dns_response(RESOLVER, WORKSTATION, "a.example.org", rcode=3),
         ATTACKER.icmp_echo("10.0.0.7", GATEWAY.mac),
+        SERVER.icmp_unreachable(ATTACKER, ATTACKER.udp(SERVER, 40000, 161)),
+        SERVER.icmp_unreachable(ATTACKER, ATTACKER.tcp(SERVER, 40000, 22, SYN), code=1),
+        *fragment(ATTACKER.tcp(SERVER, 40000, 22, SYN, b"x" * 40), 24),
     ]
     out = []
     for _ in range(n):

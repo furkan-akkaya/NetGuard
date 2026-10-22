@@ -32,7 +32,9 @@ sequenceDiagram
     X-->>E: alerts for incidents that went idle
     E->>T: add(packet)
     E->>F: add(packet) → flows ended by it (port reuse, eviction)
-    E->>X: on_packet(packet)
+    F-->>E: connection event? (attempt / answered / rejected / established)
+    E->>X: on_conn_event(event, flow)  [only detectors that implement it]
+    E->>X: on_packet(packet)  [only detectors whose packet_protos match]
     Note over E,X: end of input
     E->>F: drain() → remaining flows
     E->>X: flush()
@@ -45,8 +47,10 @@ sequenceDiagram
 | `sources.py` | Pick the reader from the magic number. Files and non-seekable streams (stdin). | `iter_frames`, `open_capture` |
 | `decode.py` | Turn link-layer bytes into a flat, immutable `Packet`. `struct` fast path plus dpkt fallback. Never raises on malformed input. | `decode`, `Packet` |
 | `flows.py` | Bidirectional flows, Zeek-style connection state, retransmissions, timeout classes, bounded LRU table (ADR-0004) | `Flow`, `FlowTable` |
-| `window.py` | Sliding-window distinct counting and incident aggregation. Shared by the scan detectors. | `SlidingDistinct`, `BurstTracker`, `Incident` |
-| `detectors/` | One file per detection. Each one is a pure state machine with no I/O and no wall clock. | `Detector` ABC (`on_packet`, `on_flow_end`, `tick`, `flush`) |
+| `dns.py` | Bounded DNS header + first-question parser; registered-domain heuristic; Shannon entropy | `DnsInfo`, `parse_dns` |
+| `window.py` | Sliding-window distinct counting and incident aggregation. Shared by the window-based rules. | `SlidingDistinct`, `BurstTracker`, `Incident` |
+| `baseline.py` | Per-entity EWMA mean/deviation per interval, clipped learning (ADR-0007) | `IntervalBaselines`, `Ewma` |
+| `detectors/` | One file per detection. Each one is a pure state machine with no I/O and no wall clock. | `Detector` (`on_packet`, `on_conn_event`, `on_flow_end`, `tick`, `flush`), `RuleInfo`, `DETECTORS` |
 | `engine.py` | Order of operations, capture-time ticking, alert and flow fan-out | `Engine`, `AnalysisResult` |
 | `stats.py` | Bounded statistics: protocols, packet sizes, adaptive time series, flow states, services, top flows, endpoints | `TrafficStats` |
 | `config.py` | Typed TOML config that rejects unknown keys, plus the allowlist | `Config`, `FlowConfig` |
@@ -77,11 +81,14 @@ sequenceDiagram
 ## Adding a detector
 
 1. Create `src/netguard/detectors/<name>.py` with a subclass of `Detector`.
-   Implement `on_packet` and/or `on_flow_end`, and also `tick`/`flush` if it
-   aggregates. Give each alert a new stable `rule_id` (`NG-<AREA>-<NNN>`) and
-   write its page in `docs/rules/`.
-2. Add a config dataclass in `config.py` and register it in `_SECTIONS`.
-3. Register the detector in `detectors/__init__.py::build_detectors`.
+   Implement the hooks it needs (`on_packet` with `packet_protos`,
+   `on_conn_event`, `on_flow_end`) and `tick`/`flush` if it aggregates. Give
+   it a new stable `rule_id` (`NG-<AREA>-<NNN>`) in `rules = (RuleInfo(...),)`
+   and write the rule page in `docs/rules/`.
+2. Add a config dataclass in `config.py` (named after the detector, with
+   `enabled` and explicit memory bounds), register it in `_SECTIONS`, and add
+   it to `netguard.example.toml` (a test checks the example equals the defaults).
+3. Add the class to `DETECTORS` in `detectors/__init__.py`.
 4. Add unit tests built from `Packet` objects, plus at least one attack
    scenario and one *benign look-alike* scenario in `lab/scenarios.py`.
 5. Update `tests/test_scenarios.py`, regenerate the table in

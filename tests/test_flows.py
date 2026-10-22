@@ -231,3 +231,27 @@ def test_syn_scan_states_through_pipeline():
     frames = syn_probe(ATTACKER, SERVER, 0, 22, open_=True) + syn_probe(ATTACKER, SERVER, 0.1, 23, open_=False)
     result = analyze_frames(((ts, buf, 1) for ts, buf in frames), Config())
     assert result.stats.conn_states == {"RSTO": 1, "REJ": 1}
+
+
+def _events(pkts: list[Packet]) -> list[str | None]:
+    table = FlowTable()
+    out = []
+    for p in pkts:
+        table.add(p)
+        out.append(table.event)
+    return out
+
+
+def test_connection_events_for_a_full_handshake():
+    pkts = [_o(0, SYN), _o(0.5, SYN), _r(1, SYN | ACK), _r(1.1, SYN | ACK), _o(1.2, ACK), _o(1.3, ACK | PSH, payload=5)]
+    assert _events(pkts) == ["attempt", None, "answered", None, "established", None]
+
+
+def test_connection_events_for_rejected_and_midstream():
+    assert _events([_o(0, SYN), _r(0.1, RST | ACK), _r(0.2, RST | ACK)]) == ["attempt", "rejected", None]
+    assert _events([_o(0, ACK | PSH, payload=5), _r(0.1, ACK)]) == [None, None]
+    assert _events([udp(0, C, S, 53), udp(0.1, C, S, 53), udp(0.2, S, C, 50000, sport=53)]) == [
+        "attempt",
+        None,
+        "answered",
+    ]
