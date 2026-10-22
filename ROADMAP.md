@@ -1,6 +1,6 @@
 # NetGuard Yol Haritası
 
-> Son güncelleme: **2026-10-22** · Mevcut sürüm: **v0.3.0** · Aktif faz: **Faz 4 — Backend, kalıcılık, API**
+> Son güncelleme: **2026-10-22** · Mevcut sürüm: **v0.4.0** · Aktif faz: **Faz 5 — Web dashboard**
 >
 > Bu dosya projenin **tek** yol haritasıdır. Güncel iş listesi
 > [docs/TASKS.md](docs/TASKS.md), ölçülmüş sonuçlar
@@ -48,19 +48,20 @@ mikroservis yok.
 | 1 | Paket alma ve protokol analizi | ✅ | v0.1.0 + v0.2.0 |
 | 2 | Flow ve özellik çıkarımı | ✅ | **v0.2.0** |
 | 3 | Tespit motoru (genişletme) | ✅ | **v0.3.0** |
-| 4 | Backend, kalıcılık, API | 🔄 | v0.4.0 |
-| 5 | Web dashboard | ⏳ | v0.5.0 = **MVP** |
+| 4 | Backend, kalıcılık, API | ✅ | **v0.4.0** |
+| 5 | Web dashboard | 🔄 | v0.5.0 = **MVP** |
 | 6 | Canlı yakalama ve replay | ⏳ | v0.6.0 |
 | 7 | İleri tespit ve tehdit istihbaratı | ⏳ | v0.7.0 |
 | 8 | Test, benchmark, değerlendirme | 🔄 sürekli · 👤 lab | v0.8.0 |
 | 9 | Güvenlik sertleştirme ve CI/CD | 🔄 sürekli | v0.9.0 |
 | 10 | Dokümantasyon, release, portföy | ⏳ | **v1.0.0** |
 
-**Ölçülmüş durum (v0.3.0):** 11 tespit kuralı, 220 test, kapsama %95;
-ruff, mypy `--strict` temiz; 242k paketlik referans pcap 11 kuralla ~2,45 sn /
-36 MB (M1, ~97k paket/s); sahte kaynaklı 500k flow saldırısında tepe bellek
-469 MB. Sentetik senaryolar: 13/13 saldırı senaryosu tespit edildi, 11 benign
-senaryonun 8'i alarmsız (3 bilinen ve açıklanmış yanlış pozitif). Ayrıntı:
+**Ölçülmüş durum (v0.4.0):** 11 tespit kuralı ve REST API; 251 test (API
+entegrasyon testleri gerçek worker süreçleriyle), kapsama %93; ruff, mypy
+`--strict` temiz; CI Linux/macOS × Python 3.11–3.13. 242k paketlik referans
+pcap 11 kuralla ~2,45 sn / 36 MB (M1); sahte kaynaklı 500k flow saldırısında
+tepe bellek 469 MB. Sentetik senaryolar: 13/13 saldırı tespit, 11 benign
+senaryonun 8'i alarmsız (3 bilinen yanlış pozitif). Ayrıntı:
 [EVALUATION.md](docs/EVALUATION.md).
 
 **Gerçek dünyada doğrulama yok:** tüm tespit sonuçları şimdilik sentetik
@@ -73,8 +74,8 @@ flowchart LR
     F0[0 ✅ Temel] --> F1[1 ✅ Paket alma]
     F1 --> F2[2 ✅ Flow]
     F2 --> F3[3 ✅ Tespit motoru]
-    F3 --> F4[4 🔄 Backend & API]
-    F4 --> F5[5 Dashboard<br/>= MVP]
+    F3 --> F4[4 ✅ Backend & API]
+    F4 --> F5[5 🔄 Dashboard<br/>= MVP]
     F4 --> F6[6 Canlı & replay]
     F5 --> F6
     F3 --> F7[7 İleri tespit]
@@ -194,16 +195,27 @@ doğrulama 👤 Faz 8'de.
 **Öğrenme notları:** [03 — TRW ve ardışık hipotez testi](docs/learning/03-trw-and-sequential-testing.md),
 [04 — DNS, baseline'lar ve parçalama](docs/learning/04-dns-baselines-fragments.md).
 
-### Faz 4 — Backend, kalıcılık ve API ⏳ (v0.4.0)
+### Faz 4 — Backend, kalıcılık ve API ✅ (v0.4.0)
 
-| # | İş |
-|---|---|
-| 4.1 | Teknoloji kararı (ADR): aday SQLite (stdlib) + FastAPI; çekirdek bağımlılıksız kalır (`netguard[web]`) |
-| 4.2 | Şema: `captures`, `analysis_jobs`, `flows`, `alerts`, `rules`, `stats`; sürümlü migrasyon |
-| 4.3 | İş yaşam döngüsü: `queued → running → done/failed`, iptal, hata kaydı, kesilen işlerin kurtarılması |
-| 4.4 | API v1: yükleme, analiz, flow/alarm arama, sıralama, filtreleme, sayfalama; OpenAPI dokümanı |
-| 4.5 | Olay şeması: SIEM entegrasyonu için sürümlü JSON (ECS eşlemesi) |
-| 4.6 | Entegrasyon testleri (`TestClient`), yükleme boyut/tür sınırları |
+| # | İş | Durum |
+|---|---|---|
+| 4.1 | Teknoloji kararı: SQLite (WAL) + FastAPI opsiyonel `netguard[web]` eki, analiz ayrı süreçte ([ADR-0008](docs/adr/0008-backend-storage-and-api.md)) | ✅ |
+| 4.2 | Şema: `captures`, `analyses` (yapılandırma anlık görüntüsü dahil), `alerts`, `flows`; sürümlü migrasyon. Kurallar koddan sunuluyor; düzenlenebilir kural profilleri Faz 5'te | ✅ |
+| 4.3 | İş yaşam döngüsü: `queued → running → done/failed/cancelled`, iptal, zaman aşımı, bellek/CPU sınırı, yeniden başlatmada kurtarma | ✅ |
+| 4.4 | API v1: yükleme (akışta boyut sınırı, magic kontrolü, tekilleştirme), analiz, flow/alarm arama, sıralama, filtreleme, sayfalama; OpenAPI | ✅ |
+| 4.5 | Olay şeması: native sözleşme + Elastic Common Schema (ECS) NDJSON dışa aktarımı | ✅ |
+| 4.6 | Entegrasyon testleri (19 API, 10 store/job), güvenli varsayılanlar (loopback, token, `0700`/`0600`) | ✅ |
+
+**Kabul kriterleri:** ✅ entegrasyon testleri gerçek HTTP katmanı, SQLite ve
+worker süreçleriyle geçiyor; ✅ OpenAPI şeması yayınlanıyor; ✅ bozuk/düşmanca
+yakalama işi temiz bir hata ile bitiriyor, sunucu yolu sızdırmıyor; ✅ canlı
+`uvicorn` ile uçtan uca denendi (yükleme → analiz → alarm → ECS).
+
+**Bilinen sınırlamalar:** tek düğüm (birden çok API süreci için farklı iş
+sahiplenme gerekir); macOS'ta worker bellek sınırı uygulanmıyor; TLS yok
+(reverse proxy ile sağlanmalı); metin araması `LIKE`.
+
+**Öğrenme notu:** [05 — Düşmanca dosyaları kabul eden backend](docs/learning/05-backend-security.md).
 
 ### Faz 5 — Web dashboard ⏳ (v0.5.0 = MVP)
 
@@ -279,8 +291,8 @@ uyum iddia edilmez.
 | Flow modeli | Zeek `conn_state` sözlüğü, zaman aşımı sınıfları, LRU | ADR-0004 |
 | Sonuca duyarlı tespit | Bağlantı olayları, TRW + pencere kuralı, protokol bazlı dağıtım | ADR-0006 |
 | Anomali baseline'ları | Host başına EWMA ortalama + mutlak sapma, kırpma | ADR-0007 |
-| Depolama | SQLite (aday) | Faz 4 ADR |
-| API | FastAPI (aday) | Faz 4 ADR |
+| Depolama | SQLite, WAL, sürümlü migrasyon | ADR-0008 |
+| API | FastAPI (opsiyonel `web` eki), analiz izole worker süreçlerinde | ADR-0008 |
 | Dashboard | htmx vs React/Vite | Faz 5 ADR |
 
 ## 7. Test stratejisi
@@ -325,6 +337,8 @@ Kapsama eşiği %90 (CI'da zorunlu). Gerçek pcap'ler git'e girmez (`.gitignore`
 
 ### Değişiklik kaydı
 
+- **2026-10-22:** Faz 4 tamamlandı (v0.4.0): SQLite depolama, iş yaşam
+  döngüsü, izole worker süreçleri, REST API v1, ECS dışa aktarımı.
 - **2026-10-22:** Faz 3 tamamlandı (v0.3.0): 8 yeni kural (TRW, UDP tarama,
   SYN flood, DNS tünelleme, NXDOMAIN/DGA, parçalama, bağlantı sıklığı, hacim).
   ICMP tünel kuralı ve onaysız resolver politikası ölçülebilir değer

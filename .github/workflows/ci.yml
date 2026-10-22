@@ -14,7 +14,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
-      - run: uv sync --locked
+      - run: uv sync --locked --all-extras
       - run: uv run ruff check .
       - run: uv run ruff format --check .
       - run: uv run mypy
@@ -31,7 +31,15 @@ jobs:
       - uses: astral-sh/setup-uv@v6
         with:
           python-version: ${{ matrix.python }}
-      - run: uv sync --locked
+      - run: uv sync --locked --all-extras
+      # The API tests skip without the web extra; in CI that would hide them.
+      - name: Web extra installed
+        run: uv run python -c "import fastapi, uvicorn"
       - run: uv run pytest --cov --cov-report=term --cov-fail-under=90
+      - name: Core works without the web extra
+        run: |
+          uv sync --locked
+          uv run netguard lab evaluate > /dev/null
+          uv run netguard serve 2>&1 | grep -q "pip install 'netguard\[web\]'"
       - name: Lab scorecard
         run: uv run netguard lab evaluate >> "$GITHUB_STEP_SUMMARY"

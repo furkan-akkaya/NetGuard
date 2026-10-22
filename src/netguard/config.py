@@ -253,12 +253,43 @@ def load_config(path: str | Path | None) -> Config:
             raw = tomllib.load(fh)
     except tomllib.TOMLDecodeError as exc:
         raise ConfigError(f"{path}: {exc}") from exc
+    return config_from_mapping(raw)
 
+
+def config_from_mapping(raw: Any) -> Config:
+    """Validate a TOML-shaped mapping (from a file, or JSON from the API) into a :class:`Config`."""
+    if not isinstance(raw, dict):
+        raise ConfigError("configuration must be a mapping of sections")
     top_unknown = set(raw) - {"allowlist", *_SECTIONS}
     if top_unknown:
         raise ConfigError(f"unknown sections/keys: {', '.join(sorted(top_unknown))}")
     allowlist = raw.get("allowlist", [])
     if not isinstance(allowlist, list) or not all(isinstance(a, str) for a in allowlist):
         raise ConfigError("allowlist must be a list of strings")
+    for name in _SECTIONS:
+        if not isinstance(raw.get(name, {}), dict):
+            raise ConfigError(f"[{name}] must be a section (a mapping)")
     sections = {name: _build(cls, raw.get(name, {}), name) for name, cls in _SECTIONS.items()}
     return Config(allowlist=allowlist, **sections)
+
+
+def config_to_mapping(config: Config) -> dict[str, Any]:
+    """The inverse of :func:`config_from_mapping` (a JSON-serialisable snapshot)."""
+    out: dict[str, Any] = {"allowlist": list(config.allowlist)}
+    for name in _SECTIONS:
+        section = getattr(config, name)
+        out[name] = {f.name: getattr(section, f.name) for f in fields(section)}
+    return out
+
+
+def merge_config(base: Config, overrides: Any) -> Config:
+    """``base`` with the sections/keys in ``overrides`` replaced, validated as a whole."""
+    if not isinstance(overrides, dict):
+        raise ConfigError("configuration overrides must be a mapping of sections")
+    merged = config_to_mapping(base)
+    for key, value in overrides.items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key] = {**merged[key], **value}
+        else:
+            merged[key] = value
+    return config_from_mapping(merged)

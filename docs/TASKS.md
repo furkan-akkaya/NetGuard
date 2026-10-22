@@ -10,17 +10,18 @@ in [ROADMAP.md](../ROADMAP.md); task numbers here match it.
 - [x] Phase 1 — ingestion and protocol analysis (v0.1.0; own pcap/pcapng readers, fast decoder and new packet fields in v0.2.0)
 - [x] Phase 2 — flows and feature extraction (v0.2.0)
 - [x] Phase 3 — detection engine (v0.3.0): TRW, UDP scan, SYN flood, DNS tunnel, NXDOMAIN/DGA, fragmentation, connection-rate and volume baselines; `netguard rules`; ADR 0006–0007; learning notes 03–04
+- [x] Phase 4 — backend, persistence and API (v0.4.0): SQLite store, job runner with isolated workers, REST API v1, ECS export; ADR-0008; learning note 05
 
-Deferred from Phase 3 to Phase 7 until they show measurable value: ICMP tunnel/payload rule, unapproved-resolver policy.
+Deferred to Phase 7 until they show measurable value: ICMP tunnel/payload rule, unapproved-resolver policy.
 
-## Now: Phase 4, backend, persistence and API
+## Now: Phase 5, web dashboard (MVP)
 
-- [ ] **4.1** ADR: storage and API stack (candidates: SQLite + FastAPI as optional `netguard[web]` extra)
-- [ ] **4.2** Schema: captures, analysis jobs, flows, alerts, rules, stats; versioned migrations
-- [ ] **4.3** Job lifecycle: queued → running → done/failed, cancellation, recovery of interrupted jobs
-- [ ] **4.4** API v1: upload, analyse, search/sort/filter/paginate flows and alerts; OpenAPI
-- [ ] **4.5** Event schema for SIEM export (ECS mapping)
-- [ ] **4.6** Integration tests; upload size/type limits
+- [ ] **5.1** ADR: dashboard technology (server-rendered + htmx vs. a React/Vite SPA served by the API)
+- [ ] **5.2** Overview, traffic statistics, protocol distribution, flows and endpoints
+- [ ] **5.3** Alert feed, alert detail with evidence, links to rule pages
+- [ ] **5.4** Capture upload and analysis workflow; loading, empty and error states
+- [ ] **5.5** Rule management (editable configuration profiles), reports and exports
+- [ ] **5.6** XSS tests for every string that comes from a capture; real data only
 
 ## Waiting on the user 👤
 

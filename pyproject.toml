@@ -1,6 +1,6 @@
 [project]
 name = "netguard"
-version = "0.3.0"
+version = "0.4.0"
 description = "Network intrusion detection & traffic analyzer with explainable, measurable detections."
 readme = "README.md"
 license = "MIT"
@@ -27,12 +27,20 @@ dependencies = [
 [project.scripts]
 netguard = "netguard.cli:main"
 
+[project.optional-dependencies]
+web = [
+    "fastapi>=0.115",
+    "python-multipart>=0.0.18",
+    "uvicorn>=0.32",
+]
+
 [build-system]
 requires = ["uv_build>=0.12.23,<0.13.0"]
 build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
+    "httpx2>=2.16.0",
     "mypy>=2.4.0",
     "pytest>=9.1.1",
     "pytest-cov>=7.1.0",
@@ -75,6 +83,8 @@ addopts = "-ra --strict-markers"
 [tool.coverage.run]
 source = ["netguard"]
 branch = true
+# Analysis jobs run in worker subprocesses (netguard.worker); measure them too.
+patch = ["subprocess"]
 
 [tool.coverage.report]
 show_missing = true

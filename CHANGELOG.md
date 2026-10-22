@@ -2,6 +2,25 @@
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning: [SemVer](https://semver.org/).
 
+## [0.4.0] - 2026-10-22
+
+Phase 4 (backend, persistence and API). The analyzer core is unchanged and
+still has a single runtime dependency; the API ships as the `web` extra.
+
+### Added
+- `netguard serve`: REST API v1 (FastAPI) with OpenAPI docs at `/api/v1/docs` (ADR-0008, docs/API.md).
+- SQLite store (WAL, versioned migrations): captures, analyses with configuration snapshots, alerts, flows; filtered, sorted and paginated search with allowlisted sort keys.
+- Job runner: queued analyses run one at a time in `python -m netguard.worker` processes with a wall-clock timeout, CPU limit and (Linux) memory limit; cancellation kills the worker; interrupted jobs are re-queued once after a restart; partial results of failed jobs are removed.
+- Uploads as streamed raw bodies with a hard size cap, pcap/pcapng magic check and SHA-256 de-duplication; client filenames are display-only.
+- Alert export as NDJSON in the native format or Elastic Common Schema (`events.py`).
+- Configuration from JSON (`config_from_mapping`, `merge_config`) for per-analysis overrides.
+- Secure defaults: loopback bind, bearer token required for remote access (constant-time comparison), security headers, data directory `0700` and files `0600`.
+- docs/API.md, ADR-0008, learning note 05 (Turkish); SECURITY.md section on running the API.
+
+### Changed
+- CI installs the `web` extra, fails if it is missing (instead of silently skipping API tests), and checks that the core still works without it.
+- Coverage also measures the worker subprocesses.
+
 ## [0.3.0] - 2026-10-22
 
 Phase 3 (detection engine): eight new rules, each with an attack scenario, a
