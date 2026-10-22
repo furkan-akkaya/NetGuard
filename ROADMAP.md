@@ -1,6 +1,6 @@
 # NetGuard Yol Haritası
 
-> Son güncelleme: **2026-10-22** · Mevcut sürüm: **v0.4.0** · Aktif faz: **Faz 5 — Web dashboard**
+> Son güncelleme: **2026-10-22** · Mevcut sürüm: **v0.5.0 (MVP)** · Aktif faz: **Faz 6 — Canlı yakalama ve replay**
 >
 > Bu dosya projenin **tek** yol haritasıdır. Güncel iş listesi
 > [docs/TASKS.md](docs/TASKS.md), ölçülmüş sonuçlar
@@ -49,19 +49,21 @@ mikroservis yok.
 | 2 | Flow ve özellik çıkarımı | ✅ | **v0.2.0** |
 | 3 | Tespit motoru (genişletme) | ✅ | **v0.3.0** |
 | 4 | Backend, kalıcılık, API | ✅ | **v0.4.0** |
-| 5 | Web dashboard | 🔄 | v0.5.0 = **MVP** |
-| 6 | Canlı yakalama ve replay | ⏳ | v0.6.0 |
+| 5 | Web dashboard | ✅ | **v0.5.0 = MVP** |
+| 6 | Canlı yakalama ve replay | 🔄 | v0.6.0 |
 | 7 | İleri tespit ve tehdit istihbaratı | ⏳ | v0.7.0 |
 | 8 | Test, benchmark, değerlendirme | 🔄 sürekli · 👤 lab | v0.8.0 |
 | 9 | Güvenlik sertleştirme ve CI/CD | 🔄 sürekli | v0.9.0 |
 | 10 | Dokümantasyon, release, portföy | ⏳ | **v1.0.0** |
 
-**Ölçülmüş durum (v0.4.0):** 11 tespit kuralı ve REST API; 251 test (API
-entegrasyon testleri gerçek worker süreçleriyle), kapsama %93; ruff, mypy
-`--strict` temiz; CI Linux/macOS × Python 3.11–3.13. 242k paketlik referans
-pcap 11 kuralla ~2,45 sn / 36 MB (M1); sahte kaynaklı 500k flow saldırısında
-tepe bellek 469 MB. Sentetik senaryolar: 13/13 saldırı tespit, 11 benign
-senaryonun 8'i alarmsız (3 bilinen yanlış pozitif). Ayrıntı:
+**Ölçülmüş durum (v0.5.0, MVP):** 11 tespit kuralı, REST API ve web
+dashboard; 264 Python testi (API entegrasyon testleri gerçek worker
+süreçleriyle) ve 12 frontend testi, kapsama %93; ruff, mypy `--strict`,
+TypeScript strict temiz; frontend bağımlılıklarında bilinen açık yok (pnpm
+audit). 242k paketlik referans pcap 11 kuralla ~2,45 sn / 36 MB (M1). Sentetik
+senaryolar: 13/13 saldırı tespit, 11 benign senaryonun 8'i alarmsız (3 bilinen
+yanlış pozitif). Dashboard gerçek bir sunucuda, gerçek analizlerle tarayıcıda
+denendi (masaüstü, mobil genişlik, açık/koyu tema). Ayrıntı:
 [EVALUATION.md](docs/EVALUATION.md).
 
 **Gerçek dünyada doğrulama yok:** tüm tespit sonuçları şimdilik sentetik
@@ -75,8 +77,8 @@ flowchart LR
     F1 --> F2[2 ✅ Flow]
     F2 --> F3[3 ✅ Tespit motoru]
     F3 --> F4[4 ✅ Backend & API]
-    F4 --> F5[5 🔄 Dashboard<br/>= MVP]
-    F4 --> F6[6 Canlı & replay]
+    F4 --> F5[5 ✅ Dashboard<br/>= MVP]
+    F4 --> F6[6 🔄 Canlı & replay]
     F5 --> F6
     F3 --> F7[7 İleri tespit]
     F4 --> F7
@@ -217,16 +219,32 @@ sahiplenme gerekir); macOS'ta worker bellek sınırı uygulanmıyor; TLS yok
 
 **Öğrenme notu:** [05 — Düşmanca dosyaları kabul eden backend](docs/learning/05-backend-security.md).
 
-### Faz 5 — Web dashboard ⏳ (v0.5.0 = MVP)
+### Faz 5 — Web dashboard ✅ (v0.5.0 = MVP)
 
-| # | İş |
-|---|---|
-| 5.1 | Teknoloji kararı (ADR): sunucu tarafı render + htmx ile React/Vite SPA karşılaştırması |
-| 5.2 | Güvenlik özeti, trafik istatistikleri, protokol dağılımı, flow ve endpoint görünümleri |
-| 5.3 | Alarm akışı, alarm detayı ve kanıt görünümü, kural sayfalarına bağlantı |
-| 5.4 | pcap yükleme ve analiz iş akışı; yükleme, boş ve hata durumları |
-| 5.5 | Kural yönetimi; rapor (HTML/JSON) ve dışa aktarma |
-| 5.6 | Pcap'ten gelen tüm stringler için XSS testi; yalnızca gerçek veri, sahte metrik yok |
+| # | İş | Durum |
+|---|---|---|
+| 5.1 | Teknoloji kararı: React + TypeScript + Vite SPA, API tarafından sunuluyor, sıkı CSP ([ADR-0009](docs/adr/0009-dashboard-stack.md)) | ✅ |
+| 5.2 | Güvenlik özeti, trafik istatistikleri, zaman serisi, protokol/bağlantı durumu/servis dağılımı, endpoint'ler, en büyük flow'lar, flow tarayıcısı (filtre, sıralama, sayfalama) | ✅ |
+| 5.3 | Alarm akışı (URL'de saklanan filtreler), alarm detayı ve kanıt görünümü, ilgili flow'lar, ATT&CK ve kural sayfası bağlantıları | ✅ |
+| 5.4 | Yükleme (ilerleme çubuğu, sürükle-bırak), canlı iş durumu, iptal; yükleme/boş/hata durumları, 401'de token yönlendirmesi | ✅ |
+| 5.5 | Kural profilleri (API + düzenleyici, yalnız farklar saklanıyor), profil ile yeniden analiz; HTML rapor, NDJSON/ECS ve CSV dışa aktarımı | ✅ |
+| 5.6 | XSS testleri (frontend ve HTML rapor), CI'da satır içi script kontrolü, path traversal testi; yalnızca gerçek veri | ✅ |
+
+**Kabul kriterleri:** ✅ yakalama yükle → analiz et → istatistik, flow ve
+kanıtlı alarmları dashboard'da incele → rapor/dışa aktar akışı gerçek sunucuda
+tarayıcıda denendi; ✅ düşmanca dizeler metin olarak gösteriliyor; ✅ mobil
+genişlikte yatay kaydırma yok; ✅ sahte veri yok.
+
+**Tarayıcıda bulunan ve düzeltilen hatalar:** çubuk grafiklerin sütun
+genişliği; `v` bayraklı regex'te geçersiz `pattern` özniteliği (istemci
+doğrulaması sessizce devre dışıydı; sunucu doğrulaması her zaman geçerliydi).
+
+**Bilinen sınırlamalar:** ekran görüntüleri ve demo Faz 10'da; dashboard
+erişilebilirliği otomatik olarak denetlenmedi (manuel: klavye odağı, ARIA
+etiketleri, tablo eşdeğerleri); bundle'ı Python paketine koyan release adımı
+Faz 9/10'da.
+
+**Öğrenme notu:** [06 — Saldırgan kontrollü veriyi gösteren arayüz](docs/learning/06-dashboard-security.md).
 
 ### Faz 6 — Canlı yakalama ve replay ⏳ (v0.6.0)
 
@@ -293,7 +311,7 @@ uyum iddia edilmez.
 | Anomali baseline'ları | Host başına EWMA ortalama + mutlak sapma, kırpma | ADR-0007 |
 | Depolama | SQLite, WAL, sürümlü migrasyon | ADR-0008 |
 | API | FastAPI (opsiyonel `web` eki), analiz izole worker süreçlerinde | ADR-0008 |
-| Dashboard | htmx vs React/Vite | Faz 5 ADR |
+| Dashboard | React + TypeScript + Vite SPA, API'den sunuluyor, sıkı CSP | ADR-0009 |
 
 ## 7. Test stratejisi
 
@@ -337,6 +355,8 @@ Kapsama eşiği %90 (CI'da zorunlu). Gerçek pcap'ler git'e girmez (`.gitignore`
 
 ### Değişiklik kaydı
 
+- **2026-10-22:** Faz 5 tamamlandı (v0.5.0 = MVP): web dashboard, kural
+  profilleri, HTML rapor, CSV/ECS dışa aktarımı.
 - **2026-10-22:** Faz 4 tamamlandı (v0.4.0): SQLite depolama, iş yaşam
   döngüsü, izole worker süreçleri, REST API v1, ECS dışa aktarımı.
 - **2026-10-22:** Faz 3 tamamlandı (v0.3.0): 8 yeni kural (TRW, UDP tarama,

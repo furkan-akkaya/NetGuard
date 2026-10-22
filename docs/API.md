@@ -1,7 +1,7 @@
 # REST API (v1)
 
 `netguard serve` runs a REST API for uploading captures, running analyses and
-searching the results. Design and security decisions: [ADR-0008](adr/0008-backend-storage-and-api.md).
+searching the results, and serves the web dashboard at `/` (ADR-0009). Design and security decisions: [ADR-0008](adr/0008-backend-storage-and-api.md).
 The live, generated reference (OpenAPI) is served at `/api/v1/docs` and
 `/api/v1/openapi.json`.
 
@@ -38,16 +38,21 @@ NETGUARD_API_TOKEN=$(python -c "import secrets; print(secrets.token_urlsafe(32))
 | Method | Path | Purpose |
 |---|---|---|
 | GET | `/health` | Liveness, version, schema version (no auth) |
+| GET | `/summary` | Overview: counts by status and severity, alerts by rule, recent alerts and analyses |
 | GET | `/rules` | All rules with state and settings in the base configuration |
+| GET / POST | `/profiles` | Rule profiles: named configuration overrides (validated on save) |
+| GET / PUT / DELETE | `/profiles/{id}` | One profile. Deleting it keeps the analyses that used it (their `profile_id` becomes null) |
 | POST | `/captures?filename=…` | Upload a pcap/pcapng as the raw body. 201 created, 200 already stored (same SHA-256) |
 | GET | `/captures` | List captures (`sort`: `created_at`, `size_bytes`, `filename`) |
 | GET / DELETE | `/captures/{id}` | One capture / delete it with its analyses (409 while one is queued or running) |
-| POST | `/captures/{id}/analyses` | Queue an analysis; body `{"config": {...overrides...}}` (optional). 202 |
+| POST | `/captures/{id}/analyses` | Queue an analysis; body `{"profile_id": "...", "config": {...overrides...}}` (both optional; overrides apply on top of the profile). 202 |
 | GET | `/analyses` | List (`capture_id`, `status`, `sort`: `created_at`, `finished_at`, `alert_count`) |
 | GET | `/analyses/{id}` | Status, error, configuration snapshot, capture info and full statistics |
 | POST | `/analyses/{id}/cancel` | Cancel a queued or running analysis (409 if finished) |
 | GET | `/analyses/{id}/flows` | Flows: `proto`, `state`, `ip`, `port`; `sort`: `first_seen`, `duration`, `bytes`, `packets`, `src_ip`, `dst_ip`, `dst_port` |
 | GET | `/analyses/{id}/alerts.ndjson?format=netguard\|ecs` | Export all alerts (native contract or Elastic Common Schema) |
+| GET | `/analyses/{id}/flows.csv` | Export the stored flows as CSV |
+| GET | `/analyses/{id}/report.html` | Single-file HTML report (no scripts; 409 until the analysis is done) |
 | GET | `/alerts` | Search: `analysis_id`, `rule_id`, `severity`, `min_severity`, `ip` (src or dst), `q` (text), `since`, `until`; `sort`: `first_seen`, `last_seen`, `severity`, `rule_id`, `src`, `dst` |
 | GET | `/alerts/{id}` | One alert with full evidence |
 

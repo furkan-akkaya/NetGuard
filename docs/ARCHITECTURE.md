@@ -82,6 +82,24 @@ flowchart LR
 The core analyzer has no dependency on the web stack; `netguard[web]` adds
 FastAPI and uvicorn. Endpoint reference: [API.md](API.md); decisions: ADR-0008.
 
+## Dashboard (Phase 5)
+
+A React + TypeScript single-page app in `frontend/` (ADR-0009), built by Vite
+into `src/netguard/web/static/` and served by the API at `/` (client-side
+routes fall back to `index.html`; root files are served only from inside the
+bundle directory). It talks only to `/api/v1` on the same origin.
+
+| Path | Purpose |
+|---|---|
+| `src/api.ts` | Typed API client; token in `sessionStorage`; XHR upload with progress; authenticated downloads |
+| `src/hooks.ts` | `useAsync`: loading/error state, stale-response protection, polling while jobs run |
+| `src/pages/` | Overview, Captures, AnalysisDetail, Alerts (filters in the URL), AlertDetail, Rules (profile editor), Settings |
+| `src/components/` | Tables, flow browser, SVG bar and time-series charts (each with a text/table equivalent), states |
+
+Security: no `dangerouslySetInnerHTML`; CSP `script-src 'self'` (CI checks the
+bundle has no inline scripts); `frame-ancestors 'none'`. Tests: Vitest +
+Testing Library (formatting, profile diffing, page states, hostile strings).
+
 ## Design principles
 
 1. **Detectors are pure.** A detector receives `Packet` (and finished `Flow`) objects and returns

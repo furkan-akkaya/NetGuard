@@ -2,6 +2,27 @@
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning: [SemVer](https://semver.org/).
 
+## [0.5.0] - 2026-10-22
+
+Phase 5: the web dashboard. With it NetGuard reaches its MVP: upload a capture,
+analyse it, inspect statistics, flows and evidence-backed alerts in the
+browser, and export reports and events.
+
+### Added
+- Web dashboard (React 19, TypeScript strict, Vite) served by `netguard serve` at `/` (ADR-0009): security overview, captures with upload progress and live job status, analysis view with traffic time series, protocol/state/service/packet-size breakdowns, endpoints, largest flows and a filterable flow browser, alert feed with URL-persisted filters, alert detail with structured evidence and related flows, rule list and profile editor, settings with API token handling.
+- Rule profiles: named, validated configuration overrides (`/api/v1/profiles`, schema migration 2); analyses can use a profile plus extra overrides; re-analysis from the dashboard.
+- `/api/v1/summary`, flows CSV export, single-file HTML report (`/analyses/{id}/report.html` and `netguard analyze -f html`): no scripts, CSP, every capture string escaped.
+- Content-Security-Policy on the dashboard (`script-src 'self'`, `frame-ancestors 'none'`, …); root bundle files served only from inside the bundle directory.
+- Frontend tests (Vitest, Testing Library) including hostile-string rendering; CI job: type check, tests, build, no-inline-script check, `pnpm audit`.
+- ADR-0009, learning note 06 (Turkish).
+
+### Changed
+- The `web` extra is part of the development group, so `uv sync`/`uv run` keep it installed; CI checks the core with `--no-dev`.
+
+### Fixed
+- Job runner race: a worker that had stored its result (`done`) but not yet exited could be seen as "no longer running", treated as cancelled and killed; on macOS this raised `PermissionError` from `killpg`. This was the intermittent test failure noted during v0.4.0 development (reproducible on Python 3.12/3.13). A `done` job's worker is now allowed to exit.
+- Found in the browser: bar charts collapsed to dots (table column width); the profile-name `pattern` attribute was invalid under the browser's `v`-flag regex syntax, which silently disabled client-side validation (server-side validation was unaffected).
+
 ## [0.4.0] - 2026-10-22
 
 Phase 4 (backend, persistence and API). The analyzer core is unchanged and
