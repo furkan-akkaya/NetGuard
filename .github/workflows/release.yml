@@ -1,0 +1,75 @@
+name: Release
+
+# Builds a release from a version tag: the dashboard is built fresh, the wheel
+# is smoke-tested in a clean environment, and the artefacts go into a DRAFT
+# GitHub release. Publishing the draft stays a human decision.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: frontend/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - name: Tag matches the package version
+        run: |
+          version=$(grep -m1 '^version = ' pyproject.toml | cut -d'"' -f2)
+          test "v$version" = "$GITHUB_REF_NAME" || { echo "tag $GITHUB_REF_NAME != version $version"; exit 1; }
+      - name: Build the dashboard
+        run: |
+          pnpm --dir frontend install --frozen-lockfile
+          pnpm --dir frontend test
+          pnpm --dir frontend build
+      - name: Build sdist and wheel
+        run: uv build
+      - name: Smoke test the wheel in a clean environment
+        run: |
+          python3 -m venv /tmp/clean
+          /tmp/clean/bin/pip install --quiet "$(ls dist/*.whl)[web]"
+          /tmp/clean/bin/netguard --version
+          /tmp/clean/bin/netguard lab evaluate > /dev/null
+          /tmp/clean/bin/python -c "import netguard, pathlib; assert (pathlib.Path(netguard.__file__).parent / 'web/static/index.html').exists()"
+          /tmp/clean/bin/netguard serve --data-dir /tmp/ng --port 8765 &
+          for i in $(seq 1 30); do curl -sf http://127.0.0.1:8765/api/v1/health && break; sleep 1; done
+          curl -sf http://127.0.0.1:8765/ | grep -q '<div id="root">'
+      - name: SBOM (CycloneDX) and checksums
+        run: |
+          uv export --frozen --no-dev --all-extras --format cyclonedx1.5 -o dist/netguard-sbom.cdx.json
+          (cd dist && sha256sum * > SHA256SUMS)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+      - name: Draft release with the changelog section
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          awk -v v="## [$version]" '$0 ~ "^## \\[" { if (found) exit; if (index($0, v) == 1) found = 1 } found' CHANGELOG.md > notes.md
+          test -s notes.md || echo "See CHANGELOG.md" > notes.md
+          gh release create "$GITHUB_REF_NAME" dist/* --draft --title "NetGuard $GITHUB_REF_NAME" --notes-file notes.md

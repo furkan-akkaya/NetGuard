@@ -1,0 +1,9 @@
+# TLS in front of NetGuard (see docs/DEPLOYMENT.md). Caddy obtains certificates
+# automatically for public names; for a lab use `tls internal`.
+netguard.lab.example {
+    # tls internal
+    reverse_proxy 127.0.0.1:8000
+    request_body {
+        max_size 260MB
+    }
+}
