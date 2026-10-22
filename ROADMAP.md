@@ -1,6 +1,6 @@
 # NetGuard Yol Haritası
 
-> Son güncelleme: **2026-10-22** · Mevcut sürüm: **v0.7.0** · Aktif faz: **Faz 8 — Değerlendirme** (👤 lab yakalamaları) ve **Faz 9 — Sertleştirme**
+> Son güncelleme: **2026-10-22** · Mevcut sürüm: **v0.8.0** · Aktif faz: **Faz 10 — Release hazırlığı** (👤 Faz 8 lab yakalamaları bekliyor)
 >
 > Bu dosya projenin **tek** yol haritasıdır. Güncel iş listesi
 > [docs/TASKS.md](docs/TASKS.md), ölçülmüş sonuçlar
@@ -52,19 +52,20 @@ mikroservis yok.
 | 5 | Web dashboard | ✅ | **v0.5.0 = MVP** |
 | 6 | Canlı yakalama ve replay | ✅ (👤 lab doğrulaması) | **v0.6.0** |
 | 7 | İleri tespit ve tehdit istihbaratı | ✅ | **v0.7.0** |
-| 8 | Test, benchmark, değerlendirme | 🔄 sürekli · 👤 lab | v0.8.0 |
-| 9 | Güvenlik sertleştirme ve CI/CD | 🔄 sürekli | v0.9.0 |
+| 8 | Test, benchmark, değerlendirme | 🔄 · 👤 lab | v0.9.0 |
+| 9 | Güvenlik sertleştirme ve CI/CD | ✅ | **v0.8.0** |
 | 10 | Dokümantasyon, release, portföy | ⏳ | **v1.0.0** |
 
-**Ölçülmüş durum (v0.7.0):** 11 tespit kuralı (açıklanabilir güven puanı
-ve olay korelasyonu ile), REST API, web dashboard, canlı yakalama; 316 Python
-testi ve 12 frontend testi, kapsama %93; ruff, mypy `--strict`, TypeScript
-strict temiz. Sentetik senaryolar (27): 15/15 saldırı tespit, 12 benign
-senaryonun 9'u alarmsız; 3 yanlış pozitifin hepsi düşük güven (25–30), tüm
-doğru pozitifler 45–95. Ayrıntı: [EVALUATION.md](docs/EVALUATION.md).
+**Ölçülmüş durum (v0.8.0):** 11 tespit kuralı, güven puanı ve korelasyon,
+REST API, web dashboard, canlı yakalama; 324 Python testi (3.11–3.14) ve 12
+frontend testi, kapsama %93; ruff, mypy `--strict`, TypeScript strict temiz;
+bilinen açığı olan bağımlılık yok (pip-audit, pnpm audit). Yazılı tehdit
+modeli ([THREAT_MODEL.md](docs/THREAT_MODEL.md)); kurulum temiz ortamda ve
+Ubuntu 26.04 ARM64 container'ında doğrulandı, Linux'ta canlı yakalama
+(loopback) ve worker bellek sınırı gerçek olarak çalıştı.
 
 **Gerçek dünyada doğrulama yok:** tüm tespit sonuçları şimdilik sentetik
-senaryolardan. Lab yakalamaları (Faz 8) kullanıcının UTM ortamını gerektirir.
+senaryolardan (canlı yakalama boru hattı Linux'ta doğrulandı, tespit doğruluğu değil). Lab yakalamaları (Faz 8) kullanıcının UTM ortamını gerektirir.
 
 ## 3. Fazlar arası bağımlılık
 
@@ -297,13 +298,17 @@ belgelendi (TOFU, IP/MAC aktör ayrımı, tutarlılık kontrolü ≠ doğruluk).
 | 8.6 | Precision/recall, benign trafikte saat başına alarm, tespit gecikmesi; açık veri setleri (lisansına uygun) | ⏳ |
 | 8.7 | Kesilen iş, bozuk girdi, uzun çalışma senaryoları | ⏳ |
 
-### Faz 9 — Güvenlik sertleştirme ve CI/CD 🔄 sürekli
+### Faz 9 — Güvenlik sertleştirme ve CI/CD ✅ (v0.8.0)
 
-Girdi doğrulama, yükleme/kaynak/zaman aşımı/depolama sınırları, API ve
-dashboard erişim kontrolü (varsayılan `127.0.0.1`), gizli bilgi ve yakalama
-verisinin sızmaması, bağımlılık lisans ve güvenlik taraması (`pip-audit`),
-statik analiz (ruff `S` kuralları mevcut), GitHub Actions, kurulum/dağıtım
-doğrulaması.
+| # | İş | Durum |
+|---|---|---|
+| 9.1 | Tüm girdi yolları için tehdit modeli ([THREAT_MODEL.md](docs/THREAT_MODEL.md)); 7 bulgu düzeltildi: DNS rebinding, çapraz-site yazma, sınırsız JSON gövdesi, disk/kuyruk tükenmesi, `--write` symlink izleme, WAL dosya izinleri, Python 3.14 broken-pipe | ✅ |
+| 9.2 | Bağımlılık denetimi (pip-audit, pnpm audit: açık yok), lisans envanteri (hepsi izin verici), CycloneDX SBOM | ✅ |
+| 9.3 | CI: `security` işi (pip-audit, lisans kapısı, haftalık), Python 3.14 matrisi; tag ile çalışan release iş akışı (dashboard derleme, temiz ortamda wheel testi, SBOM, checksum, **taslak** release) | ✅ (release iş akışı ilk tag'de çalışacak) |
+| 9.4 | Temiz ortamda kurulum: macOS venv ve Ubuntu 26.04 ARM64 container (kurulum, analiz, sunucu, bellek sınırı, setcap ile canlı yakalama) | ✅ |
+| 9.5 | Dağıtım: sertleştirilmiş systemd unit (`systemd-analyze` 1,6 "OK"), Caddy TLS örneği, [DEPLOYMENT.md](docs/DEPLOYMENT.md) | ✅ (gerçek sunucuda systemd ile çalıştırma 👤) |
+
+**Öğrenme notu:** [09 — Sertleştirme](docs/learning/09-hardening.md).
 
 ### Faz 10 — Dokümantasyon, release ve portföy ⏳ (v1.0.0)
 
@@ -375,6 +380,9 @@ Kapsama eşiği %90 (CI'da zorunlu). Gerçek pcap'ler git'e girmez (`.gitignore`
 
 ### Değişiklik kaydı
 
+- **2026-10-22:** Faz 9 tamamlandı ve v0.8.0 olarak yayına hazırlandı. Sürüm
+  numaraları artık faz numarasını değil yayın sırasını izliyor: Faz 8 (lab
+  değerlendirmesi) kullanıcı yakalamalarını beklediği için v0.9.0'a kaldı.
 - **2026-10-22:** Faz 7 tamamlandı (v0.7.0): güven puanı, korelasyon, DHCP
   kira korelasyonu, profil TOML içe/dışa aktarma. Zeek/Suricata girdisi ve ML
   ölçülebilir değer gösterilene kadar ertelendi.
