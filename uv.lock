@@ -535,6 +535,7 @@ web = [
 dev = [
     { name = "httpx2" },
     { name = "mypy" },
+    { name = "netguard", extra = ["web"] },
     { name = "pytest" },
     { name = "pytest-cov" },
     { name = "ruff" },
@@ -553,6 +554,7 @@ provides-extras = ["web"]
 dev = [
     { name = "httpx2", specifier = ">=2.16.0" },
     { name = "mypy", specifier = ">=2.4.0" },
+    { name = "netguard", extras = ["web"] },
     { name = "pytest", specifier = ">=9.1.1" },
     { name = "pytest-cov", specifier = ">=7.1.0" },
     { name = "ruff", specifier = ">=0.17.1" },

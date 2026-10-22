@@ -28,6 +28,7 @@ class ServerSettings:
     analysis_config: Config = field(default_factory=Config)
     jobs: JobLimits = field(default_factory=JobLimits)
     run_jobs: bool = True  # tests drive the runner themselves
+    static_dir: Path | None = None  # dashboard bundle; default: the package's web/static
 
     @property
     def db_path(self) -> Path:

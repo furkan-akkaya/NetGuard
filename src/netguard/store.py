@@ -106,6 +106,18 @@ MIGRATIONS: tuple[str, ...] = (
     CREATE INDEX flows_state ON flows(analysis_id, state);
     CREATE INDEX flows_port ON flows(analysis_id, dst_port);
     """,
+    # 2: rule profiles (named configuration overrides) and the profile an analysis used.
+    """
+    CREATE TABLE profiles (
+        id          TEXT PRIMARY KEY,
+        name        TEXT NOT NULL UNIQUE,
+        description TEXT NOT NULL DEFAULT '',
+        config      TEXT NOT NULL,
+        created_at  REAL NOT NULL,
+        updated_at  REAL NOT NULL
+    );
+    ALTER TABLE analyses ADD COLUMN profile_id TEXT REFERENCES profiles(id) ON DELETE SET NULL;
+    """,
 )
 SCHEMA_VERSION = len(MIGRATIONS)
 
@@ -288,13 +300,15 @@ class Store:
 
     # ------------------------------------------------------------- analyses
 
-    def create_analysis(self, capture_id: str, config: dict[str, Any], version: str) -> dict[str, Any]:
+    def create_analysis(
+        self, capture_id: str, config: dict[str, Any], version: str, profile_id: str | None = None
+    ) -> dict[str, Any]:
         aid = new_id()
         with self.transaction() as conn:
             conn.execute(
-                "INSERT INTO analyses (id, capture_id, status, config, created_at, netguard_version) "
-                "VALUES (?, ?, 'queued', ?, ?, ?)",
-                (aid, capture_id, json.dumps(config), time.time(), version),
+                "INSERT INTO analyses (id, capture_id, status, config, created_at, netguard_version, profile_id) "
+                "VALUES (?, ?, 'queued', ?, ?, ?, ?)",
+                (aid, capture_id, json.dumps(config), time.time(), version, profile_id),
             )
         analysis = self.get_analysis(aid)
         assert analysis is not None
@@ -583,6 +597,98 @@ class Store:
                 [*params, limit, offset],
             ).fetchall()
         return Page([_flow(r) for r in rows], total, limit, offset)
+
+    def iter_flows(self, analysis_id: str) -> Iterator[dict[str, Any]]:
+        """All stored flows of one analysis in time order (for exports)."""
+        with self.connect() as conn:
+            for row in conn.execute(
+                "SELECT * FROM flows WHERE analysis_id = ? ORDER BY first_seen, id", (analysis_id,)
+            ):
+                yield _flow(row)
+
+    # ------------------------------------------------------------- overview
+
+    def summary(self, recent: int = 10) -> dict[str, Any]:
+        """Counts and recent items across everything stored (dashboard overview)."""
+        with self.connect() as conn:
+            by_status = dict(conn.execute("SELECT status, COUNT(*) FROM analyses GROUP BY status").fetchall())
+            by_severity = {
+                name: conn.execute("SELECT COUNT(*) FROM alerts WHERE severity = ?", (rank,)).fetchone()[0]
+                for name, rank in SEVERITIES.items()
+            }
+            by_rule = [
+                {"rule_id": r[0], "count": r[1]}
+                for r in conn.execute(
+                    "SELECT rule_id, COUNT(*) AS n FROM alerts GROUP BY rule_id ORDER BY n DESC, rule_id LIMIT 10"
+                )
+            ]
+            captures = conn.execute("SELECT COUNT(*), COALESCE(SUM(size_bytes), 0) FROM captures").fetchone()
+            recent_alerts = [
+                _alert(r)
+                for r in conn.execute(
+                    "SELECT id, analysis_id, doc FROM alerts ORDER BY severity DESC, first_seen DESC, id DESC LIMIT ?",
+                    (recent,),
+                )
+            ]
+            recent_analyses = [
+                _analysis(r)
+                for r in conn.execute("SELECT * FROM analyses ORDER BY created_at DESC, id LIMIT ?", (recent,))
+            ]
+        return {
+            "captures": captures[0],
+            "capture_bytes": captures[1],
+            "analyses": {s: by_status.get(s, 0) for s in STATUSES},
+            "alerts": by_severity,
+            "alerts_by_rule": by_rule,
+            "recent_alerts": recent_alerts,
+            "recent_analyses": recent_analyses,
+        }
+
+    # ------------------------------------------------------------- profiles
+
+    def list_profiles(self) -> list[dict[str, Any]]:
+        with self.connect() as conn:
+            return [_profile(r) for r in conn.execute("SELECT * FROM profiles ORDER BY name")]
+
+    def get_profile(self, profile_id: str) -> dict[str, Any] | None:
+        with self.connect() as conn:
+            row = conn.execute("SELECT * FROM profiles WHERE id = ?", (profile_id,)).fetchone()
+        return _profile(row) if row else None
+
+    def save_profile(
+        self, name: str, description: str, config: dict[str, Any], profile_id: str | None = None
+    ) -> dict[str, Any]:
+        """Create (no id) or replace a profile. Raises StoreError on a duplicate name or unknown id."""
+        now = time.time()
+        try:
+            with self.transaction(immediate=True) as conn:
+                if profile_id is None:
+                    profile_id = new_id()
+                    conn.execute(
+                        "INSERT INTO profiles (id, name, description, config, created_at, updated_at) "
+                        "VALUES (?, ?, ?, ?, ?, ?)",
+                        (profile_id, name, description, json.dumps(config), now, now),
+                    )
+                elif not conn.execute(
+                    "UPDATE profiles SET name = ?, description = ?, config = ?, updated_at = ? WHERE id = ?",
+                    (name, description, json.dumps(config), now, profile_id),
+                ).rowcount:
+                    raise LookupError(profile_id)
+        except sqlite3.IntegrityError as exc:
+            raise StoreError(f"a profile named {name!r} already exists") from exc
+        profile = self.get_profile(profile_id)
+        assert profile is not None
+        return profile
+
+    def delete_profile(self, profile_id: str) -> bool:
+        with self.transaction() as conn:
+            return conn.execute("DELETE FROM profiles WHERE id = ?", (profile_id,)).rowcount > 0
+
+
+def _profile(row: sqlite3.Row) -> dict[str, Any]:
+    out = dict(row)
+    out["config"] = json.loads(out["config"])
+    return out
 
 
 def _clear_results(conn: sqlite3.Connection, analysis_id: str) -> None:

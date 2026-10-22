@@ -38,8 +38,8 @@ jobs:
       - run: uv run pytest --cov --cov-report=term --cov-fail-under=90
       - name: Core works without the web extra
         run: |
-          uv sync --locked
-          uv run netguard lab evaluate > /dev/null
-          uv run netguard serve 2>&1 | grep -q "pip install 'netguard\[web\]'"
+          uv sync --locked --no-dev
+          uv run --no-sync netguard lab evaluate > /dev/null
+          uv run --no-sync netguard serve 2>&1 | grep -q "pip install 'netguard\[web\]'"
       - name: Lab scorecard
-        run: uv run netguard lab evaluate >> "$GITHUB_STEP_SUMMARY"
+        run: uv run --no-sync netguard lab evaluate >> "$GITHUB_STEP_SUMMARY"

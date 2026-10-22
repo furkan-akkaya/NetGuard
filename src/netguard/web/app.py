@@ -8,8 +8,10 @@ and ``sort`` (a field name, ``-`` prefix for descending).
 
 from __future__ import annotations
 
+import csv
 import hashlib
 import hmac
+import io
 import json
 import logging
 import os
@@ -18,11 +20,13 @@ import uuid
 from collections.abc import AsyncIterator, Iterator
 from contextlib import asynccontextmanager
 from dataclasses import fields
+from pathlib import Path
 from typing import Annotated, Any
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, Response
 from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 
 from netguard import __version__
 from netguard.config import ConfigError, config_to_mapping, merge_config
@@ -31,12 +35,24 @@ from netguard.events import FORMATS, export
 from netguard.formats import PCAP_MAGICS, PCAPNG_MAGIC
 from netguard.jobs import JobRunner
 from netguard.models import iso_ts
+from netguard.output import FLOW_FIELDS
+from netguard.report import render_report
 from netguard.store import SCHEMA_VERSION, Store, StoreError
 from netguard.store import Page as StorePage
 from netguard.web import schemas
 from netguard.web.settings import ServerSettings
 
 log = logging.getLogger("netguard.web")
+STATIC_DIR = Path(__file__).parent / "static"
+#: The dashboard is a static bundle: scripts and styles only from our origin,
+#: no inline script, no framing, no plugins.
+DASHBOARD_CSP = (
+    "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; "
+    "font-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
+)
+NO_DASHBOARD = """<!doctype html><meta charset="utf-8"><title>NetGuard</title>
+<p>The NetGuard API is running (<a href="/api/v1/docs">API docs</a>), but the dashboard bundle is not built.
+Build it with <code>pnpm --dir frontend install &amp;&amp; pnpm --dir frontend build</code> and restart.</p>"""
 API = "/api/v1"
 _FILENAME_SAFE = re.compile(r"[^A-Za-z0-9._ ()-]")
 
@@ -112,6 +128,8 @@ def create_app(settings: ServerSettings) -> FastAPI:
         response.headers.setdefault("Referrer-Policy", "no-referrer")
         if request.url.path.startswith(API):
             response.headers.setdefault("Cache-Control", "no-store")
+        else:
+            response.headers.setdefault("Content-Security-Policy", DASHBOARD_CSP)
         return response
 
     @app.exception_handler(StoreError)
@@ -154,6 +172,52 @@ def create_app(settings: ServerSettings) -> FastAPI:
                     }
                 )
         return out
+
+    @app.get(f"{API}/summary", response_model=schemas.Summary, dependencies=auth, tags=["service"])
+    def summary() -> dict[str, Any]:
+        data = store.summary()
+        data["recent_analyses"] = [_analysis(a, full=False) for a in data["recent_analyses"]]
+        return data
+
+    # ------------------------------------------------------------ profiles
+
+    def _profile(row: dict[str, Any]) -> dict[str, Any]:
+        return {**row, "created_at": _iso(row["created_at"]), "updated_at": _iso(row["updated_at"])}
+
+    def _validated(body: schemas.ProfileIn) -> dict[str, Any]:
+        try:
+            merge_config(settings.analysis_config, body.config)
+        except ConfigError as exc:
+            raise HTTPException(status_code=422, detail=f"invalid configuration: {exc}") from exc
+        return body.config
+
+    @app.get(f"{API}/profiles", response_model=list[schemas.Profile], dependencies=auth, tags=["rules"])
+    def list_profiles() -> list[dict[str, Any]]:
+        return [_profile(p) for p in store.list_profiles()]
+
+    @app.post(f"{API}/profiles", response_model=schemas.Profile, status_code=201, dependencies=auth, tags=["rules"])
+    def create_profile(body: schemas.ProfileIn) -> dict[str, Any]:
+        return _profile(store.save_profile(body.name, body.description, _validated(body)))
+
+    @app.get(f"{API}/profiles/{{profile_id}}", response_model=schemas.Profile, dependencies=auth, tags=["rules"])
+    def get_profile(profile_id: str) -> dict[str, Any]:
+        row = store.get_profile(profile_id)
+        if row is None:
+            raise HTTPException(status_code=404, detail="profile not found")
+        return _profile(row)
+
+    @app.put(f"{API}/profiles/{{profile_id}}", response_model=schemas.Profile, dependencies=auth, tags=["rules"])
+    def update_profile(profile_id: str, body: schemas.ProfileIn) -> dict[str, Any]:
+        try:
+            return _profile(store.save_profile(body.name, body.description, _validated(body), profile_id))
+        except LookupError as exc:
+            raise HTTPException(status_code=404, detail="profile not found") from exc
+
+    @app.delete(f"{API}/profiles/{{profile_id}}", status_code=204, dependencies=auth, tags=["rules"])
+    def delete_profile(profile_id: str) -> Response:
+        if not store.delete_profile(profile_id):
+            raise HTTPException(status_code=404, detail="profile not found")
+        return Response(status_code=204)
 
     # ------------------------------------------------------------ captures
 
@@ -235,11 +299,18 @@ def create_app(settings: ServerSettings) -> FastAPI:
     def create_analysis(capture_id: str, body: schemas.AnalysisRequest | None = None) -> dict[str, Any]:
         if store.get_capture(capture_id) is None:
             raise HTTPException(status_code=404, detail="capture not found")
+        base = settings.analysis_config
+        profile_id = body.profile_id if body else None
         try:
-            config = merge_config(settings.analysis_config, body.config if body else {})
+            if profile_id is not None:
+                profile = store.get_profile(profile_id)
+                if profile is None:
+                    raise HTTPException(status_code=404, detail="profile not found")
+                base = merge_config(base, profile["config"])
+            config = merge_config(base, body.config if body else {})
         except ConfigError as exc:
             raise HTTPException(status_code=422, detail=f"invalid configuration: {exc}") from exc
-        row = store.create_analysis(capture_id, config_to_mapping(config), __version__)
+        row = store.create_analysis(capture_id, config_to_mapping(config), __version__, profile_id)
         runner.wake()
         return _analysis(row)
 
@@ -322,6 +393,61 @@ def create_app(settings: ServerSettings) -> FastAPI:
             headers={"Content-Disposition": f'attachment; filename="netguard-{analysis_id}-{format}.ndjson"'},
         )
 
+    @app.get(
+        f"{API}/analyses/{{analysis_id}}/flows.csv",
+        dependencies=auth,
+        tags=["flows"],
+        summary="Export the stored flows of an analysis as CSV",
+        response_class=StreamingResponse,
+    )
+    def export_flows(analysis_id: str) -> StreamingResponse:
+        if store.get_analysis(analysis_id) is None:
+            raise HTTPException(status_code=404, detail="analysis not found")
+
+        def rows() -> Iterator[str]:
+            buf = io.StringIO()
+            writer = csv.DictWriter(buf, fieldnames=FLOW_FIELDS, extrasaction="ignore", lineterminator="\n")
+            writer.writeheader()
+            for flow in store.iter_flows(analysis_id):
+                writer.writerow(flow)
+                if buf.tell() > 65536:
+                    yield buf.getvalue()
+                    buf.seek(0)
+                    buf.truncate()
+            yield buf.getvalue()
+
+        return StreamingResponse(
+            rows(),
+            media_type="text/csv",
+            headers={"Content-Disposition": f'attachment; filename="netguard-{analysis_id}-flows.csv"'},
+        )
+
+    @app.get(
+        f"{API}/analyses/{{analysis_id}}/report.html",
+        dependencies=auth,
+        tags=["analyses"],
+        summary="A single-file HTML report of a finished analysis (no scripts, printable)",
+        response_class=HTMLResponse,
+    )
+    def report(analysis_id: str) -> HTMLResponse:
+        analysis = store.get_analysis(analysis_id)
+        if analysis is None:
+            raise HTTPException(status_code=404, detail="analysis not found")
+        if analysis["status"] != "done":
+            raise HTTPException(status_code=409, detail=f"analysis is {analysis['status']}, not done")
+        capture = store.get_capture(analysis["capture_id"])
+        name = capture["filename"] if capture else analysis["capture_id"]
+        meta = {
+            "Analysis": analysis_id,
+            "Capture SHA-256": capture["sha256"] if capture else "",
+            "Analysed": _iso(analysis["finished_at"]),
+            "NetGuard": analysis["netguard_version"],
+        }
+        page = render_report(
+            analysis["stats"], list(store.iter_alerts(analysis_id)), name, analysis["capture_info"], meta
+        )
+        return HTMLResponse(page, headers={"Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'"})
+
     # -------------------------------------------------------------- alerts
 
     @app.get(f"{API}/alerts", response_model=schemas.Page[schemas.AlertOut], dependencies=auth, tags=["alerts"])
@@ -349,5 +475,21 @@ def create_app(settings: ServerSettings) -> FastAPI:
         if row is None:
             raise HTTPException(status_code=404, detail="alert not found")
         return row
+
+    # ----------------------------------------------------------- dashboard
+
+    static_dir = settings.static_dir or STATIC_DIR
+    if (static_dir / "assets").is_dir():
+        app.mount("/assets", StaticFiles(directory=static_dir / "assets"), name="assets")
+
+    @app.get("/{path:path}", include_in_schema=False)
+    def dashboard(path: str) -> Response:
+        # Client-side routes all serve index.html; unknown /api paths stay 404.
+        if path.startswith("api/"):
+            raise HTTPException(status_code=404, detail="not found")
+        index = static_dir / "index.html"
+        if not index.is_file():
+            return HTMLResponse(NO_DASHBOARD)
+        return FileResponse(index, headers={"Cache-Control": "no-cache"})
 
     return app

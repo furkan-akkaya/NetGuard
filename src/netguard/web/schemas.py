@@ -54,6 +54,7 @@ class AnalysisSummary(BaseModel):
     error: str | None
     attempts: int
     netguard_version: str
+    profile_id: str | None = None
     alert_count: int
     flow_count: int
     flows_truncated: bool
@@ -66,6 +67,7 @@ class Analysis(AnalysisSummary):
 
 
 class AnalysisRequest(BaseModel):
+    profile_id: str | None = Field(default=None, description="Start from this rule profile's configuration")
     config: dict[str, Any] = Field(
         default_factory=dict,
         description="Overrides of the server's base configuration, TOML-shaped, "
@@ -118,3 +120,27 @@ class FlowOut(BaseModel):
     retransmissions: int
     seq_gaps: int
     end_reason: str
+
+
+class ProfileIn(BaseModel):
+    name: str = Field(min_length=1, max_length=64, pattern=r"^[\w .()-]+$")
+    description: str = Field(default="", max_length=500)
+    config: dict[str, Any] = Field(
+        default_factory=dict, description="Overrides of the server's base configuration (same shape as analyses)"
+    )
+
+
+class Profile(ProfileIn):
+    id: str
+    created_at: str
+    updated_at: str
+
+
+class Summary(BaseModel):
+    captures: int
+    capture_bytes: int
+    analyses: dict[str, int]
+    alerts: dict[str, int]
+    alerts_by_rule: list[dict[str, Any]]
+    recent_alerts: list[AlertOut]
+    recent_analyses: list[AnalysisSummary]
