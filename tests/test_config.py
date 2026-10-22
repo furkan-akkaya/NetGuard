@@ -81,3 +81,23 @@ def test_example_config_matches_the_code_defaults():
     for f in fields(Config):
         if f.name != "allowlist":
             assert getattr(example, f.name) == getattr(defaults, f.name), f.name
+
+
+def test_config_round_trips_through_a_mapping():
+    from netguard.config import config_from_mapping, config_to_mapping
+
+    cfg = load_config("netguard.example.toml")
+    assert config_from_mapping(config_to_mapping(cfg)) == cfg
+
+
+def test_merge_config_overrides_single_keys_and_validates():
+    from netguard.config import merge_config
+
+    merged = merge_config(Config(), {"portscan": {"min_distinct_ports": 30}, "allowlist": ["10.0.0.0/8"]})
+    assert merged.portscan.min_distinct_ports == 30
+    assert merged.portscan.window_seconds == 60.0
+    assert merged.is_allowlisted("10.1.2.3")
+    with pytest.raises(ConfigError, match="unknown keys"):
+        merge_config(Config(), {"portscan": {"nope": 1}})
+    with pytest.raises(ConfigError, match="must be a section"):
+        merge_config(Config(), {"portscan": 5})
