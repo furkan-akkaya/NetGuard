@@ -22,6 +22,8 @@ evidence and is reported once, after it has been idle (ADR-0003).
 | `window_seconds` | 60 | Sliding window length |
 | `idle_timeout_seconds` | 10 | Quiet time after which the incident is reported |
 | `high_severity_ports` | 100 | Distinct ports for HIGH severity |
+| `max_open_ratio` | 0.8 | Do not report if more than this share of ports was open |
+| `max_keys` | 100 000 | Tracked (source, target) pairs, LRU |
 
 Sources in the global `allowlist` are ignored.
 
@@ -36,16 +38,18 @@ stealth scan in the summary.
 ## Known false positives
 
 - **Passive-mode FTP and some P2P clients** open many successful connections to
-  changing ports (synthetic scenario `passive_ftp`). The rule counts probes
-  without looking at whether connections succeed. Phase 3 (TRW) uses the flow
-  states from Phase 2 (`SF` vs `S0/REJ`) to fix this.
+  changing ports (synthetic scenario `passive_ftp`). Since v0.3 an incident in
+  which more than `max_open_ratio` (0.8) of the ports were open is not
+  reported, which fixes this case; NG-SCAN-002 (TRW) also stays quiet on it.
 - **Vulnerability scanners and monitoring** — expected; allowlist them.
 
 ## Known false negatives
 
-- Slow scans that stay below the threshold in every window (`slow_scan`, `nmap -T1`).
+- Slow scans that stay below the threshold in every window (`slow_scan`, `nmap -T1`);
+  NG-SCAN-002 (TRW) has no window and catches them.
+- Scans of a host where more than `max_open_ratio` of the probed ports are open.
 - Distributed or decoy scans (`nmap -D`): probes are split across many sources.
-- UDP scans (`nmap -sU`) — not covered by this rule.
+- UDP scans (`nmap -sU`) — see NG-SCAN-003.
 - Fragmented probes (`nmap -f`): non-first fragments have no TCP header.
 
 ## Tuning

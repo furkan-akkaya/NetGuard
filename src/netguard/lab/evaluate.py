@@ -22,9 +22,9 @@ from netguard.sources import open_capture
 
 
 def entity(alert: Alert) -> tuple[str, str]:
-    if alert.detector == "portscan":
+    if alert.detector in ("portscan", "udpscan"):
         return alert.detector, f"{alert.src}->{alert.dst}"
-    if alert.detector == "arpspoof":
+    if alert.detector in ("arpspoof", "synflood"):
         return alert.detector, str(alert.dst)
     return alert.detector, str(alert.src)
 
@@ -70,8 +70,10 @@ def render_markdown(results: list[ScenarioResult]) -> str:
         "|---|---|---:|---:|---:|---:|---:|---|---|",
     ]
     for r in results:
-        if r.fn:
+        if r.fn and not r.tp:
             outcome = "missed"
+        elif r.fn:
+            outcome = "detected (partly)"
         elif r.fp:
             outcome = "false positive"
         elif r.tp:
@@ -87,9 +89,15 @@ def render_markdown(results: list[ScenarioResult]) -> str:
     fn = sum(len(r.fn) for r in results)
     precision = tp / (tp + fp) if tp + fp else 0.0
     recall = tp / (tp + fn) if tp + fn else 0.0
+    attacks = [r for r in results if r.scenario.kind == "attack"]
+    benign = [r for r in results if r.scenario.kind == "benign"]
     lines += [
         "",
         f"**Totals:** TP={tp}, FP={fp}, FN={fn} — "
         f"precision {precision:.2f}, recall {recall:.2f} (entity level, synthetic scenarios).",
+        "",
+        f"**Scenarios:** {sum(bool(r.tp) for r in attacks)}/{len(attacks)} attack scenarios detected by at "
+        f"least one expected rule; {sum(not r.fp for r in benign)}/{len(benign)} benign scenarios without "
+        f"false positives.",
     ]
     return "\n".join(lines)

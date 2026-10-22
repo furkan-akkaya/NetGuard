@@ -10,6 +10,11 @@ from .helpers import tcp
 SCANNER, TARGET = "10.0.0.66", "10.0.0.10"
 
 
+def _portscan_alerts(pkts, config=None):
+    """Only this rule's alerts: other rules (e.g. TRW) may see the same traffic."""
+    return [a for a in analyze_packets(pkts, config).alerts if a.detector == "portscan"]
+
+
 @pytest.mark.parametrize(
     ("flags", "expected"),
     [
@@ -56,7 +61,7 @@ def test_below_threshold_is_quiet():
 
 def test_repeated_connections_to_one_port_are_not_a_scan():
     pkts = [tcp(i * 0.1, SCANNER, TARGET, 443, SYN, sport=30000 + i) for i in range(500)]
-    assert analyze_packets(pkts).alerts == []
+    assert _portscan_alerts(pkts) == []
 
 
 def test_open_and_closed_ports_are_reported():
@@ -66,37 +71,37 @@ def test_open_and_closed_ports_are_reported():
         pkts.append(tcp(i * 0.01, SCANNER, TARGET, port, SYN))
         reply = SYN | ACK if port in (1000, 1019) else RST | ACK
         pkts.append(tcp(i * 0.01 + 0.001, TARGET, SCANNER, 40000, reply, sport=port))
-    alert = analyze_packets(pkts).alerts[0]
+    alert = _portscan_alerts(pkts)[0]
     assert alert.evidence["open_ports"] == [1000, 1019]  # 1000 answered before the threshold
     assert alert.evidence["closed_ports_count"] == 18
     assert "Open: 1000, 1019" in alert.summary
 
 
 def test_stealth_probe_types_are_called_out():
-    alert = analyze_packets(_scan(30, flags=FIN | PSH | URG)).alerts[0]
+    alert = _portscan_alerts(_scan(30, flags=FIN | PSH | URG))[0]
     assert alert.evidence["probe_types"] == {"XMAS": 30}
     assert "stealth" in alert.summary
 
 
 def test_large_scan_is_high_severity():
-    alert = analyze_packets(_scan(200, gap=0.001), _cfg(high_severity_ports=100)).alerts[0]
+    alert = _portscan_alerts(_scan(200, gap=0.001), _cfg(high_severity_ports=100))[0]
     assert alert.severity == Severity.HIGH
 
 
 def test_allowlisted_scanner_is_ignored():
     cfg = Config(allowlist=["10.0.0.0/24"])
-    assert analyze_packets(_scan(100), cfg).alerts == []
+    assert _portscan_alerts(_scan(100), cfg) == []
 
 
 def test_slow_scan_evades_the_window():
     """Documented limitation: one probe per 15s never reaches 15 ports per 60s."""
-    assert analyze_packets(_scan(100, gap=15.0)).alerts == []
+    assert _portscan_alerts(_scan(100, gap=15.0)) == []
 
 
 def test_separate_bursts_become_separate_incidents():
     first = _scan(20)
     second = [tcp(500 + i * 0.01, SCANNER, TARGET, 5000 + i, SYN) for i in range(20)]
-    alerts = analyze_packets(first + second).alerts
+    alerts = _portscan_alerts(first + second)
     assert len(alerts) == 2
 
 

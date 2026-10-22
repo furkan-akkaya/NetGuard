@@ -13,6 +13,11 @@ inside a sliding time window. Crossing ``min_distinct_ports`` opens an incident;
 the incident keeps collecting evidence (including which ports answered SYN-ACK,
 i.e. were found *open*) and is reported once it has been idle for
 ``idle_timeout_seconds`` or the input ends.
+
+Since v0.3 the outcome matters: an incident in which more than
+``max_open_ratio`` of the ports were open is not reported. Probing mostly
+closed or filtered ports is what makes a scan; a client that connects
+successfully to many ports (passive-mode FTP, P2P) is using services.
 """
 
 from __future__ import annotations
@@ -20,7 +25,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 
 from netguard.config import Config
-from netguard.detectors.base import Detector
+from netguard.detectors.base import Detector, RuleInfo
 from netguard.models import ACK, FIN, PSH, RST, SYN, URG, Alert, Packet, Severity, Technique
 from netguard.window import BurstTracker, Incident
 
@@ -47,6 +52,8 @@ def probe_type(flags: int) -> str | None:
 
 class PortScanDetector(Detector):
     name = "portscan"
+    packet_protos = frozenset({"tcp"})
+    rules = (RuleInfo(RULE_ID, "TCP port scan", T1046),)
 
     def __init__(self, config: Config) -> None:
         self.cfg = config.portscan
@@ -55,7 +62,9 @@ class PortScanDetector(Detector):
             window=self.cfg.window_seconds,
             threshold=self.cfg.min_distinct_ports,
             idle_timeout=self.cfg.idle_timeout_seconds,
+            max_keys=self.cfg.max_keys,
         )
+        self.suppressed = 0  # incidents not reported because most ports were open
 
     def on_packet(self, pkt: Packet) -> Iterable[Alert]:
         if pkt.proto != "tcp" or pkt.tcp_flags is None or pkt.src_ip is None or pkt.dst_ip is None:
@@ -77,10 +86,22 @@ class PortScanDetector(Detector):
         return ()
 
     def tick(self, now: float) -> Iterable[Alert]:
-        return [self._alert(inc) for inc in self.tracker.expire(now)]
+        return self._report(self.tracker.expire(now))
 
     def flush(self) -> Iterable[Alert]:
-        return [self._alert(inc) for inc in self.tracker.drain()]
+        return self._report(self.tracker.drain())
+
+    def _report(self, incidents: list[Incident[Key, int]]) -> list[Alert]:
+        alerts = []
+        for inc in incidents:
+            open_count = sum(1 for p in inc.responses.get("open", ()) if p in inc.items)
+            if open_count > self.cfg.max_open_ratio * inc.distinct_items:
+                # Most "probes" reached open ports: a client using services (passive FTP,
+                # P2P), not a scan. A scanner's probes mostly hit closed or filtered ports.
+                self.suppressed += 1
+                continue
+            alerts.append(self._alert(inc))
+        return alerts
 
     def _alert(self, inc: Incident[Key, int]) -> Alert:
         scanner, target = inc.key
@@ -106,7 +127,7 @@ class PortScanDetector(Detector):
         return Alert(
             detector=self.name,
             rule_id=RULE_ID,
-            title="TCP port scan",
+            title=self.rules[0].title,
             severity=severity,
             first_seen=inc.first_seen,
             last_seen=inc.last_seen,

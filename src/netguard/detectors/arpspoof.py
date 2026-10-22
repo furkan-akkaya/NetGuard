@@ -22,7 +22,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 
 from netguard.config import Config
-from netguard.detectors.base import Detector
+from netguard.detectors.base import Detector, RuleInfo
 from netguard.models import UNSPECIFIED_IPV4, Alert, Packet, Severity, Technique
 
 T1557_002 = Technique("T1557.002", "Adversary-in-the-Middle: ARP Cache Poisoning")
@@ -45,6 +45,8 @@ class Binding:
 
 class ArpSpoofDetector(Detector):
     name = "arpspoof"
+    packet_protos = frozenset({"arp"})
+    rules = (RuleInfo(RULE_ID, "ARP binding change (possible ARP spoofing)", T1557_002),)
 
     def __init__(self, config: Config) -> None:
         self.cfg = config.arpspoof
@@ -120,7 +122,7 @@ class ArpSpoofDetector(Detector):
         return Alert(
             detector=self.name,
             rule_id=RULE_ID,
-            title="ARP binding change (possible ARP spoofing)",
+            title=self.rules[0].title,
             severity=severity,
             first_seen=pkt.ts,
             last_seen=pkt.ts,

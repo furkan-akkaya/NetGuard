@@ -12,6 +12,8 @@ window_seconds = 60          # sliding window length
 min_distinct_ports = 15      # distinct ports on one target within the window -> incident
 idle_timeout_seconds = 10    # incident is reported after this much silence
 high_severity_ports = 100    # incidents with at least this many ports are HIGH
+max_open_ratio = 0.8         # not a scan if more than this share of ports was open (passive FTP)
+max_keys = 100000            # tracked (source, target) pairs, ~0.7 KB each
 
 [hostsweep]
 enabled = true
@@ -20,11 +22,77 @@ min_distinct_hosts = 15
 idle_timeout_seconds = 10
 high_severity_hosts = 100
 tcp_private_only = true      # ignore TCP SYNs to public IPs (web browsing looks like a sweep)
+max_keys = 100000
 
 [arpspoof]
 enabled = true
 realert_seconds = 300        # one alert per IP per period, unless severity escalates
 critical_ips = []            # e.g. ["192.168.1.1"] for your default gateway -> HIGH severity
+
+[udpscan]
+enabled = true
+window_seconds = 60
+min_distinct_ports = 15
+idle_timeout_seconds = 10
+high_severity_ports = 100
+max_answered_ratio = 0.5     # suppress if more ports than this answered (VoIP, games)
+
+[trw]                        # scan detection by connection outcome (Jung et al. 2004)
+enabled = true
+benign_success_probability = 0.8
+scanner_success_probability = 0.2
+detection_probability = 0.99
+false_positive_probability = 0.01
+min_failures = 5             # never decide on fewer failed first contacts
+idle_timeout_seconds = 60
+state_timeout_seconds = 3600 # slow-scan horizon
+high_severity_failures = 100
+
+[synflood]
+enabled = true
+interval_seconds = 10
+min_attempts = 500           # new connection attempts to one ip:port per interval
+max_completion_ratio = 0.2   # ... of which at most this share completed the handshake
+idle_timeout_seconds = 30
+high_severity_attempts = 5000
+
+[dnstunnel]
+enabled = true
+window_seconds = 300
+min_distinct_subdomains = 50
+min_mean_subdomain_length = 24
+idle_timeout_seconds = 60
+high_severity_subdomains = 500
+
+[nxdomain]
+enabled = true
+window_seconds = 60
+min_distinct_names = 25
+idle_timeout_seconds = 30
+high_severity_names = 200
+
+[fragments]                  # tiny / header-splitting fragments (nmap -f), RFC 1858
+enabled = true
+small_fragment_bytes = 256
+min_fragments = 5
+idle_timeout_seconds = 30
+high_severity_fragments = 100
+
+[connrate]                   # per-host baseline; needs warmup_intervals of history
+enabled = true
+interval_seconds = 60
+min_count = 100
+sensitivity = 6
+warmup_intervals = 10
+smoothing = 0.1
+
+[volume]                     # per-host baseline of bytes sent
+enabled = true
+interval_seconds = 60
+min_bytes = 20000000
+sensitivity = 6
+warmup_intervals = 10
+smoothing = 0.1
 
 [flows]
 # Flow table memory bound. ~0.3-0.5 KB per flow; when full, the least recently

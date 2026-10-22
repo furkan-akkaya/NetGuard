@@ -4,12 +4,14 @@ netguard analyze capture.pcap
 netguard analyze --format json capture.pcapng > report.json
 sudo tcpdump -i eth0 -U -w - | netguard analyze --format jsonl -
 netguard flows --format csv capture.pcap > flows.csv
+netguard rules
 netguard lab list | generate DIR | evaluate
 """
 
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
 from collections.abc import Sequence
@@ -18,6 +20,7 @@ from pathlib import Path
 from netguard import __version__
 from netguard.config import ConfigError, load_config
 from netguard.decode import UnsupportedLinkType
+from netguard.detectors import DETECTORS
 from netguard.engine import Engine
 from netguard.output import FlowWriter, render_json, render_text, use_color, write_jsonl_alert
 from netguard.sources import CaptureFormatError, CaptureInfo, open_capture
@@ -48,6 +51,10 @@ def build_parser() -> argparse.ArgumentParser:
     fl.add_argument(
         "-f", "--format", choices=("csv", "jsonl"), default="csv", help="CSV with a header (default) or JSON Lines"
     )
+
+    ru = sub.add_parser("rules", help="list the detection rules and whether the configuration enables them")
+    ru.add_argument("-c", "--config", type=Path, help="TOML configuration file")
+    ru.add_argument("-f", "--format", choices=("text", "json"), default="text")
 
     lab = sub.add_parser("lab", help="synthetic lab scenarios")
     lab_sub = lab.add_subparsers(dest="lab_command", required=True)
@@ -96,6 +103,29 @@ def cmd_flows(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def cmd_rules(args: argparse.Namespace) -> int:
+    config = load_config(args.config)
+    rows = [
+        {
+            "rule_id": rule.rule_id,
+            "detector": det.name,
+            "enabled": getattr(config, det.name).enabled,
+            "title": rule.title,
+            "technique": rule.technique.id if rule.technique else None,
+            "doc": f"docs/rules/{rule.rule_id}.md",
+        }
+        for det in DETECTORS
+        for rule in det.rules
+    ]
+    if args.format == "json":
+        print(json.dumps(rows, indent=2))
+        return EXIT_OK
+    for r in rows:
+        state = "on " if r["enabled"] else "off"
+        print(f"{r['rule_id']:<13} {state} {r['detector']:<10} {r['technique'] or '-':<10} {r['title']}")
+    return EXIT_OK
+
+
 def cmd_lab(args: argparse.Namespace) -> int:
     from netguard.lab import evaluate, scenarios, synth
 
@@ -121,6 +151,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             return cmd_analyze(args)
         if args.command == "flows":
             return cmd_flows(args)
+        if args.command == "rules":
+            return cmd_rules(args)
         return cmd_lab(args)
     except (ConfigError, CaptureFormatError, UnsupportedLinkType, KeyError) as exc:
         print(f"netguard: error: {exc}", file=sys.stderr)
