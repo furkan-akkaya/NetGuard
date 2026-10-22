@@ -7,22 +7,26 @@
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 NetGuard reads network traffic (pcap/pcapng files or a live `tcpdump` stream),
+reconstructs connections (flows with Zeek-compatible connection states),
 detects reconnaissance and layer-2 attacks, and reports each finding as a
 single **explainable alert**. Every alert states what was observed, which
 threshold it crossed, what the attacker likely learned, and which MITRE ATT&CK
 technique it maps to.
 
-> **Status:** v0.1 MVP. Three detectors, tested on labelled synthetic scenarios.
-> Validation on real lab captures is in progress (see the [roadmap](ROADMAP.md)).
+> **Status:** v0.2.0 — packet ingestion, flow engine and three detectors, tested
+> on labelled synthetic scenarios. More detectors, API and dashboard are next;
+> validation on real lab captures is pending (see the [roadmap](ROADMAP.md)).
 
 ```text
 $ netguard analyze syn_scan.pcap
 
-NetGuard 0.1.0 — syn_scan.pcap
+NetGuard 0.2.0 — syn_scan.pcap
 
 Packets: 2,003   Bytes: 108,162   Duration: 1.0s   Flows: 1,000   Decode errors: 0
 Protocols: tcp 2,003
-Top talkers: 10.0.0.66 (54,162 B), 10.0.0.10 (54,000 B)
+Flow states: REJ 997, RSTO 3
+Top services (flows): tcp/21 1, tcp/22 1, tcp/23 1, tcp/25 1, tcp/53 1
+Top talkers: 10.0.0.10 (108,162 B), 10.0.0.66 (108,162 B)
 
 Alerts: 1 (1 HIGH)
 
@@ -30,7 +34,12 @@ Alerts: 1 (1 HIGH)
     10.0.0.66 probed 1000 distinct TCP ports on 10.0.0.10 in 1.0s (threshold: 15 ports
     within 60s). Probes: SYN=1000. Target replies: 3 open, 997 closed, 0 unanswered.
     Open: 22, 80, 443.
+    2025-10-09 08:53:20.000Z → 2025-10-09 08:53:20.999Z  rule=NG-SCAN-001 detector=portscan
 ```
+
+`REJ 997, RSTO 3` is the flow-level view of the same scan: 997 closed ports
+answered the SYN with RST; the 3 open ports answered SYN-ACK and the scanner
+aborted with RST (a half-open scan).
 
 ## Features
 
@@ -40,14 +49,23 @@ Alerts: 1 (1 HIGH)
 | `hostsweep` | ICMP ping sweeps, ARP sweeps, horizontal TCP scans | [T1018](https://attack.mitre.org/techniques/T1018/) | Distinct destination hosts per source in a sliding window. Reports which hosts replied (were found alive). |
 | `arpspoof` | ARP cache poisoning / MITM | [T1557.002](https://attack.mitre.org/techniques/T1557/002/) | Learns IP→MAC bindings and flags changes. Adds context: unsolicited replies, flip-flopping, critical IPs. Identifies the suspect MAC. |
 
+Each alert has a stable rule id documented in the [rule catalog](docs/rules/README.md)
+(signal, thresholds, evidence, known false positives, tuning).
+
+Traffic analysis:
+
+- **Flows:** bidirectional connections with originator, per-direction packets/bytes/payload, duration, TCP history, Zeek-style `conn_state` (`S0`, `REJ`, `SF`, `RSTO`, …), retransmission and sequence-gap counts. Export with `netguard flows`.
+- **Statistics:** protocol and packet-size distributions, time series, flow states, top services, top flows, top endpoints (sent/received).
+- **Capture formats:** pcap and pcapng, including multi-interface pcapng with different link types; Ethernet, Linux SLL, BSD loopback, raw IP; IPv4/IPv6; TCP, UDP, ICMP, ICMPv6, ARP, DNS query names.
+
 Engineering properties:
 
 - **Explainable.** Every alert carries a plain-language summary and structured evidence, including the thresholds it crossed.
 - **Low noise.** Activity is grouped into incidents: a 65,535-port scan produces one alert, not 65,535.
 - **Measured.** Labelled benign and attack scenarios run in CI. Precision, recall and the known false positives are published in [EVALUATION.md](docs/EVALUATION.md).
-- **Robust.** The decoder treats every byte as hostile. Malformed frames are counted, never fatal, and fuzz-tested. All detector state has memory bounds.
+- **Robust.** Every byte is treated as hostile. Malformed frames and capture files are counted or rejected, never fatal, and fuzz-tested. All state has memory bounds, and hitting a bound costs O(1), so a spoofed-source flood cannot exhaust memory or CPU.
 - **Deterministic.** Detectors use capture timestamps instead of the wall clock, so the same pcap always gives the same result.
-- **Minimal.** One runtime dependency ([dpkt](https://github.com/kbandla/dpkt)). NetGuard never needs root: live capture is delegated to `tcpdump`.
+- **Minimal.** One runtime dependency ([dpkt](https://github.com/kbandla/dpkt)); capture-file readers and the hot decode path are NetGuard's own, bounded code. NetGuard never needs root: live capture is delegated to `tcpdump`.
 
 ## Quick start
 
@@ -68,6 +86,8 @@ uv run netguard lab evaluate                   # scorecard over all scenarios
 netguard analyze capture.pcapng
 netguard analyze -f json capture.pcap > report.json      # one JSON document
 netguard analyze -c netguard.toml capture.pcap           # custom thresholds / allowlist
+netguard flows capture.pcap > flows.csv                  # connection records (CSV)
+netguard flows -f jsonl capture.pcap | jq 'select(.state=="S0")'
 
 # Live: tcpdump captures (as root), NetGuard analyzes (as your user)
 sudo tcpdump -i eth0 -U -w - 'not port 22' | netguard analyze -f jsonl -
@@ -87,21 +107,22 @@ scenarios (6 attack, 5 benign). Scoring is per entity. See
 |---|---|
 | Attacks detected | 5 / 6 (the missed one is a deliberate *slow scan*: 1 probe every 15 s) |
 | Benign scenarios with false positives | 3 / 5 (monitoring poller, DHCP re-assignment, passive FTP) |
-| Throughput | ~60k packets/s, ~37 MB RSS (242k-packet pcap, Apple M1, single core) |
+| Throughput | ~110k packets/s incl. start-up, 35 MB RSS (242k-packet reference pcap, Apple M1, single core) |
+| Worst case | 500k-source spoofed SYN flood: 349 MB peak RSS, bounded by configuration |
 
 All of these numbers come from synthetic traffic that we designed ourselves.
 They show the detection logic works as intended and expose the known blind
 spots. They are not a claim about accuracy on real networks.
-Validation on real captures is part of [Phase 2](ROADMAP.md).
+Validation on real captures is part of [Phase 8](ROADMAP.md).
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-    A[pcap / pcapng file<br/>tcpdump -w - stream] --> B[sources<br/>format sniffing]
-    B --> C[decode<br/>dpkt → Packet]
+    A[pcap / pcapng file<br/>tcpdump -w - stream] --> B[formats<br/>bounded readers]
+    B --> C[decode<br/>fast path / dpkt → Packet]
     C --> D[engine]
-    D --> E[stats & flows]
+    D --> E[flow table<br/>conn_state] --> S[statistics]
     D --> F1[portscan]
     D --> F2[hostsweep]
     D --> F3[arpspoof]
@@ -118,7 +139,8 @@ See [ARCHITECTURE.md](docs/ARCHITECTURE.md) and the [decision records](docs/adr/
 | [Roadmap](ROADMAP.md) | Current state, phases, MVP scope, exit criteria, test strategy (Turkish) |
 | [Tasks](docs/TASKS.md) | Current task board |
 | [Architecture](docs/ARCHITECTURE.md) | Components, data flow, extension points |
-| [ADRs](docs/adr/) | Why Python + dpkt, why tcpdump for capture, why incidents |
+| [ADRs](docs/adr/) | Python + dpkt, tcpdump for capture, incidents, flow semantics, own capture readers |
+| [Rule catalog](docs/rules/README.md) | One page per detection rule |
 | [Evaluation](docs/EVALUATION.md) | Method, scorecard, benchmark, limitations |
 | [Lab setup](docs/LAB_SETUP.md) | Building a safe UTM/Kali/Ubuntu lab to validate detections |
 | [Learning notes](docs/learning/) | Technical deep-dives (Turkish) |

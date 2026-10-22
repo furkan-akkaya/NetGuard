@@ -70,7 +70,7 @@ ileri-geri gidip gelme, kritik IP) önem derecesini belirleriz.
 | Deque + her pakette yeniden say | O(n) | O(n) | Yavaş, tarama sırasında n büyür |
 | **Deque + Counter (seçilen)** | **O(1) amortize** | O(n), üst sınırlı | Kesin sayım. Bellek pencere içindeki olay sayısı kadar |
 | HyperLogLog | O(1) | O(1) (~KB) | Yaklaşık sayım, eleman *silinemez*, pencere için ek yapı gerekir |
-| TRW (Threshold Random Walk) | O(1) | O(1) | Bağlantı *sonucuna* bakar, ayrı bir model (Faz 4) |
+| TRW (Threshold Random Walk) | O(1) | O(1) | Bağlantı *sonucuna* bakar, ayrı bir model (Faz 3) |
 
 ### 3.2 Nasıl çalışıyor? (`SlidingDistinct`)
 
@@ -116,8 +116,10 @@ kontrol eder. Sahte kaynak IP'lerle milyonlarca anahtar yaratılabilir.
 Bu yüzden:
 
 - `max_events_per_key` olduğu için tek bir anahtarın penceresi sınırsız büyüyemez.
-- `max_keys` aşılınca önce GC çalışır, yine doluysa yeni anahtar *düşürülür*
-  ve `dropped_keys` artar.
+- `max_keys` aşılınca önce GC çalışır, yine doluysa **en uzun süredir
+  kullanılmayan** anahtar çıkarılır ve `evicted_keys` artar. (v0.1'de yeni
+  anahtar düşürülüyordu ve GC her seferinde tüm tabloyu tarıyordu; bunun neden
+  bir DoS açığı olduğu [not 02 §6](02-flows-and-tcp-state.md)'da.)
 
 Bu bir **fail-open** tercihidir: saldırı altında bazı şeyleri kaçırabiliriz
 ama çökmeyiz. Çöken bir IDS hiçbir şey görmez, yani fail-closed bir IDS

@@ -39,3 +39,11 @@ Option 2, implemented generically in `window.BurstTracker`.
 - Order of operations matters: the engine must expire idle incidents
   **before** processing the next packet. Otherwise that packet extends an
   incident that has already ended. A regression test covers this.
+
+## Update (2026-10-22)
+
+The roadmap was renumbered. The early-warning alert and max-incident-age work
+referred to above as "Phase 3" is now task **6.4** (live capture phase).
+Since v0.2.0 a closed incident also clears its key's window, so the events of
+one incident can never re-open the next one (each event belongs to at most one
+incident).
