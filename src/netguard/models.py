@@ -13,6 +13,8 @@ from datetime import UTC, datetime
 from enum import IntEnum
 from typing import Any
 
+from netguard.dns import DnsInfo
+
 #: Version of the alert JSON contract. Bump the major on breaking changes
 #: (renamed/removed fields), the minor when fields are added.
 ALERT_SCHEMA_VERSION = "1.0"
@@ -59,6 +61,9 @@ class Packet:
     # True for any IPv4 fragment. Non-first fragments carry no L4 header and are
     # decoded with ``proto="ip-frag"``.
     fragment: bool = False
+    frag_offset: int = 0  # bytes
+    frag_more: bool = False  # the More Fragments flag
+    ip_proto: int | None = None  # IP protocol number (6 TCP, 17 UDP, 1 ICMP, ...)
     icmp_type: int | None = None
     icmp_code: int | None = None
     arp_op: int | None = None  # 1 = request, 2 = reply
@@ -66,7 +71,18 @@ class Packet:
     arp_sender_ip: str | None = None
     arp_target_mac: str | None = None
     arp_target_ip: str | None = None
-    dns_query: str | None = None
+    # ICMP destination unreachable: protocol and destination port of the
+    # original datagram quoted inside the message (port unreachable = closed UDP port).
+    icmp_orig_proto: str | None = None
+    icmp_orig_dst_port: int | None = None
+    dns: DnsInfo | None = None  # UDP port 53, queries and responses
+
+    @property
+    def dns_query(self) -> str | None:
+        """First question name of a DNS *query* (not a response), if any."""
+        if self.dns is None or self.dns.response:
+            return None
+        return self.dns.qname
 
 
 class Severity(IntEnum):

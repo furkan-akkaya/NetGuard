@@ -27,7 +27,10 @@ from typing import Any
 
 import dpkt
 
+from netguard.dns import DNS_PORT, DnsInfo, parse_dns
 from netguard.models import Packet
+
+ICMP_UNREACH = 3
 
 # Link-layer types (https://www.tcpdump.org/linktypes.html)
 DLT_NULL = 0  # BSD loopback, e.g. macOS lo0
@@ -97,6 +100,8 @@ def _fast_eth_ipv4(ts: float, buf: bytes) -> Packet | None:
         "dst_ip": socket.inet_ntoa(dip),
         "ttl": ttl,
         "fragment": bool(frag & 0x2000),
+        "frag_more": bool(frag & 0x2000),
+        "ip_proto": proto,
     }
     if proto == 6:
         if avail < 20:
@@ -126,12 +131,39 @@ def _fast_eth_ipv4(ts: float, buf: bytes) -> Packet | None:
             src_port=sport,
             dst_port=dport,
             payload_len=ulen - 8 if ulen >= 8 else len(data),
-            dns_query=_dns_query(dport, data),
+            dns=_dns(sport, dport, data),
             **common,
         )
-    if proto == 1 and avail >= 4:
-        return Packet(proto="icmp", icmp_type=buf[l4], icmp_code=buf[l4 + 1], **common)
+    if proto == 1 and avail >= 8:
+        icmp_type = buf[l4]
+        orig_proto = orig_port = None
+        if icmp_type == ICMP_UNREACH:
+            quoted = _quoted_l4(buf[l4 + 8 : end])
+            if quoted is None:
+                return None  # unusual quote: let dpkt decide
+            orig_proto, orig_port = quoted
+        return Packet(
+            proto="icmp",
+            icmp_type=icmp_type,
+            icmp_code=buf[l4 + 1],
+            payload_len=(total - ihl if total else avail) - 8,
+            icmp_orig_proto=orig_proto,
+            icmp_orig_dst_port=orig_port,
+            **common,
+        )
     return None
+
+
+def _quoted_l4(quote: bytes) -> tuple[str, int] | None:
+    """Protocol and destination port of the IPv4 datagram quoted in an ICMP error."""
+    if len(quote) < 20 or quote[0] >> 4 != 4:
+        return None
+    ihl = (quote[0] & 0x0F) * 4
+    proto = {6: "tcp", 17: "udp"}.get(quote[9])
+    total = struct.unpack_from("!H", quote, 2)[0]
+    if ihl < 20 or proto is None or len(quote) < ihl + 4 or (total and total < ihl + 4):
+        return None
+    return proto, struct.unpack_from("!H", quote, ihl + 2)[0]
 
 
 def _decode(ts: float, buf: bytes, linktype: int) -> Packet:
@@ -180,16 +212,21 @@ def _ip(fields: dict[str, Any], ip: Any) -> Packet:
 
     if isinstance(ip, dpkt.ip.IP):
         fields["ttl"] = ip.ttl
+        fields["ip_proto"] = ip.p
         # Total length can be 0 with TCP segmentation offload; fall back to the bytes we have.
         l4_len = ip.len - ip.hl * 4 if ip.len else None
         if ip.mf or ip.offset:
             fields["fragment"] = True
+            fields["frag_more"] = bool(ip.mf)
+            fields["frag_offset"] = ip.offset
             if ip.offset:
                 # Only the first fragment carries the L4 header: never parse the
                 # bytes of a later fragment as TCP/UDP (they are payload).
-                return Packet(proto="ip-frag", **fields)
+                size = l4_len if l4_len is not None else len(bytes(l4))
+                return Packet(proto="ip-frag", payload_len=max(size, 0), **fields)
     else:
         fields["ttl"] = ip.hlim
+        fields["ip_proto"] = ip.p
         # Without extension headers the IPv6 payload length is the L4 length.
         l4_len = ip.plen if ip.plen and ip.nxt == ip.p else None
 
@@ -211,29 +248,44 @@ def _ip(fields: dict[str, Any], ip: Any) -> Packet:
             src_port=l4.sport,
             dst_port=l4.dport,
             payload_len=l4.ulen - 8 if l4.ulen >= 8 else len(l4.data),
-            dns_query=_dns_query(l4.dport, bytes(l4.data)),
+            dns=_dns(l4.sport, l4.dport, bytes(l4.data)),
             **fields,
         )
     if isinstance(l4, dpkt.icmp.ICMP):
-        return Packet(proto="icmp", icmp_type=l4.type, icmp_code=l4.code, **fields)
+        orig_proto = orig_port = None
+        if l4.type == ICMP_UNREACH and isinstance(l4.data, dpkt.icmp.ICMP.Unreach):
+            inner = l4.data.data
+            if isinstance(inner, dpkt.ip.IP) and inner.p in (6, 17):
+                orig_proto = "tcp" if inner.p == 6 else "udp"
+                l4_inner = inner.data
+                if isinstance(l4_inner, dpkt.tcp.TCP | dpkt.udp.UDP):
+                    orig_port = l4_inner.dport
+                elif len(l4_inner) >= 4:
+                    orig_port = struct.unpack_from("!H", bytes(l4_inner), 2)[0]
+                else:
+                    orig_proto = None
+        return Packet(
+            proto="icmp",
+            icmp_type=l4.type,
+            icmp_code=l4.code,
+            payload_len=max((l4_len if l4_len is not None else len(l4)) - 8, 0),
+            icmp_orig_proto=orig_proto,
+            icmp_orig_dst_port=orig_port,
+            **fields,
+        )
     if isinstance(l4, dpkt.icmp6.ICMP6):
         return Packet(proto="icmp6", icmp_type=l4.type, icmp_code=l4.code, **fields)
-    return Packet(proto="ip-other", **fields)
+    size = l4_len if l4_len is not None else len(bytes(l4))
+    return Packet(proto="ip-other", payload_len=max(size, 0), **fields)
 
 
-def _dns_query(dport: int, data: bytes) -> str | None:
-    """Return the first question name of a DNS query on port 53, if any.
+def _dns(sport: int, dport: int, data: bytes) -> DnsInfo | None:
+    """Parse DNS on UDP port 53, queries and responses.
 
-    A malformed DNS message only loses the name, never the packet: otherwise
-    an attacker could hide any UDP/53 packet from every detector by putting a
-    non-UTF-8 byte in the query name (dpkt raises ``UnicodeDecodeError``).
+    A malformed message only loses its DNS fields, never the packet: an
+    exception here used to make the whole packet a decode error, so any UDP/53
+    packet could be hidden from every detector (see ``dns.py``).
     """
-    if dport != 53 or not data:
+    if DNS_PORT not in (sport, dport) or not data:
         return None
-    try:
-        dns = dpkt.dns.DNS(data)
-    except (dpkt.UnpackError, IndexError, struct.error, ValueError):
-        return None
-    if dns.qr != dpkt.dns.DNS_Q or not dns.qd:
-        return None
-    return str(dns.qd[0].name)
+    return parse_dns(data)

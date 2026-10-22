@@ -1,6 +1,7 @@
 """The analysis engine: drives packets through flows, statistics and detectors.
 
-Per packet: decode -> statistics -> flow table -> detectors' ``on_packet``.
+Per packet: decode -> statistics -> flow table -> detectors' ``on_conn_event``
+(only when the packet changed a TCP handshake) -> detectors' ``on_packet``.
 Flows that end (closed, idle, evicted, or end of input) go to the statistics,
 to the detectors' ``on_flow_end`` and to the optional ``on_flow`` callback.
 All timing uses capture timestamps, never the wall clock, so an offline run is
@@ -44,6 +45,11 @@ class Engine:
         self._on_alert = on_alert
         self._on_flow = on_flow
         self._next_tick: float | None = None
+        # Only detectors that implement a hook are called for it; on_packet is
+        # further dispatched by protocol (Detector.packet_protos).
+        self._conn_detectors = [d for d in self.detectors if type(d).on_conn_event is not Detector.on_conn_event]
+        self._packet_detectors = [d for d in self.detectors if type(d).on_packet is not Detector.on_packet]
+        self._by_proto: dict[str, list[Detector]] = {}
 
     def _emit(self, alerts: Iterable[Alert]) -> None:
         for alert in alerts:
@@ -71,8 +77,21 @@ class Engine:
             self._next_tick = pkt.ts + TICK_SECONDS
         self.stats.add(pkt)
         self._end_flows(self.flows.add(pkt))
-        for det in self.detectors:
-            self._emit(det.on_packet(pkt))
+        event, flow = self.flows.event, self.flows.current
+        if event is not None and flow is not None:
+            for det in self._conn_detectors:
+                alerts = det.on_conn_event(event, flow, pkt.ts)
+                if alerts:
+                    self._emit(alerts)
+        dets = self._by_proto.get(pkt.proto)
+        if dets is None:
+            dets = self._by_proto[pkt.proto] = [
+                d for d in self._packet_detectors if d.packet_protos is None or pkt.proto in d.packet_protos
+            ]
+        for det in dets:
+            alerts = det.on_packet(pkt)
+            if alerts:
+                self._emit(alerts)
 
     def process_frame(self, ts: float, buf: bytes, linktype: int) -> None:
         try:

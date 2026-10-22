@@ -240,6 +240,39 @@ class Flow:
             self._resp_next = end
 
 
+# Handshake transitions (TCP) and first datagram / first reply (UDP), reported
+# once per flow at the packet that causes them.
+# They let detectors judge connection *outcomes* in real time instead of
+# waiting for a flow to time out.
+ATTEMPT = "attempt"  # originator's SYN opened a new flow
+ANSWERED = "answered"  # responder's first SYN-ACK
+REJECTED = "rejected"  # responder's RST before any SYN-ACK (closed port)
+ESTABLISHED = "established"  # originator's first ACK after the SYN-ACK
+CONN_EVENTS = (ATTEMPT, ANSWERED, REJECTED, ESTABLISHED)
+
+
+def _conn_event(flow: Flow, new: bool, orig: bool, prev_o: int, prev_r: int, prev_resp_packets: int) -> str | None:
+    if flow.proto == "udp":
+        # UDP has no handshake: the first datagram is the attempt, the first reply the answer.
+        if orig:
+            return ATTEMPT if new else None
+        return ANSWERED if prev_resp_packets == 0 else None
+    o, r = flow.orig_flags, flow.resp_flags
+    if not o & SYN:
+        return None  # mid-stream flow: no handshake to report on
+    if orig:
+        if new and not o & ACK:
+            return ATTEMPT
+        if o & ACK and not prev_o & ACK and r & SYN:
+            return ESTABLISHED
+        return None
+    if r & SYN and not prev_r & SYN:
+        return ANSWERED
+    if r & RST and not prev_r & (RST | SYN):
+        return REJECTED
+    return None
+
+
 def flow_key(pkt: Packet) -> FlowKey | None:
     """Direction-independent key: A->B and B->A map to the same flow."""
     if pkt.src_ip is None or pkt.dst_ip is None or pkt.proto == "ip-frag":
@@ -265,6 +298,8 @@ class FlowTable:
         self._lru: dict[int, OrderedDict[FlowKey, Flow]] = {c: OrderedDict() for c in self._timeouts}
         self.flows_started = 0
         self.flows_evicted = 0
+        self.current: Flow | None = None
+        self.event: str | None = None
 
     def __len__(self) -> int:
         return len(self._flows)
@@ -281,7 +316,13 @@ class FlowTable:
         return _UDP if flow.proto == "udp" else _OTHER
 
     def add(self, pkt: Packet) -> list[Flow]:
-        """Account ``pkt`` to its flow. Returns flows that ended because of it."""
+        """Account ``pkt`` to its flow. Returns flows that ended because of it.
+
+        Afterwards :attr:`current` is the packet's flow and :attr:`event` the
+        handshake transition it caused, if any (see :data:`CONN_EVENTS`).
+        """
+        self.current = None
+        self.event = None
         key = flow_key(pkt)
         if key is None:
             return []
@@ -301,9 +342,16 @@ class FlowTable:
                 if len(self._flows) >= self.max_flows:
                     ended.append(self._evict_oldest())
             flow = self._start(key, pkt)
+            new = True
+        else:
+            new = False
         assert pkt.src_ip is not None
         orig = pkt.src_ip == flow.src_ip and (pkt.src_port or 0) == flow.src_port
+        prev_o, prev_r, prev_resp = flow.orig_flags, flow.resp_flags, flow.resp_packets
         flow.update(pkt, orig)
+        self.current = flow
+        if flow.proto in ("tcp", "udp"):
+            self.event = _conn_event(flow, new, orig, prev_o, prev_r, prev_resp)
         cls = self._class_of(flow)
         if cls != flow._cls:
             del self._lru[flow._cls][key]
