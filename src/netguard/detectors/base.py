@@ -10,6 +10,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from collections.abc import Iterable
 
+from netguard.flows import Flow
 from netguard.models import Alert, Packet
 
 
@@ -20,6 +21,10 @@ class Detector(ABC):
     @abstractmethod
     def on_packet(self, pkt: Packet) -> Iterable[Alert]:
         """Consume one packet; return alerts that are ready *now*."""
+
+    def on_flow_end(self, flow: Flow) -> Iterable[Alert]:
+        """Consume one finished flow (closed, idle, evicted or end of input)."""
+        return ()
 
     def tick(self, now: float) -> Iterable[Alert]:
         """Called periodically with capture time; emit alerts whose evidence is complete."""

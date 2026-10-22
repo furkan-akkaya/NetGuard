@@ -3,7 +3,15 @@ import random
 import dpkt
 import pytest
 
-from netguard.decode import DLT_EN10MB, DLT_LINUX_SLL, DLT_RAW, UnsupportedLinkType, decode
+from netguard.decode import (
+    DLT_EN10MB,
+    DLT_LINUX_SLL,
+    DLT_RAW,
+    UnsupportedLinkType,
+    _decode,
+    _fast_eth_ipv4,
+    decode,
+)
 from netguard.lab.scenarios import ATTACKER, GATEWAY, RESOLVER, SERVER, WORKSTATION
 from netguard.models import ACK, SYN
 
@@ -21,6 +29,54 @@ def test_decode_tcp():
     assert pkt.tcp_flags == SYN
     assert pkt.src_mac == ATTACKER.mac
     assert pkt.ts == 1.5
+
+
+def test_decode_tcp_sequence_payload_and_ttl():
+    pkt = decode(0, ATTACKER.tcp(SERVER, 40000, 80, ACK, b"hello", seq=4242, ack=77))
+    assert pkt is not None
+    assert (pkt.tcp_seq, pkt.tcp_ack, pkt.payload_len, pkt.ttl) == (4242, 77, 5, 64)
+    assert not pkt.fragment
+
+
+def test_payload_len_uses_ip_length_when_snaplen_truncates():
+    frame = ATTACKER.tcp(SERVER, 40000, 80, ACK, b"x" * 1000)
+    pkt = decode(0, frame[:96])  # 96-byte snaplen, as with "tcpdump -s 96"
+    assert pkt is not None
+    assert pkt.length == 96
+    assert pkt.payload_len == 1000
+
+
+def test_decode_udp_payload_len():
+    pkt = decode(0, WORKSTATION.udp(RESOLVER, 5000, 53, b"abcd"))
+    assert pkt is not None
+    assert pkt.payload_len == 4
+
+
+def _fragment(offset: int, more: bool, payload: bytes) -> bytes:
+    ip = dpkt.ip.IP(src=bytes([10, 0, 0, 66]), dst=bytes([10, 0, 0, 10]), p=dpkt.ip.IP_PROTO_TCP, ttl=64)
+    ip.data = payload
+    ip.mf = int(more)
+    ip.offset = offset  # in bytes; must be a multiple of 8
+    ip.len = 20 + len(payload)
+    return bytes(dpkt.ethernet.Ethernet(src=b"\x02" * 6, dst=b"\x04" * 6, type=dpkt.ethernet.ETH_TYPE_IP, data=ip))
+
+
+def test_non_first_fragment_is_not_parsed_as_tcp():
+    """Payload bytes of a later fragment must never be read as a TCP header."""
+    fake_header = bytes(dpkt.tcp.TCP(sport=1, dport=445, flags=SYN))
+    pkt = decode(0, _fragment(offset=24, more=False, payload=fake_header))
+    assert pkt is not None
+    assert pkt.proto == "ip-frag"
+    assert pkt.fragment
+    assert pkt.dst_port is None
+
+
+def test_first_fragment_is_flagged():
+    seg = bytes(dpkt.tcp.TCP(sport=1, dport=80, flags=SYN))
+    pkt = decode(0, _fragment(offset=0, more=True, payload=seg))
+    assert pkt is not None
+    assert pkt.fragment
+    assert pkt.proto == "tcp"
 
 
 def test_decode_arp_reply():
@@ -72,6 +128,49 @@ def test_unsupported_linktype_is_an_error_not_silence():
 def test_malformed_frames_return_none_or_packet(buf):
     # Must never raise: attacker-controlled input.
     decode(0, buf, DLT_EN10MB)
+
+
+def test_invalid_utf8_dns_name_does_not_hide_the_packet():
+    """Regression: the whole packet used to become a decode error (detection bypass)."""
+    frame = bytearray(WORKSTATION.dns_query(RESOLVER, "abcdef.example.org"))
+    frame[14 + 20 + 8 + 12 + 1] = 0xC6  # first byte of the first label
+    pkt = decode(0, bytes(frame))
+    assert pkt is not None
+    assert pkt.proto == "udp"
+    assert pkt.dst_port == 53
+    assert pkt.dns_query is None
+
+
+def _mutants(n: int, seed: int) -> list[bytes]:
+    rng = random.Random(seed)
+    seeds = [
+        ATTACKER.tcp(SERVER, 40000, 22, SYN),
+        ATTACKER.tcp(SERVER, 40000, 80, ACK, b"payload" * 20, seq=7, ack=9),
+        WORKSTATION.udp(RESOLVER, 5000, 123, b"ntp"),
+        WORKSTATION.dns_query(RESOLVER, "a.example.org"),
+        ATTACKER.icmp_echo("10.0.0.7", GATEWAY.mac),
+    ]
+    out = []
+    for _ in range(n):
+        buf = bytearray(rng.choice(seeds))
+        for _ in range(rng.randint(0, 4)):
+            buf[rng.randrange(14, len(buf))] = rng.randrange(256)
+        if rng.random() < 0.3:
+            del buf[rng.randint(0, len(buf)) :]
+        out.append(bytes(buf))
+    return out
+
+
+def test_fast_path_matches_dpkt_path():
+    """Differential test: whenever the fast path accepts a frame, dpkt must agree exactly."""
+    accepted = 0
+    for buf in _mutants(5000, seed=7):
+        fast = _fast_eth_ipv4(0.0, buf)
+        if fast is None:
+            continue
+        accepted += 1
+        assert fast == _decode(0.0, buf, DLT_EN10MB), buf.hex()
+    assert accepted > 1000  # the comparison must actually exercise the fast path
 
 
 def test_decoder_survives_random_mutation():

@@ -5,6 +5,9 @@ privileged, battle-tested and drop privileges after opening the interface, so
 NetGuard itself never needs to run as root::
 
     sudo tcpdump -i eth0 -U -w - | netguard analyze -
+
+Only sequential ``read()`` is used, so non-seekable streams (pipes, stdin) work
+exactly like files.
 """
 
 from __future__ import annotations
@@ -13,85 +16,48 @@ import sys
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import BinaryIO
 
-import dpkt
+from netguard.formats import (
+    PCAP_MAGICS,
+    PCAPNG_MAGIC,
+    CaptureFormatError,
+    CaptureInfo,
+    Frame,
+    Readable,
+    iter_pcap,
+    iter_pcapng,
+    read_exact,
+)
 
-PCAP_MAGICS = {
-    b"\xd4\xc3\xb2\xa1",  # little-endian, microseconds
-    b"\xa1\xb2\xc3\xd4",  # big-endian, microseconds
-    b"\x4d\x3c\xb2\xa1",  # little-endian, nanoseconds
-    b"\xa1\xb2\x3c\x4d",  # big-endian, nanoseconds
-}
-PCAPNG_MAGIC = b"\x0a\x0d\x0d\x0a"
+__all__ = ["CaptureFormatError", "CaptureInfo", "iter_frames", "open_capture"]
 
 
-class CaptureFormatError(ValueError):
-    pass
+def iter_frames(stream: Readable, name: str = "<stream>", info: CaptureInfo | None = None) -> Iterator[Frame]:
+    """Yield ``(timestamp, frame_bytes, linktype)`` from a pcap or pcapng stream.
 
-
-class _Prepended:
-    """A minimal read-only stream that replays already-consumed bytes first.
-
-    Needed because we must sniff the magic number of a non-seekable stream
-    (stdin) before choosing the right reader.
+    Pass a :class:`CaptureInfo` to learn the container format, the link types
+    seen and whether the capture ended in a truncated record.
     """
-
-    def __init__(self, head: bytes, rest: BinaryIO, name: str) -> None:
-        self._head = head
-        self._rest = rest
-        self.name = name
-
-    def read(self, n: int = -1) -> bytes:
-        if not self._head:
-            return self._rest.read(n)
-        if n < 0:
-            data, self._head = self._head + self._rest.read(), b""
-            return data
-        data, self._head = self._head[:n], self._head[n:]
-        if len(data) < n:
-            data += self._rest.read(n - len(data))
-        return data
-
-
-def _read_exact(stream: BinaryIO, n: int) -> bytes:
-    buf = b""
-    while len(buf) < n:
-        chunk = stream.read(n - len(buf))
-        if not chunk:
-            break
-        buf += chunk
-    return buf
-
-
-def iter_frames(stream: BinaryIO, name: str = "<stream>") -> Iterator[tuple[float, bytes, int]]:
-    """Yield ``(timestamp, frame_bytes, linktype)`` from a pcap or pcapng stream."""
-    magic = _read_exact(stream, 4)
+    info = info if info is not None else CaptureInfo()
+    magic = read_exact(stream, 4)
     if not magic:
         return  # empty input: nothing to analyze
-    wrapped = _Prepended(magic, stream, name)
-
-    if magic in PCAP_MAGICS:
-        reader = dpkt.pcap.Reader(wrapped)
-        linktype = reader.datalink()
-        for ts, buf in reader:
-            yield float(ts), bytes(buf), linktype
-    elif magic == PCAPNG_MAGIC:
-        ng = dpkt.pcapng.Reader(wrapped)
-        # dpkt exposes the link type of the first interface; multi-interface
-        # pcapng files with mixed link types are rare and not supported yet.
-        linktype = ng.datalink()
-        for ts, buf in ng:
-            yield float(ts), bytes(buf), linktype
-    else:
-        raise CaptureFormatError(f"{name}: not a pcap/pcapng file (magic {magic.hex()})")
+    try:
+        if magic in PCAP_MAGICS:
+            yield from iter_pcap(stream, magic, info)
+        elif magic == PCAPNG_MAGIC:
+            yield from iter_pcapng(stream, info)
+        else:
+            raise CaptureFormatError(f"not a pcap/pcapng file (magic {magic.hex()})")
+    except CaptureFormatError as exc:
+        raise CaptureFormatError(f"{name}: {exc}") from None
 
 
 @contextmanager
-def open_capture(path: str | Path) -> Iterator[Iterator[tuple[float, bytes, int]]]:
+def open_capture(path: str | Path, info: CaptureInfo | None = None) -> Iterator[Iterator[Frame]]:
     """Open a capture file, or stdin when ``path`` is ``"-"``."""
     if str(path) == "-":
-        yield iter_frames(sys.stdin.buffer, "<stdin>")
+        yield iter_frames(sys.stdin.buffer, "<stdin>", info)
         return
     with open(path, "rb") as fh:
-        yield iter_frames(fh, str(path))
+        yield iter_frames(fh, str(path), info)

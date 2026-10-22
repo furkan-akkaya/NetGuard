@@ -7,10 +7,15 @@ detectors easy to unit-test: a test only needs to construct ``Packet`` objects.
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import IntEnum
 from typing import Any
+
+#: Version of the alert JSON contract. Bump the major on breaking changes
+#: (renamed/removed fields), the minor when fields are added.
+ALERT_SCHEMA_VERSION = "1.0"
 
 # The unspecified address: used as ARP sender IP by hosts without an address yet.
 UNSPECIFIED_IPV4 = "0.0.0.0"  # noqa: S104 - compared against, never bound
@@ -37,7 +42,7 @@ class Packet:
 
     ts: float
     length: int
-    proto: str  # "tcp", "udp", "icmp", "icmp6", "arp", "ip-other", "other"
+    proto: str  # "tcp", "udp", "icmp", "icmp6", "arp", "ip-frag", "ip-other", "other"
     src_mac: str | None = None
     dst_mac: str | None = None
     src_ip: str | None = None
@@ -45,6 +50,15 @@ class Packet:
     src_port: int | None = None
     dst_port: int | None = None
     tcp_flags: int | None = None
+    tcp_seq: int | None = None
+    tcp_ack: int | None = None
+    # Bytes of L4 payload according to the IP length field, so the value is
+    # right even when the capture snaplen truncated the frame.
+    payload_len: int | None = None
+    ttl: int | None = None  # IPv4 TTL or IPv6 hop limit
+    # True for any IPv4 fragment. Non-first fragments carry no L4 header and are
+    # decoded with ``proto="ip-frag"``.
+    fragment: bool = False
     icmp_type: int | None = None
     icmp_code: int | None = None
     arp_op: int | None = None  # 1 = request, 2 = reply
@@ -86,6 +100,7 @@ class Alert:
     """
 
     detector: str
+    rule_id: str
     title: str
     severity: Severity
     first_seen: float
@@ -96,13 +111,27 @@ class Alert:
     technique: Technique | None = None
     evidence: dict[str, Any] = field(default_factory=dict)
 
+    @property
+    def alert_id(self) -> str:
+        """Deterministic identifier: the same capture and config give the same id.
+
+        Derived from what identifies the incident (rule, entities, start time),
+        so re-running an analysis or replaying a capture does not create
+        "new" alerts, and downstream systems can de-duplicate on it.
+        """
+        material = f"{self.rule_id}|{self.src}|{self.dst}|{self.first_seen:.6f}"
+        return hashlib.sha256(material.encode()).hexdigest()[:20]
+
     def to_dict(self) -> dict[str, Any]:
         return {
+            "schema_version": ALERT_SCHEMA_VERSION,
+            "alert_id": self.alert_id,
+            "rule_id": self.rule_id,
             "detector": self.detector,
             "title": self.title,
             "severity": str(self.severity),
-            "first_seen": _iso(self.first_seen),
-            "last_seen": _iso(self.last_seen),
+            "first_seen": iso_ts(self.first_seen),
+            "last_seen": iso_ts(self.last_seen),
             "src": self.src,
             "dst": self.dst,
             "summary": self.summary,
@@ -115,5 +144,5 @@ class Alert:
         }
 
 
-def _iso(ts: float) -> str:
+def iso_ts(ts: float) -> str:
     return datetime.fromtimestamp(ts, tz=UTC).isoformat(timespec="milliseconds")

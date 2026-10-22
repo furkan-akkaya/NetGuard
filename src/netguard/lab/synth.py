@@ -12,7 +12,7 @@ from pathlib import Path
 
 import dpkt
 
-from netguard.models import ACK, RST, SYN
+from netguard.models import ACK, FIN, PSH, RST, SYN
 
 Frame = tuple[float, bytes]
 
@@ -44,8 +44,10 @@ class Host:
         self.ip = ip
         self.mac = mac
 
-    def tcp(self, dst: Host, sport: int, dport: int, flags: int, payload: bytes = b"") -> bytes:
-        seg = dpkt.tcp.TCP(sport=sport, dport=dport, flags=flags, seq=1000, data=payload)
+    def tcp(
+        self, dst: Host, sport: int, dport: int, flags: int, payload: bytes = b"", seq: int = 1000, ack: int = 0
+    ) -> bytes:
+        seg = dpkt.tcp.TCP(sport=sport, dport=dport, flags=flags, seq=seq, ack=ack, data=payload)
         return _eth(self.mac, dst.mac, dpkt.ethernet.ETH_TYPE_IP, _ipv4(self.ip, dst.ip, dpkt.ip.IP_PROTO_TCP, seg))
 
     def tcp_to_ip(self, gateway: Host, dst_ip: str, sport: int, dport: int, flags: int) -> bytes:
@@ -90,20 +92,29 @@ class Host:
 
 
 def tcp_handshake(client: Host, server: Host, ts: float, sport: int, dport: int, data: int = 3) -> list[Frame]:
-    """A complete, benign TCP connection: handshake, some data, FIN close."""
+    """A complete, benign TCP connection: handshake, some data, FIN close.
+
+    Sequence numbers advance like a real stack's (SYN and FIN consume one), so
+    flow tracking sees no retransmissions.
+    """
+    c, s = 1000, 5000  # initial sequence numbers
     frames = [
-        (ts, client.tcp(server, sport, dport, SYN)),
-        (ts + 0.001, server.tcp(client, dport, sport, SYN | ACK)),
-        (ts + 0.002, client.tcp(server, sport, dport, ACK)),
+        (ts, client.tcp(server, sport, dport, SYN, seq=c)),
+        (ts + 0.001, server.tcp(client, dport, sport, SYN | ACK, seq=s, ack=c + 1)),
+        (ts + 0.002, client.tcp(server, sport, dport, ACK, seq=c + 1, ack=s + 1)),
     ]
+    c, s = c + 1, s + 1
     t = ts + 0.003
     for i in range(data):
-        frames.append((t, client.tcp(server, sport, dport, ACK | 0x08, b"GET / HTTP/1.1\r\n" * (i + 1))))
-        frames.append((t + 0.001, server.tcp(client, dport, sport, ACK | 0x08, b"x" * 512)))
+        request, response = b"GET / HTTP/1.1\r\n" * (i + 1), b"x" * 512
+        frames.append((t, client.tcp(server, sport, dport, ACK | PSH, request, seq=c, ack=s)))
+        c += len(request)
+        frames.append((t + 0.001, server.tcp(client, dport, sport, ACK | PSH, response, seq=s, ack=c)))
+        s += len(response)
         t += 0.01
-    frames.append((t, client.tcp(server, sport, dport, ACK | 0x01)))
-    frames.append((t + 0.001, server.tcp(client, dport, sport, ACK | 0x01)))
-    frames.append((t + 0.002, client.tcp(server, sport, dport, ACK)))
+    frames.append((t, client.tcp(server, sport, dport, ACK | FIN, seq=c, ack=s)))
+    frames.append((t + 0.001, server.tcp(client, dport, sport, ACK | FIN, seq=s, ack=c + 1)))
+    frames.append((t + 0.002, client.tcp(server, sport, dport, ACK, seq=c + 1, ack=s + 1)))
     return frames
 
 

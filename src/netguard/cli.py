@@ -3,12 +3,14 @@
 netguard analyze capture.pcap
 netguard analyze --format json capture.pcapng > report.json
 sudo tcpdump -i eth0 -U -w - | netguard analyze --format jsonl -
+netguard flows --format csv capture.pcap > flows.csv
 netguard lab list | generate DIR | evaluate
 """
 
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from collections.abc import Sequence
 from pathlib import Path
@@ -17,8 +19,8 @@ from netguard import __version__
 from netguard.config import ConfigError, load_config
 from netguard.decode import UnsupportedLinkType
 from netguard.engine import Engine
-from netguard.output import render_json, render_text, use_color, write_jsonl_alert
-from netguard.sources import CaptureFormatError, open_capture
+from netguard.output import FlowWriter, render_json, render_text, use_color, write_jsonl_alert
+from netguard.sources import CaptureFormatError, CaptureInfo, open_capture
 
 EXIT_OK, EXIT_ERROR = 0, 2
 
@@ -40,6 +42,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     an.add_argument("--no-color", action="store_true", help="disable ANSI colors")
 
+    fl = sub.add_parser("flows", help="export the flow (connection) records of a capture")
+    fl.add_argument("capture", help="path to a .pcap/.pcapng file, or '-' to read from stdin")
+    fl.add_argument("-c", "--config", type=Path, help="TOML configuration file (the [flows] section applies)")
+    fl.add_argument(
+        "-f", "--format", choices=("csv", "jsonl"), default="csv", help="CSV with a header (default) or JSON Lines"
+    )
+
     lab = sub.add_parser("lab", help="synthetic lab scenarios")
     lab_sub = lab.add_subparsers(dest="lab_command", required=True)
     lab_sub.add_parser("list", help="list scenarios")
@@ -50,23 +59,40 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _run(engine: Engine, capture: str, info: CaptureInfo) -> None:
+    try:
+        with open_capture(capture, info) as frames:
+            for ts, buf, linktype in frames:
+                engine.process_frame(ts, buf, linktype)
+    except KeyboardInterrupt:
+        print("interrupted, reporting what was seen so far", file=sys.stderr)
+    if info.truncated:
+        print("netguard: warning: capture ends with a truncated record; analyzed what was complete", file=sys.stderr)
+
+
 def cmd_analyze(args: argparse.Namespace) -> int:
     config = load_config(args.config)
     stream = args.format == "jsonl"
     engine = Engine(config, on_alert=write_jsonl_alert if stream else None)
     source = "<stdin>" if args.capture == "-" else args.capture
-    try:
-        with open_capture(args.capture) as frames:
-            for ts, buf, linktype in frames:
-                engine.process_frame(ts, buf, linktype)
-    except KeyboardInterrupt:
-        print("interrupted, reporting what was seen so far", file=sys.stderr)
+    info = CaptureInfo()
+    _run(engine, args.capture, info)
     result = engine.finish()
 
     if args.format == "text":
         sys.stdout.write(render_text(result, source, color=use_color(sys.stdout) and not args.no_color))
     elif args.format == "json":
-        sys.stdout.write(render_json(result, source))
+        sys.stdout.write(render_json(result, source, info))
+    return EXIT_OK
+
+
+def cmd_flows(args: argparse.Namespace) -> int:
+    config = load_config(args.config)
+    writer = FlowWriter(args.format)
+    # Flows only: no detectors, so exporting is as fast as possible.
+    engine = Engine(config, detectors=[], on_flow=writer.write)
+    _run(engine, args.capture, CaptureInfo())
+    engine.finish()
     return EXIT_OK
 
 
@@ -93,10 +119,17 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         if args.command == "analyze":
             return cmd_analyze(args)
+        if args.command == "flows":
+            return cmd_flows(args)
         return cmd_lab(args)
     except (ConfigError, CaptureFormatError, UnsupportedLinkType, KeyError) as exc:
         print(f"netguard: error: {exc}", file=sys.stderr)
         return EXIT_ERROR
+    except BrokenPipeError:
+        # The reader went away (e.g. `netguard flows x.pcap | head`): not an error.
+        # Point stdout at devnull so the interpreter's final flush stays quiet.
+        os.dup2(os.open(os.devnull, os.O_WRONLY), sys.stdout.fileno())
+        return EXIT_OK
     except OSError as exc:
         print(f"netguard: error: {exc.strerror or exc}: {exc.filename or ''}".rstrip(": "), file=sys.stderr)
         return EXIT_ERROR

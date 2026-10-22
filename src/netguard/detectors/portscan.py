@@ -25,6 +25,7 @@ from netguard.models import ACK, FIN, PSH, RST, SYN, URG, Alert, Packet, Severit
 from netguard.window import BurstTracker, Incident
 
 T1046 = Technique("T1046", "Network Service Discovery")
+RULE_ID = "NG-SCAN-001"
 
 Key = tuple[str, str]  # (scanner_ip, target_ip)
 
@@ -104,6 +105,7 @@ class PortScanDetector(Detector):
 
         return Alert(
             detector=self.name,
+            rule_id=RULE_ID,
             title="TCP port scan",
             severity=severity,
             first_seen=inc.first_seen,

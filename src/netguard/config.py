@@ -50,6 +50,20 @@ class ArpSpoofConfig:
 
 
 @dataclass
+class FlowConfig:
+    """Flow table limits and idle timeouts (defaults follow Zeek's, see ADR-0004)."""
+
+    max_flows: int = 200_000
+    # A TCP flow with no reply yet. Long enough to absorb SYN retransmissions.
+    tcp_handshake_timeout_seconds: float = 30.0
+    tcp_idle_timeout_seconds: float = 300.0
+    # After FIN in both directions or RST: wait for the final ACKs.
+    tcp_closed_linger_seconds: float = 5.0
+    udp_idle_timeout_seconds: float = 60.0
+    other_idle_timeout_seconds: float = 60.0
+
+
+@dataclass
 class Config:
     # Sources that are authorized to scan (vulnerability scanners, monitoring).
     # Entries may be single IPs or CIDR networks.
@@ -57,6 +71,7 @@ class Config:
     portscan: PortScanConfig = field(default_factory=PortScanConfig)
     hostsweep: HostSweepConfig = field(default_factory=HostSweepConfig)
     arpspoof: ArpSpoofConfig = field(default_factory=ArpSpoofConfig)
+    flows: FlowConfig = field(default_factory=FlowConfig)
 
     def __post_init__(self) -> None:
         try:
@@ -75,6 +90,7 @@ _SECTIONS: dict[str, type] = {
     "portscan": PortScanConfig,
     "hostsweep": HostSweepConfig,
     "arpspoof": ArpSpoofConfig,
+    "flows": FlowConfig,
 }
 
 
