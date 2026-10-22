@@ -19,6 +19,32 @@ jobs:
       - run: uv run ruff format --check .
       - run: uv run mypy
 
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: frontend/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
+      - name: Bundle has no inline scripts (the dashboard CSP forbids them)
+        run: |
+          test -f ../src/netguard/web/static/index.html
+          # every <script> tag must load a file (src=); inline code would be blocked by the CSP
+          ! grep -oE '<script[^>]*>' ../src/netguard/web/static/index.html | grep -v 'src='
+      - run: pnpm audit --prod
+
   test:
     runs-on: ${{ matrix.os }}
     strategy:

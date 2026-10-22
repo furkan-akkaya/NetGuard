@@ -27,3 +27,7 @@ netguard.toml
 .DS_Store
 .idea/
 .vscode/
+
+# Dashboard: dependencies and the built bundle (rebuilt from frontend/)
+frontend/node_modules/
+src/netguard/web/static/

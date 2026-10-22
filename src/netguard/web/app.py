@@ -487,6 +487,12 @@ def create_app(settings: ServerSettings) -> FastAPI:
         # Client-side routes all serve index.html; unknown /api paths stay 404.
         if path.startswith("api/"):
             raise HTTPException(status_code=404, detail="not found")
+        # Root-level bundle files (favicon.svg). Resolve and require the result to
+        # stay inside the bundle directory, so "../" can never escape it.
+        root = static_dir.resolve()
+        candidate = (root / path).resolve()
+        if path and candidate.is_file() and candidate.is_relative_to(root):
+            return FileResponse(candidate)
         index = static_dir / "index.html"
         if not index.is_file():
             return HTMLResponse(NO_DASHBOARD)

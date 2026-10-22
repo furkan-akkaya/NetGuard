@@ -359,3 +359,9 @@ def test_dashboard_bundle_is_served(tmp_path):
     with TestClient(create_app(settings)) as client:
         assert "id=root" in client.get("/analyses/abc").text
         assert client.get("/assets/app.js").text == "console.log(1)"
+        (static / "favicon.svg").write_text("<svg/>")
+        assert client.get("/favicon.svg").text == "<svg/>"
+        secret = tmp_path / "secret.txt"
+        secret.write_text("do not serve")
+        for attempt in ("/../secret.txt", "/%2e%2e/secret.txt", "/assets/../../secret.txt"):
+            assert "do not serve" not in client.get(attempt).text
