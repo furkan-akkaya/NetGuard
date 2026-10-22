@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { type Profile, type Rule, api } from "../api";
+import { type Profile, type Rule, api, download } from "../api";
 import { ErrorBox, Loading, Panel } from "../components/ui";
 import { humanize } from "../format";
 import { useAsync } from "../hooks";
@@ -175,6 +175,19 @@ function Editor({ base, profile, onSaved }: { base: Detector[]; profile: Profile
         {profile ? (
           <button
             type="button"
+            className="btn"
+            onClick={() =>
+              download(`/profiles/${profile.id}/export.toml`, `netguard-profile-${profile.name.replace(/\s+/g, "-")}.toml`).catch(
+                (e: unknown) => setError(e instanceof Error ? e.message : String(e)),
+              )
+            }
+          >
+            Export TOML
+          </button>
+        ) : null}
+        {profile ? (
+          <button
+            type="button"
             className="btn btn-danger"
             onClick={() => {
               if (window.confirm(`Delete profile ${profile.name}?`)) {
@@ -196,6 +209,39 @@ function Editor({ base, profile, onSaved }: { base: Detector[]; profile: Profile
         ) : null}
       </div>
     </form>
+  );
+}
+
+function ImportProfile({ onImported }: { onImported: (p: Profile) => void }) {
+  const [error, setError] = useState<string | null>(null);
+  return (
+    <div className="button-row">
+      <label className="btn">
+        Import TOML…
+        <input
+          type="file"
+          accept=".toml,text/plain,application/toml"
+          className="sr-only"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            e.target.value = "";
+            if (!file) return;
+            setError(null);
+            const name = file.name.replace(/\.toml$/i, "").replace(/[^\w .()-]/g, "_").slice(0, 64) || "imported";
+            file
+              .text()
+              .then((text) => api.importProfile(name, text))
+              .then(onImported, (err: unknown) => setError(err instanceof Error ? err.message : String(err)));
+          }}
+        />
+      </label>
+      <span className="muted small">A profile exported here, or any netguard.toml (validated by the server).</span>
+      {error ? (
+        <span className="sev-text-high" role="alert">
+          {error}
+        </span>
+      ) : null}
+    </div>
   );
 }
 
@@ -262,6 +308,12 @@ export function Rules() {
           A profile is a named set of thresholds and switches. Choose one when analysing a capture to compare results
           under different settings. Only values that differ from the server defaults are stored.
         </p>
+        <ImportProfile
+          onImported={(p) => {
+            profiles.reload();
+            setSelected(p.id);
+          }}
+        />
         <Editor
           base={base}
           profile={profile}

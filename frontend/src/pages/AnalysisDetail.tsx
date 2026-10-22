@@ -4,7 +4,7 @@ import { type Analysis, type Stats, api, download } from "../api";
 import { AlertTable } from "../components/AlertTable";
 import { BarList, TimeSeries } from "../components/charts";
 import { FlowBrowser } from "../components/FlowBrowser";
-import { Empty, ErrorBox, Loading, Panel, Stat, StatusBadge } from "../components/ui";
+import { ConfidenceBadge, Empty, ErrorBox, Loading, Panel, SeverityBadge, Stat, StatusBadge } from "../components/ui";
 import { endpoint, formatBytes, formatDuration, formatNumber, formatTime } from "../format";
 import { useAsync } from "../hooks";
 
@@ -188,6 +188,29 @@ function Reanalyse({ analysis }: { analysis: Analysis }) {
   );
 }
 
+function Incidents({ analysisId }: { analysisId: string }) {
+  const { data, error } = useAsync(() => api.incidents(analysisId), [analysisId]);
+  if (error || !data || data.length === 0) return null;
+  return (
+    <Panel title={`Incidents (${data.length})`}>
+      <p className="muted small">Alerts grouped by actor and time, with the ATT&amp;CK tactics they cover.</p>
+      <ul className="list">
+        {data.map((i) => (
+          <li key={i.incident_id}>
+            <SeverityBadge severity={i.severity} />
+            <ConfidenceBadge confidence={{ score: i.confidence, level: i.confidence >= 70 ? "high" : i.confidence >= 40 ? "medium" : "low" }} />
+            <span className="mono">{i.actor}</span>
+            <span>{i.tactics.join(" → ") || "—"}</span>
+            <span className="muted">
+              {i.alert_count} alert{i.alert_count === 1 ? "" : "s"} · {i.rules.join(", ")}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </Panel>
+  );
+}
+
 export function AnalysisDetail() {
   const { id = "" } = useParams();
   const { data: analysis, error, loading, reload } = useAsync(() => api.analysis(id), [id], {
@@ -253,6 +276,7 @@ export function AnalysisDetail() {
               </p>
             ) : null}
           </Panel>
+          <Incidents analysisId={analysis.id} />
           <Panel title={`Alerts (${analysis.alert_count})`}>
             {alerts.error ? <ErrorBox error={alerts.error} retry={alerts.reload} /> : null}
             {alerts.data ? (

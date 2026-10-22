@@ -38,6 +38,15 @@ export function SeverityBadge({ severity }: { severity: Severity }) {
   return <span className={`badge sev-${severity.toLowerCase()}`}>{severity}</span>;
 }
 
+export function ConfidenceBadge({ confidence }: { confidence: { score: number; level: string } | null | undefined }) {
+  if (!confidence) return <span className="muted">–</span>;
+  return (
+    <span className={`badge conf-${confidence.level}`} title={`confidence ${confidence.score} of 100 (${confidence.level})`}>
+      {confidence.score}
+    </span>
+  );
+}
+
 export function StatusBadge({ status }: { status: Status }) {
   return (
     <span className={`badge status-${status}`}>

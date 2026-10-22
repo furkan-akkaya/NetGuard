@@ -25,11 +25,12 @@ from typing import Annotated, Any
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, Response
 from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from netguard import __version__
-from netguard.config import ConfigError, config_to_mapping, merge_config
+from netguard.config import ConfigError, config_to_mapping, merge_config, parse_toml, to_toml
+from netguard.correlate import correlate
 from netguard.detectors import DETECTORS
 from netguard.events import FORMATS, export
 from netguard.formats import PCAP_MAGICS, PCAPNG_MAGIC
@@ -212,6 +213,48 @@ def create_app(settings: ServerSettings) -> FastAPI:
             return _profile(store.save_profile(body.name, body.description, _validated(body), profile_id))
         except LookupError as exc:
             raise HTTPException(status_code=404, detail="profile not found") from exc
+
+    @app.get(
+        f"{API}/profiles/{{profile_id}}/export.toml",
+        dependencies=auth,
+        tags=["rules"],
+        summary="A profile as TOML, usable with `netguard analyze -c` and importable elsewhere",
+        response_class=PlainTextResponse,
+    )
+    def export_profile(profile_id: str) -> PlainTextResponse:
+        row = store.get_profile(profile_id)
+        if row is None:
+            raise HTTPException(status_code=404, detail="profile not found")
+        header = f"NetGuard rule profile: {row['name']}\n{row['description']}".strip()
+        name = safe_filename(row["name"]).replace(" ", "-")
+        return PlainTextResponse(
+            to_toml(row["config"], header),
+            media_type="application/toml",
+            headers={"Content-Disposition": f'attachment; filename="netguard-profile-{name}.toml"'},
+        )
+
+    @app.post(
+        f"{API}/profiles/import",
+        response_model=schemas.Profile,
+        status_code=201,
+        dependencies=auth,
+        tags=["rules"],
+        summary="Create a profile from TOML (the request body), e.g. a netguard.toml",
+    )
+    async def import_profile(
+        request: Request,
+        name: Annotated[str, Query(min_length=1, max_length=64, pattern=r"^[\w .()-]+$")],
+        description: Annotated[str, Query(max_length=500)] = "",
+    ) -> dict[str, Any]:
+        body = await request.body()
+        if len(body) > 65_536:
+            raise HTTPException(status_code=413, detail="profile larger than 64 KiB")
+        try:
+            overrides = parse_toml(body.decode("utf-8"))
+            merge_config(settings.analysis_config, overrides)  # validate the whole result
+        except (UnicodeDecodeError, ConfigError) as exc:
+            raise HTTPException(status_code=422, detail=f"invalid profile: {exc}") from exc
+        return _profile(store.save_profile(name, description, overrides))
 
     @app.delete(f"{API}/profiles/{{profile_id}}", status_code=204, dependencies=auth, tags=["rules"])
     def delete_profile(profile_id: str) -> Response:
@@ -447,6 +490,17 @@ def create_app(settings: ServerSettings) -> FastAPI:
             analysis["stats"], list(store.iter_alerts(analysis_id)), name, analysis["capture_info"], meta
         )
         return HTMLResponse(page, headers={"Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'"})
+
+    @app.get(
+        f"{API}/analyses/{{analysis_id}}/incidents",
+        dependencies=auth,
+        tags=["alerts"],
+        summary="Alerts of an analysis grouped into incidents by actor and time (ATT&CK tactics, max confidence)",
+    )
+    def incidents(analysis_id: str, gap_seconds: Annotated[float, Query(gt=0, le=86400)] = 900) -> list[dict[str, Any]]:
+        if store.get_analysis(analysis_id) is None:
+            raise HTTPException(status_code=404, detail="analysis not found")
+        return correlate(store.iter_alerts(analysis_id), gap_seconds)
 
     # -------------------------------------------------------------- alerts
 

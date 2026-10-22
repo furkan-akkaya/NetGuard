@@ -317,6 +317,22 @@ code,
   border-color: transparent;
 }
 
+.conf-high {
+  color: var(--high);
+  background: var(--high-bg);
+  border-color: transparent;
+}
+
+.conf-medium {
+  color: var(--medium);
+  background: var(--medium-bg);
+  border-color: transparent;
+}
+
+.conf-low {
+  color: var(--muted);
+}
+
 .sev-text-high {
   color: var(--high);
 }

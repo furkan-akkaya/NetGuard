@@ -1,7 +1,7 @@
 import { Link } from "react-router";
 import type { Alert } from "../api";
 import { endpoint, formatTime } from "../format";
-import { SeverityBadge } from "./ui";
+import { ConfidenceBadge, SeverityBadge } from "./ui";
 
 /** Alert rows linking to the detail page. All text is rendered as text (React escapes it). */
 export function AlertTable({ alerts, showAnalysis = false }: { alerts: Alert[]; showAnalysis?: boolean }) {
@@ -11,6 +11,7 @@ export function AlertTable({ alerts, showAnalysis = false }: { alerts: Alert[]; 
         <thead>
           <tr>
             <th>Severity</th>
+            <th title="Confidence 5-95: how strongly the evidence points to malicious activity">Conf.</th>
             <th>Alert</th>
             <th>Source → target</th>
             <th>Rule</th>
@@ -28,6 +29,9 @@ export function AlertTable({ alerts, showAnalysis = false }: { alerts: Alert[]; 
                     early
                   </span>
                 ) : null}
+              </td>
+              <td>
+                <ConfidenceBadge confidence={a.confidence} />
               </td>
               <td className="wrap">
                 <Link to={`/alerts/${a.id}`}>{a.title}</Link>

@@ -13,7 +13,7 @@ from netguard.decode import (
     decode,
 )
 from netguard.lab.scenarios import ATTACKER, GATEWAY, RESOLVER, SERVER, WORKSTATION
-from netguard.lab.synth import dns_response, fragment
+from netguard.lab.synth import dhcp_ack, dns_response, fragment
 from netguard.models import ACK, SYN
 
 
@@ -154,6 +154,7 @@ def _mutants(n: int, seed: int) -> list[bytes]:
         SERVER.icmp_unreachable(ATTACKER, ATTACKER.udp(SERVER, 40000, 161)),
         SERVER.icmp_unreachable(ATTACKER, ATTACKER.tcp(SERVER, 40000, 22, SYN), code=1),
         *fragment(ATTACKER.tcp(SERVER, 40000, 22, SYN, b"x" * 40), 24),
+        dhcp_ack(GATEWAY, WORKSTATION.mac, WORKSTATION.ip),
     ]
     out = []
     for _ in range(n):

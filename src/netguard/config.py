@@ -8,6 +8,7 @@ should fail loudly instead of silently running with the default.
 from __future__ import annotations
 
 import ipaddress
+import json
 import tomllib
 from dataclasses import dataclass, field, fields
 from pathlib import Path
@@ -163,6 +164,12 @@ class ArpSpoofConfig:
     realert_seconds: float = 300.0
     # IPs whose takeover is critical (e.g. the default gateway) -> HIGH severity.
     critical_ips: list[str] = field(default_factory=list)
+    # A binding change that a DHCP ACK just assigned (same IP, new MAC) is a
+    # re-assignment, not spoofing (ADR-0011). Only ACKs from trusted servers
+    # count: those listed here, or, when empty, the first server seen.
+    trust_dhcp: bool = True
+    dhcp_servers: list[str] = field(default_factory=list)
+    dhcp_window_seconds: float = 3600.0  # how long after its ACK a lease explains a change
 
 
 @dataclass
@@ -307,3 +314,41 @@ def merge_config(base: Config, overrides: Any) -> Config:
         else:
             merged[key] = value
     return config_from_mapping(merged)
+
+
+def _toml_value(value: Any) -> str:
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, int | float):
+        return repr(value)
+    if isinstance(value, str):
+        return json.dumps(value)  # JSON string escapes are valid TOML basic-string escapes
+    if isinstance(value, list):
+        return "[" + ", ".join(_toml_value(v) for v in value) + "]"
+    raise ConfigError(f"cannot write {type(value).__name__} to TOML")
+
+
+def to_toml(mapping: dict[str, Any], header: str = "") -> str:
+    """Write a (partial) configuration mapping as TOML that :func:`load_config` reads back.
+
+    NetGuard's configuration is flat sections of scalars and string lists, so
+    this small writer covers it; tomllib (standard library) only reads.
+    """
+    lines = [f"# {line}" if line else "#" for line in header.splitlines()]
+    if "allowlist" in mapping:
+        lines.append(f"allowlist = {_toml_value(mapping['allowlist'])}")
+    for section, values in mapping.items():
+        if section == "allowlist":
+            continue
+        if not isinstance(values, dict):
+            raise ConfigError(f"[{section}] must be a section")
+        lines += ["", f"[{section}]"]
+        lines += [f"{key} = {_toml_value(value)}" for key, value in values.items()]
+    return "\n".join(lines).strip("\n") + "\n"
+
+
+def parse_toml(text: str) -> dict[str, Any]:
+    try:
+        return tomllib.loads(text)
+    except tomllib.TOMLDecodeError as exc:
+        raise ConfigError(f"invalid TOML: {exc}") from exc

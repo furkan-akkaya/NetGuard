@@ -23,7 +23,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from netguard import __version__
-from netguard.config import ConfigError, load_config
+from netguard.config import ConfigError, config_to_mapping, load_config, to_toml
 from netguard.decode import UnsupportedLinkType
 from netguard.detectors import DETECTORS
 from netguard.engine import Engine
@@ -67,6 +67,9 @@ def build_parser() -> argparse.ArgumentParser:
     fl.add_argument(
         "-f", "--format", choices=("csv", "jsonl"), default="csv", help="CSV with a header (default) or JSON Lines"
     )
+
+    cf = sub.add_parser("config", help="print the effective configuration as TOML (defaults merged with -c)")
+    cf.add_argument("-c", "--config", type=Path, help="TOML configuration file to merge over the defaults")
 
     ru = sub.add_parser("rules", help="list the detection rules and whether the configuration enables them")
     ru.add_argument("-c", "--config", type=Path, help="TOML configuration file")
@@ -152,6 +155,12 @@ def cmd_flows(args: argparse.Namespace) -> int:
     engine = Engine(config, detectors=[], on_flow=writer.write)
     _run(engine, args.capture, CaptureInfo())
     engine.finish()
+    return EXIT_OK
+
+
+def cmd_config(args: argparse.Namespace) -> int:
+    header = f"NetGuard {__version__} effective configuration" + (f" ({args.config})" if args.config else " (defaults)")
+    sys.stdout.write(to_toml(config_to_mapping(load_config(args.config)), header))
     return EXIT_OK
 
 
@@ -347,6 +356,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             return cmd_flows(args)
         if args.command == "rules":
             return cmd_rules(args)
+        if args.command == "config":
+            return cmd_config(args)
         if args.command == "serve":
             return cmd_serve(args)
         if args.command == "monitor":

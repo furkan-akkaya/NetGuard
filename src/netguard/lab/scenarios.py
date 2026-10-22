@@ -24,7 +24,16 @@ from dataclasses import dataclass, field
 
 from netguard.config import Config
 from netguard.dns import RCODE_NXDOMAIN
-from netguard.lab.synth import Frame, Host, bulk_transfer, dns_response, fragment, syn_probe, tcp_handshake
+from netguard.lab.synth import (
+    Frame,
+    Host,
+    bulk_transfer,
+    dhcp_ack,
+    dns_response,
+    fragment,
+    syn_probe,
+    tcp_handshake,
+)
 from netguard.models import ACK, FIN, PSH, SYN, URG
 
 T0 = 1_760_000_000.0  # fixed epoch so every run is byte-for-byte reproducible
@@ -103,6 +112,17 @@ def dhcp_reassignment() -> list[Frame]:
     return [
         (T0, old.arp_reply(GATEWAY)),
         (T0 + 7200, new.arp_request(new.ip)),  # gratuitous ARP announcement (RFC 5227)
+    ]
+
+
+def dhcp_reassignment_seen() -> list[Frame]:
+    """The same re-assignment, but the sensor sees the DHCP server (the gateway) hand the IP to the new laptop."""
+    old, new = Host("10.0.0.77", "02:00:00:00:aa:01"), Host("10.0.0.77", "02:00:00:00:bb:02")
+    return [
+        (T0 - 60, dhcp_ack(GATEWAY, WORKSTATION.mac, WORKSTATION.ip)),  # the network's DHCP server, seen earlier
+        (T0, old.arp_reply(GATEWAY)),
+        (T0 + 7199, dhcp_ack(GATEWAY, new.mac, new.ip)),
+        (T0 + 7200, new.arp_request(new.ip)),
     ]
 
 
@@ -330,6 +350,30 @@ def exfil_volume() -> list[Frame]:
     return frames
 
 
+def compromised_workstation() -> list[Frame]:
+    """A compromised workstation: DNS tunnel to its C2, then a SYN scan and fragmented probes of a server."""
+    frames = dns_tunnel()[:120]  # 48 s of tunnelling (120 TXT queries)
+    for i, port in enumerate(_ports(200)):
+        frames += syn_probe(WORKSTATION, SERVER, T0 + 60 + i * 0.005, port, open_=port in (22, 445))
+    for i, port in enumerate(_ports(20)):
+        probe = WORKSTATION.tcp(SERVER, 41000 + i, port, SYN)
+        frames += [(T0 + 70 + i * 0.01 + k * 0.0001, f) for k, f in enumerate(fragment(probe, 8))]
+    return frames
+
+
+def arp_spoof_with_rogue_dhcp() -> list[Frame]:
+    """An attacker forges a DHCP ACK (rogue server) giving the gateway IP to its own MAC, then poisons ARP."""
+    frames: list[Frame] = [
+        (T0 - 60, dhcp_ack(GATEWAY, WORKSTATION.mac, WORKSTATION.ip)),  # the legitimate DHCP server
+        (T0, WORKSTATION.arp_request(GATEWAY.ip)),
+        (T0 + 0.001, GATEWAY.arp_reply(WORKSTATION)),
+        (T0 + 5, dhcp_ack(ATTACKER, ATTACKER.mac, GATEWAY.ip)),  # rogue ACK: must not "explain" the change
+    ]
+    for i in range(10):
+        frames.append((T0 + 10 + i * 2, ATTACKER.arp_reply(WORKSTATION, claimed_ip=GATEWAY.ip)))
+    return frames
+
+
 def _monitor_allowlisted() -> Config:
     return Config(allowlist=[MONITOR.ip])
 
@@ -355,7 +399,14 @@ SCENARIOS: list[Scenario] = [
         "benign",
         dhcp_reassignment.__doc__ or "",
         dhcp_reassignment,
-        note="Expected false positive (MEDIUM): a single binding change cannot be told apart from spoofing.",
+        note="Expected false positive: no DHCP visible, a single binding change cannot be told apart from spoofing.",
+    ),
+    Scenario(
+        "dhcp_reassignment_seen",
+        "benign",
+        dhcp_reassignment_seen.__doc__ or "",
+        dhcp_reassignment_seen,
+        note="DHCP lease correlation explains the change (ADR-0011).",
     ),
     Scenario(
         "passive_ftp",
@@ -414,6 +465,27 @@ SCENARIOS: list[Scenario] = [
         fragmented_scan,
         {("fragments", "10.0.0.66")},
         note="Probes themselves are invisible to the scan rules (no reassembly); the fragmentation is detected.",
+    ),
+    Scenario(
+        "compromised_workstation",
+        "attack",
+        compromised_workstation.__doc__ or "",
+        compromised_workstation,
+        {
+            ("dnstunnel", WORKSTATION.ip),
+            ("portscan", f"{WORKSTATION.ip}->{SERVER.ip}"),
+            ("trw", WORKSTATION.ip),
+            ("fragments", WORKSTATION.ip),
+        },
+        note="Multi-stage: correlation groups the four alerts into one incident (C2, Discovery, Defense Evasion).",
+    ),
+    Scenario(
+        "arp_spoof_with_rogue_dhcp",
+        "attack",
+        arp_spoof_with_rogue_dhcp.__doc__ or "",
+        arp_spoof_with_rogue_dhcp,
+        {("arpspoof", GATEWAY.ip)},
+        note="A forged DHCP ACK from an untrusted server does not explain the change.",
     ),
     Scenario("udp_scan", "attack", udp_scan.__doc__ or "", udp_scan, {("udpscan", "10.0.0.66->10.0.0.10")}),
     Scenario(

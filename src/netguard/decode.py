@@ -27,6 +27,7 @@ from typing import Any
 
 import dpkt
 
+from netguard.dhcp import DHCP_PORTS, DhcpInfo, parse_dhcp
 from netguard.dns import DNS_PORT, DnsInfo, parse_dns
 from netguard.models import Packet
 
@@ -132,6 +133,7 @@ def _fast_eth_ipv4(ts: float, buf: bytes) -> Packet | None:
             dst_port=dport,
             payload_len=ulen - 8 if ulen >= 8 else len(data),
             dns=_dns(sport, dport, data),
+            dhcp=_dhcp(sport, dport, data),
             **common,
         )
     if proto == 1 and avail >= 8:
@@ -249,6 +251,7 @@ def _ip(fields: dict[str, Any], ip: Any) -> Packet:
             dst_port=l4.dport,
             payload_len=l4.ulen - 8 if l4.ulen >= 8 else len(l4.data),
             dns=_dns(l4.sport, l4.dport, bytes(l4.data)),
+            dhcp=_dhcp(l4.sport, l4.dport, bytes(l4.data)),
             **fields,
         )
     if isinstance(l4, dpkt.icmp.ICMP):
@@ -289,3 +292,10 @@ def _dns(sport: int, dport: int, data: bytes) -> DnsInfo | None:
     if DNS_PORT not in (sport, dport) or not data:
         return None
     return parse_dns(data)
+
+
+def _dhcp(sport: int, dport: int, data: bytes) -> DhcpInfo | None:
+    """DHCP between ports 67 and 68 (client <-> server, either direction)."""
+    if {sport, dport} != DHCP_PORTS:
+        return None
+    return parse_dhcp(data)
