@@ -12,6 +12,24 @@ validated. Only generate such traffic:
 Captures can contain credentials and personal data. Handle pcaps as sensitive
 data. The repository ignores `*.pcap`/`*.pcapng` by default.
 
+## Running the API safely
+
+`netguard serve` stores uploaded captures and their analysis results on disk.
+
+- It binds to `127.0.0.1` by default. To expose it, set `NETGUARD_API_TOKEN`
+  (at least 16 characters, e.g. `python -c "import secrets; print(secrets.token_urlsafe(32))"`);
+  the server refuses a non-loopback address without a token unless you pass
+  `--insecure-no-auth` (only behind another authenticating proxy).
+- The API speaks plain HTTP. Put TLS in front of it (a reverse proxy such as
+  Caddy or nginx) whenever it leaves the machine, otherwise the token and the
+  captures travel in clear text.
+- Each analysis runs in a separate worker process with a timeout, a CPU limit
+  and, on Linux, a memory limit (`--job-timeout`, `--job-memory-mb`).
+  Uploads are capped (`--max-upload-mb`) and must be pcap/pcapng.
+- The data directory contains captures (possibly credentials and personal
+  data): restrict its permissions, back it up like sensitive data, and delete
+  captures through the API when they are no longer needed.
+
 ## Reporting a vulnerability
 
 NetGuard parses untrusted network input. If you find a crash, hang, or memory

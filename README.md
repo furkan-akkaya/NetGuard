@@ -13,14 +13,15 @@ single **explainable alert**. Every alert states what was observed, which
 threshold it crossed, what the attacker likely learned, and which MITRE ATT&CK
 technique it maps to.
 
-> **Status:** v0.3.0 — packet ingestion, flow engine and eleven detection rules,
-> tested on 24 labelled synthetic scenarios. API and dashboard are next;
-> validation on real lab captures is pending (see the [roadmap](ROADMAP.md)).
+> **Status:** v0.4.0 — packet ingestion, flow engine, eleven detection rules
+> (tested on 24 labelled synthetic scenarios) and a REST API with persistent
+> storage. The web dashboard is next; validation on real lab captures is
+> pending (see the [roadmap](ROADMAP.md)).
 
 ```text
 $ netguard analyze syn_scan.pcap
 
-NetGuard 0.3.0 — syn_scan.pcap
+NetGuard 0.4.0 — syn_scan.pcap
 
 Packets: 2,003   Bytes: 108,162   Duration: 1.0s   Flows: 1,000   Decode errors: 0
 Protocols: tcp 2,003
@@ -75,7 +76,8 @@ Engineering properties:
 - **Measured.** Labelled benign and attack scenarios run in CI. Precision, recall and the known false positives are published in [EVALUATION.md](docs/EVALUATION.md).
 - **Robust.** Every byte is treated as hostile. Malformed frames and capture files are counted or rejected, never fatal, and fuzz-tested. All state has memory bounds, and hitting a bound costs O(1), so a spoofed-source flood cannot exhaust memory or CPU.
 - **Deterministic.** Detectors use capture timestamps instead of the wall clock, so the same pcap always gives the same result.
-- **Minimal.** One runtime dependency ([dpkt](https://github.com/kbandla/dpkt)); capture-file readers and the hot decode path are NetGuard's own, bounded code. NetGuard never needs root: live capture is delegated to `tcpdump`.
+- **Minimal.** The analyzer has one runtime dependency ([dpkt](https://github.com/kbandla/dpkt)); capture-file readers and the hot decode path are NetGuard's own, bounded code. The API (FastAPI, SQLite) is an optional extra. NetGuard never needs root: live capture is delegated to `tcpdump`.
+- **Secure defaults.** The API binds to localhost, requires a token for remote access, streams uploads with a hard cap, and analyses every capture in a separate, time- and memory-limited process.
 
 ## Quick start
 
@@ -102,6 +104,17 @@ netguard flows -f jsonl capture.pcap | jq 'select(.state=="S0")'
 # Live: tcpdump captures (as root), NetGuard analyzes (as your user)
 sudo tcpdump -i eth0 -U -w - 'not port 22' | netguard analyze -f jsonl -
 ```
+
+### REST API
+
+```bash
+uv sync --all-extras                      # or: pip install 'netguard[web]'
+uv run netguard serve --data-dir ./netguard-data   # http://127.0.0.1:8000/api/v1/docs
+```
+
+Upload captures, run analyses in isolated worker processes, and search alerts
+and flows with filters, sorting and pagination; export alerts as NDJSON in the
+native format or Elastic Common Schema. See [docs/API.md](docs/API.md).
 
 `-f jsonl` writes one JSON alert per line as soon as an incident closes. This
 format fits `jq`, Filebeat, Vector or a SIEM. The default thresholds are listed
@@ -148,6 +161,7 @@ See [ARCHITECTURE.md](docs/ARCHITECTURE.md) and the [decision records](docs/adr/
 | [Roadmap](ROADMAP.md) | Current state, phases, MVP scope, exit criteria, test strategy (Turkish) |
 | [Tasks](docs/TASKS.md) | Current task board |
 | [Architecture](docs/ARCHITECTURE.md) | Components, data flow, extension points |
+| [API](docs/API.md) | REST API v1 reference, examples, ECS export |
 | [ADRs](docs/adr/) | Python + dpkt, tcpdump capture, incidents, flow semantics, own capture readers, connection events, baselines |
 | [Rule catalog](docs/rules/README.md) | One page per detection rule |
 | [Evaluation](docs/EVALUATION.md) | Method, scorecard, benchmark, limitations |
@@ -158,6 +172,7 @@ See [ARCHITECTURE.md](docs/ARCHITECTURE.md) and the [decision records](docs/adr/
 
 ```bash
 uv sync
+uv sync --all-extras         # include the web extra for the API tests
 uv run pytest --cov          # tests + coverage
 uv run ruff check . && uv run ruff format --check .
 uv run mypy                  # strict type checking

@@ -57,6 +57,31 @@ sequenceDiagram
 | `output.py` | Text, JSON and JSONL alerts; CSV/JSONL flow export | `FlowWriter` |
 | `lab/` | Frame builders, labelled scenarios, evaluation harness | `Scenario`, `run_all` |
 
+## Backend (Phase 4)
+
+```mermaid
+flowchart LR
+    C[Client / dashboard] -- HTTP /api/v1 --> A[FastAPI app<br/>web/app.py]
+    A -- streamed upload, hash, magic check --> D[(captures/&lt;id&gt;<br/>0600)]
+    A <--> S[(SQLite WAL<br/>store.py)]
+    A -- wake --> R[JobRunner thread<br/>jobs.py]
+    R -- claim (BEGIN IMMEDIATE) --> S
+    R -- spawn, timeout, cancel, kill --> W[worker process<br/>worker.py<br/>RLIMIT_AS / RLIMIT_CPU]
+    W -- read --> D
+    W -- flows in batches, alerts + stats --> S
+```
+
+| Module | Responsibility |
+|---|---|
+| `store.py` | Schema + migrations, captures, analysis lifecycle, filtered/sorted/paginated queries (allowlisted sort keys, bound parameters) |
+| `jobs.py` | Claims queued analyses, supervises one worker process at a time, maps outcomes to final states, recovers interrupted jobs |
+| `worker.py` | Runs one analysis under resource limits, streams flows into the database, stores alerts and statistics |
+| `events.py` | Alert export formats: native contract and Elastic Common Schema |
+| `web/app.py`, `web/schemas.py`, `web/settings.py` | API routes, OpenAPI models, secure-default settings (loopback, token, upload cap) |
+
+The core analyzer has no dependency on the web stack; `netguard[web]` adds
+FastAPI and uvicorn. Endpoint reference: [API.md](API.md); decisions: ADR-0008.
+
 ## Design principles
 
 1. **Detectors are pure.** A detector receives `Packet` (and finished `Flow`) objects and returns
