@@ -17,6 +17,7 @@ from netguard.web.app import create_app, safe_filename
 from netguard.web.settings import ServerSettings, SettingsError
 
 API = "/api/v1"
+TOML = {"Content-Type": "application/toml"}
 TOKEN = "t" * 32
 
 
@@ -30,12 +31,13 @@ def _pcap_bytes(tmp_path, scenario="syn_scan_1000"):
 def server(tmp_path):
     settings = ServerSettings(data_dir=tmp_path / "data", run_jobs=False, max_upload_bytes=2_000_000)
     app = create_app(settings)
-    with TestClient(app) as client:
+    with TestClient(app, base_url="http://localhost") as client:
         yield client, app
 
 
-def _upload(client, data: bytes, name: str = "scan.pcap", **kw):
-    return client.post(f"{API}/captures", params={"filename": name}, content=data, **kw)
+def _upload(client, data: bytes, name: str = "scan.pcap", content_type: str = "application/octet-stream"):
+    headers = {"Content-Type": content_type}
+    return client.post(f"{API}/captures", params={"filename": name}, content=data, headers=headers)
 
 
 def _analyse(client, app, capture_id: str, config=None):
@@ -131,7 +133,7 @@ def test_corrupt_capture_fails_the_job_cleanly(server):
 def test_job_timeout_kills_the_worker(tmp_path):
     settings = ServerSettings(data_dir=tmp_path / "data", run_jobs=False, jobs=JobLimits(timeout_seconds=0.01))
     app = create_app(settings)
-    with TestClient(app) as client:
+    with TestClient(app, base_url="http://localhost") as client:
         cid = _upload(client, _pcap_bytes(tmp_path)).json()["id"]
         analysis = _analyse(client, app, cid)
     assert analysis["status"] == "failed"
@@ -211,7 +213,7 @@ def test_security_headers(server):
 
 def test_token_is_required_when_configured(tmp_path):
     settings = ServerSettings(data_dir=tmp_path / "d", token=TOKEN, run_jobs=False)
-    with TestClient(create_app(settings)) as client:
+    with TestClient(create_app(settings), base_url="http://localhost") as client:
         assert client.get(f"{API}/health").status_code == 200  # health stays open for probes
         assert client.get(f"{API}/captures").status_code == 401
         assert client.get(f"{API}/captures", headers={"Authorization": "Bearer wrong"}).status_code == 401
@@ -230,7 +232,7 @@ def test_remote_bind_requires_a_token(tmp_path):
 def test_interrupted_jobs_are_recovered_on_start(tmp_path):
     settings = ServerSettings(data_dir=tmp_path / "data", run_jobs=False)
     app = create_app(settings)
-    with TestClient(app) as client:
+    with TestClient(app, base_url="http://localhost") as client:
         cid = _upload(client, _pcap_bytes(tmp_path)).json()["id"]
         aid = client.post(f"{API}/captures/{cid}/analyses", json={}).json()["id"]
         assert app.state.store.claim_next()["id"] == aid  # a worker "dies" while running it
@@ -248,7 +250,7 @@ def test_background_runner_processes_jobs(tmp_path):
     """The production path: the runner thread picks up the job by itself."""
     settings = ServerSettings(data_dir=tmp_path / "data")  # run_jobs=True
     app = create_app(settings)
-    with TestClient(app) as client:
+    with TestClient(app, base_url="http://localhost") as client:
         cid = _upload(client, _pcap_bytes(tmp_path, "ping_sweep")).json()["id"]
         aid = client.post(f"{API}/captures/{cid}/analyses", json={}).json()["id"]
         deadline = time.monotonic() + 30
@@ -356,7 +358,7 @@ def test_dashboard_bundle_is_served(tmp_path):
     (static / "index.html").write_text("<!doctype html><div id=root></div>")
     (static / "assets" / "app.js").write_text("console.log(1)")
     settings = ServerSettings(data_dir=tmp_path / "data", run_jobs=False, static_dir=static)
-    with TestClient(create_app(settings)) as client:
+    with TestClient(create_app(settings), base_url="http://localhost") as client:
         assert "id=root" in client.get("/analyses/abc").text
         assert client.get("/assets/app.js").text == "console.log(1)"
         (static / "favicon.svg").write_text("<svg/>")
@@ -384,20 +386,23 @@ def test_profile_export_import_round_trip(server):
     assert exported.status_code == 200
     assert "min_distinct_ports = 5" in exported.text
     assert exported.text.startswith("# NetGuard rule profile: lab tuning")
-    imported = client.post(f"{API}/profiles/import", params={"name": "copy"}, content=exported.text.encode())
+    imported = client.post(
+        f"{API}/profiles/import", params={"name": "copy"}, content=exported.text.encode(), headers=TOML
+    )
     assert imported.status_code == 201
     assert imported.json()["config"] == {"portscan": {"min_distinct_ports": 5}}
 
 
 def test_profile_import_validates(server):
     client, _ = server
-    bad_toml = client.post(f"{API}/profiles/import", params={"name": "x"}, content=b"[portscan\n")
-    assert bad_toml.status_code == 422
-    unknown = client.post(f"{API}/profiles/import", params={"name": "x"}, content=b"[portscan]\nnope = 1\n")
-    assert unknown.status_code == 422
-    huge = client.post(f"{API}/profiles/import", params={"name": "x"}, content=b"#" * 70_000)
-    assert huge.status_code == 413
-    assert client.post(f"{API}/profiles/import", params={"name": "<b>"}, content=b"").status_code == 422
+
+    def imp(body: bytes, name: str = "x"):
+        return client.post(f"{API}/profiles/import", params={"name": name}, content=body, headers=TOML)
+
+    assert imp(b"[portscan\n").status_code == 422
+    assert imp(b"[portscan]\nnope = 1\n").status_code == 422
+    assert imp(b"#" * 70_000).status_code == 413
+    assert imp(b"", name="<b>").status_code == 422
 
 
 def test_incidents_and_confidence_in_the_api(server, tmp_path):

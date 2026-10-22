@@ -41,9 +41,12 @@ from netguard.report import render_report
 from netguard.store import SCHEMA_VERSION, Store, StoreError
 from netguard.store import Page as StorePage
 from netguard.web import schemas
+from netguard.web.guard import RequestGuard
 from netguard.web.settings import ServerSettings
 
 log = logging.getLogger("netguard.web")
+UPLOAD_TYPES = frozenset({"application/octet-stream", "application/vnd.tcpdump.pcap", "application/x-pcapng"})
+TOML_TYPES = frozenset({"application/toml", "application/x-toml"})
 STATIC_DIR = Path(__file__).parent / "static"
 #: The dashboard is a static bundle: scripts and styles only from our origin,
 #: no inline script, no framing, no plugins.
@@ -99,8 +102,16 @@ def create_app(settings: ServerSettings) -> FastAPI:
         # Captures may hold credentials and personal data: owner-only access.
         settings.data_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
         settings.captures_dir.mkdir(mode=0o700, exist_ok=True)
+        # SQLite creates its -wal/-shm companions later; the umask keeps them (and
+        # everything else this process creates) owner-only.
+        os.umask(0o077)
         store.migrate()
         settings.db_path.chmod(0o600)
+        mode = settings.data_dir.stat().st_mode & 0o777
+        if mode & 0o077:
+            log.warning(
+                "data directory %s is accessible to other users (mode %o); use chmod 700", settings.data_dir, mode
+            )
         if settings.run_jobs:
             runner.start()
         yield
@@ -116,6 +127,11 @@ def create_app(settings: ServerSettings) -> FastAPI:
         docs_url=f"{API}/docs",
         redoc_url=None,
         openapi_url=f"{API}/openapi.json",
+    )
+    app.add_middleware(
+        RequestGuard,
+        allowed_hosts=[settings.host, *settings.allowed_hosts],
+        streamed_paths=[f"{API}/captures"],  # the upload streams with its own size cap
     )
     app.state.store = store
     app.state.runner = runner
@@ -246,6 +262,8 @@ def create_app(settings: ServerSettings) -> FastAPI:
         name: Annotated[str, Query(min_length=1, max_length=64, pattern=r"^[\w .()-]+$")],
         description: Annotated[str, Query(max_length=500)] = "",
     ) -> dict[str, Any]:
+        if request.headers.get("content-type", "").split(";")[0].strip() not in TOML_TYPES:
+            raise HTTPException(status_code=415, detail="send the profile as application/toml")
         body = await request.body()
         if len(body) > 65_536:
             raise HTTPException(status_code=413, detail="profile larger than 64 KiB")
@@ -276,7 +294,13 @@ def create_app(settings: ServerSettings) -> FastAPI:
     async def upload_capture(
         request: Request, response: Response, filename: Annotated[str, Query(max_length=255)] = "capture.pcap"
     ) -> dict[str, Any]:
-        limit = settings.max_upload_bytes
+        # A browser cannot send these content types cross-site without a CORS
+        # preflight (which this API never answers), so they also guard against CSRF.
+        if request.headers.get("content-type", "").split(";")[0].strip() not in UPLOAD_TYPES:
+            raise HTTPException(status_code=415, detail="send the capture as application/octet-stream")
+        limit = min(settings.max_upload_bytes, settings.max_storage_bytes - store.storage_used())
+        if limit <= 0:
+            raise HTTPException(status_code=507, detail="storage quota reached: delete captures first")
         declared = request.headers.get("content-length")
         if declared is not None and declared.isdigit() and int(declared) > limit:
             raise HTTPException(status_code=413, detail=f"capture larger than the {limit} byte limit")
@@ -289,7 +313,9 @@ def create_app(settings: ServerSettings) -> FastAPI:
                 async for chunk in request.stream():
                     size += len(chunk)
                     if size > limit:
-                        raise HTTPException(status_code=413, detail=f"capture larger than the {limit} byte limit")
+                        raise HTTPException(
+                            status_code=413, detail=f"capture larger than the {limit} byte limit (upload size or quota)"
+                        )
                     if len(head) < 4:
                         head += chunk[: 4 - len(head)]
                     digest.update(chunk)
@@ -342,6 +368,8 @@ def create_app(settings: ServerSettings) -> FastAPI:
     def create_analysis(capture_id: str, body: schemas.AnalysisRequest | None = None) -> dict[str, Any]:
         if store.get_capture(capture_id) is None:
             raise HTTPException(status_code=404, detail="capture not found")
+        if store.pending_count() >= settings.max_pending_analyses:
+            raise HTTPException(status_code=429, detail="too many queued analyses; wait for some to finish")
         base = settings.analysis_config
         profile_id = body.profile_id if body else None
         try:

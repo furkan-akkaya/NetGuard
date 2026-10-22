@@ -99,6 +99,13 @@ def build_parser() -> argparse.ArgumentParser:
     sv.add_argument("--port", type=int, default=8000)
     sv.add_argument("-c", "--config", type=Path, help="base TOML configuration for analyses")
     sv.add_argument("--max-upload-mb", type=int, default=256)
+    sv.add_argument("--max-storage-gb", type=float, default=10.0, help="quota for all stored captures")
+    sv.add_argument(
+        "--allowed-host",
+        action="append",
+        default=[],
+        help="extra host name clients may use (e.g. behind a reverse proxy); repeatable",
+    )
     sv.add_argument("--job-timeout", type=float, default=600.0, help="seconds per analysis")
     sv.add_argument("--job-memory-mb", type=int, default=1024, help="worker memory limit (enforced on Linux)")
     sv.add_argument("--max-stored-flows", type=int, default=500_000, help="flow rows kept per analysis")
@@ -188,7 +195,7 @@ def cmd_rules(args: argparse.Namespace) -> int:
 
 
 def _run_session(args: argparse.Namespace, source: object, clock_rate: float) -> int:
-    from netguard.live import LiveSession, ReplaySource, TcpdumpSource
+    from netguard.live import LiveSession, ReplaySource, SourceError, TcpdumpSource
 
     assert isinstance(source, TcpdumpSource | ReplaySource)
     config = load_config(args.config)
@@ -226,6 +233,9 @@ def _run_session(args: argparse.Namespace, source: object, clock_rate: float) ->
     previous = {sig: signal.signal(sig, request_stop) for sig in (signal.SIGINT, signal.SIGTERM)}
     try:
         outcome = session.run()
+    except SourceError as exc:
+        print(f"netguard: error: {exc}", file=sys.stderr)
+        return EXIT_ERROR
     finally:
         for sig, handler in previous.items():
             signal.signal(sig, handler)
@@ -312,7 +322,9 @@ def cmd_serve(args: argparse.Namespace) -> int:
         port=args.port,
         token=os.environ.get(TOKEN_ENV) or None,
         allow_remote_without_token=args.insecure_no_auth,
+        allowed_hosts=args.allowed_host,
         max_upload_bytes=args.max_upload_mb * 1024 * 1024,
+        max_storage_bytes=int(args.max_storage_gb * 1024**3),
         analysis_config=load_config(args.config),
         jobs=JobLimits(
             timeout_seconds=args.job_timeout, memory_mb=args.job_memory_mb, max_stored_flows=args.max_stored_flows
@@ -347,24 +359,28 @@ def cmd_lab(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def _dispatch(args: argparse.Namespace) -> int:
+    commands = {
+        "analyze": cmd_analyze,
+        "flows": cmd_flows,
+        "rules": cmd_rules,
+        "config": cmd_config,
+        "serve": cmd_serve,
+        "monitor": cmd_monitor,
+        "replay": cmd_replay,
+        "lab": cmd_lab,
+    }
+    return commands[args.command](args)
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
-        if args.command == "analyze":
-            return cmd_analyze(args)
-        if args.command == "flows":
-            return cmd_flows(args)
-        if args.command == "rules":
-            return cmd_rules(args)
-        if args.command == "config":
-            return cmd_config(args)
-        if args.command == "serve":
-            return cmd_serve(args)
-        if args.command == "monitor":
-            return cmd_monitor(args)
-        if args.command == "replay":
-            return cmd_replay(args)
-        return cmd_lab(args)
+        code = _dispatch(args)
+        # Flush here, inside the handler: otherwise a reader that went away after
+        # the last write is only noticed at interpreter exit (exit code 120).
+        sys.stdout.flush()
+        return code
     except (ConfigError, CaptureFormatError, UnsupportedLinkType, KeyError) as exc:
         print(f"netguard: error: {exc}", file=sys.stderr)
         return EXIT_ERROR

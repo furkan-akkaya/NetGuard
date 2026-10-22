@@ -272,6 +272,16 @@ class Store:
             )
             return dict(conn.execute("SELECT * FROM captures WHERE id = ?", (cid,)).fetchone()), True
 
+    def storage_used(self) -> int:
+        with self.connect() as conn:
+            return int(conn.execute("SELECT COALESCE(SUM(size_bytes), 0) FROM captures").fetchone()[0])
+
+    def pending_count(self) -> int:
+        with self.connect() as conn:
+            return int(
+                conn.execute("SELECT COUNT(*) FROM analyses WHERE status IN ('queued', 'running')").fetchone()[0]
+            )
+
     def get_capture(self, capture_id: str) -> dict[str, Any] | None:
         with self.connect() as conn:
             row = conn.execute("SELECT * FROM captures WHERE id = ?", (capture_id,)).fetchone()

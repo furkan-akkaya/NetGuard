@@ -32,7 +32,7 @@ import time
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import IO
+from typing import IO, BinaryIO
 
 from netguard.config import Config
 from netguard.engine import AnalysisResult, Engine
@@ -105,18 +105,25 @@ def permission_help() -> str:
     )
 
 
+def open_new_file(path: Path) -> BinaryIO:
+    """Create ``path`` mode 0600. O_EXCL: never overwrite an existing file, and
+    never follow a symlink someone planted at that name (e.g. in /tmp)."""
+    try:
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    except FileExistsError as exc:
+        raise SourceError(f"{path} already exists; choose a new file name for --write") from exc
+    return os.fdopen(fd, "wb")
+
+
 class _Tee:
     """Pass-through reader that also writes the raw pcap bytes to a file, up to a size limit."""
 
-    def __init__(self, stream: IO[bytes], path: Path | None, limit: int) -> None:
+    def __init__(self, stream: IO[bytes], fh: BinaryIO | None, limit: int) -> None:
         self.stream = stream
         self.limit = limit
         self.written = 0
         self.truncated = False
-        self.fh = None
-        if path is not None:
-            fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-            self.fh = os.fdopen(fd, "wb")
+        self.fh = fh
 
     def read(self, n: int = -1, /) -> bytes:
         data = self.stream.read(n)
@@ -158,15 +165,25 @@ class TcpdumpSource:
         self._tee: _Tee | None = None
 
     def start(self, out: queue.Queue[Frame | None]) -> None:
+        # Validate the output file before tcpdump starts, so a refusal leaves nothing running.
+        fh = open_new_file(self.write_to) if self.write_to is not None else None
         try:
             self.proc = subprocess.Popen(  # noqa: S603 - argument vector, no shell
                 self.command, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE
             )
         except FileNotFoundError as exc:
+            if fh is not None:
+                fh.close()
             raise SourceError(f"{self.command[0]} not found: install tcpdump") from exc
+        except PermissionError as exc:
+            # e.g. tcpdump carries file capabilities the current process may not grant
+            # (containers without CAP_NET_ADMIN in their bounding set).
+            if fh is not None:
+                fh.close()
+            raise SourceError(f"not permitted to run {self.command[0]}: {exc.strerror}.\n{permission_help()}") from exc
         assert self.proc.stdout is not None
         assert self.proc.stderr is not None
-        self._tee = _Tee(self.proc.stdout, self.write_to, self.write_limit)
+        self._tee = _Tee(self.proc.stdout, fh, self.write_limit)
         err = threading.Thread(target=self._read_stderr, args=(self.proc.stderr,), daemon=True)
         rd = threading.Thread(target=self._read_frames, args=(out,), daemon=True)
         self._threads = [err, rd]

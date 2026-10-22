@@ -25,10 +25,15 @@ class ServerSettings:
     token: str | None = None
     allow_remote_without_token: bool = False
     max_upload_bytes: int = 256 * 1024 * 1024
+    max_storage_bytes: int = 10 * 1024 * 1024 * 1024  # all stored captures together
+    max_pending_analyses: int = 100  # queued + running
     analysis_config: Config = field(default_factory=Config)
     jobs: JobLimits = field(default_factory=JobLimits)
     run_jobs: bool = True  # tests drive the runner themselves
     static_dir: Path | None = None  # dashboard bundle; default: the package's web/static
+    # Host names (besides loopback and --host) clients may use, e.g. the name a
+    # reverse proxy forwards. Anything else is refused (DNS rebinding defence).
+    allowed_hosts: list[str] = field(default_factory=list)
 
     @property
     def db_path(self) -> Path:
@@ -46,8 +51,8 @@ class ServerSettings:
                 f"refusing to listen on {self.host} without an API token: set {TOKEN_ENV}, "
                 "bind to 127.0.0.1, or pass --insecure-no-auth if another layer protects the API"
             )
-        if self.max_upload_bytes <= 0:
-            raise SettingsError("max upload size must be > 0")
+        if self.max_upload_bytes <= 0 or self.max_storage_bytes <= 0 or self.max_pending_analyses <= 0:
+            raise SettingsError("upload, storage and queue limits must be > 0")
 
 
 def _is_loopback(host: str) -> bool:
