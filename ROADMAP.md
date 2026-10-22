@@ -1,6 +1,6 @@
 # NetGuard Yol Haritası
 
-> Son güncelleme: **2026-10-22** · Mevcut sürüm: **v0.5.0 (MVP)** · Aktif faz: **Faz 6 — Canlı yakalama ve replay**
+> Son güncelleme: **2026-10-22** · Mevcut sürüm: **v0.6.0** · Aktif faz: **Faz 7 — İleri tespit** (👤 Faz 8 lab doğrulaması bekliyor)
 >
 > Bu dosya projenin **tek** yol haritasıdır. Güncel iş listesi
 > [docs/TASKS.md](docs/TASKS.md), ölçülmüş sonuçlar
@@ -50,21 +50,19 @@ mikroservis yok.
 | 3 | Tespit motoru (genişletme) | ✅ | **v0.3.0** |
 | 4 | Backend, kalıcılık, API | ✅ | **v0.4.0** |
 | 5 | Web dashboard | ✅ | **v0.5.0 = MVP** |
-| 6 | Canlı yakalama ve replay | 🔄 | v0.6.0 |
-| 7 | İleri tespit ve tehdit istihbaratı | ⏳ | v0.7.0 |
+| 6 | Canlı yakalama ve replay | ✅ (👤 lab doğrulaması) | **v0.6.0** |
+| 7 | İleri tespit ve tehdit istihbaratı | 🔄 | v0.7.0 |
 | 8 | Test, benchmark, değerlendirme | 🔄 sürekli · 👤 lab | v0.8.0 |
 | 9 | Güvenlik sertleştirme ve CI/CD | 🔄 sürekli | v0.9.0 |
 | 10 | Dokümantasyon, release, portföy | ⏳ | **v1.0.0** |
 
-**Ölçülmüş durum (v0.5.0, MVP):** 11 tespit kuralı, REST API ve web
-dashboard; 264 Python testi (API entegrasyon testleri gerçek worker
-süreçleriyle) ve 12 frontend testi, kapsama %93; ruff, mypy `--strict`,
-TypeScript strict temiz; frontend bağımlılıklarında bilinen açık yok (pnpm
-audit). 242k paketlik referans pcap 11 kuralla ~2,45 sn / 36 MB (M1). Sentetik
-senaryolar: 13/13 saldırı tespit, 11 benign senaryonun 8'i alarmsız (3 bilinen
-yanlış pozitif). Dashboard gerçek bir sunucuda, gerçek analizlerle tarayıcıda
-denendi (masaüstü, mobil genişlik, açık/koyu tema). Ayrıntı:
-[EVALUATION.md](docs/EVALUATION.md).
+**Ölçülmüş durum (v0.6.0):** 11 tespit kuralı, REST API, web dashboard,
+canlı yakalama ve replay; 290 Python testi ve 12 frontend testi, kapsama
+%92; ruff, mypy `--strict`, TypeScript strict temiz. 242k paketlik referans
+pcap 11 kuralla ~2,45 sn / 36 MB (M1). Sentetik senaryolar: 13/13 saldırı
+tespit, 11 benign senaryonun 8'i alarmsız (3 bilinen yanlış pozitif). Canlı
+modda tespit gecikmesi hızlı taramalarda ~1–2 sn, yavaş taramada 76 sn
+(`benchmarks/detection_delay.py`). Ayrıntı: [EVALUATION.md](docs/EVALUATION.md).
 
 **Gerçek dünyada doğrulama yok:** tüm tespit sonuçları şimdilik sentetik
 senaryolardan. Lab yakalamaları (Faz 8) kullanıcının UTM ortamını gerektirir.
@@ -78,7 +76,7 @@ flowchart LR
     F2 --> F3[3 ✅ Tespit motoru]
     F3 --> F4[4 ✅ Backend & API]
     F4 --> F5[5 ✅ Dashboard<br/>= MVP]
-    F4 --> F6[6 🔄 Canlı & replay]
+    F4 --> F6[6 ✅ Canlı & replay]
     F5 --> F6
     F3 --> F7[7 İleri tespit]
     F4 --> F7
@@ -246,15 +244,28 @@ Faz 9/10'da.
 
 **Öğrenme notu:** [06 — Saldırgan kontrollü veriyi gösteren arayüz](docs/learning/06-dashboard-security.md).
 
-### Faz 6 — Canlı yakalama ve replay ⏳ (v0.6.0)
+### Faz 6 — Canlı yakalama ve replay ✅ (v0.6.0)
 
-| # | İş |
-|---|---|
-| 6.1 | `netguard monitor`: yetkili arayüzde `tcpdump` alt süreci, `-Z` ile yetki düşürme, başlat/durdur, kaynak sınırları |
-| 6.2 | macOS/Linux izin farkları ve sınırlamaların belgelenmesi |
-| 6.3 | Kaydedilmiş yakalamaların kontrollü replay'i ve farklı konfigürasyonla yeniden analiz |
-| 6.4 | Alarm yaşam döngüsü: eşikte **erken uyarı**, incident sonunda nihai alarm, `max_incident_age` |
-| 6.5 | Canlı = offline doğrulaması (`tcpreplay`, 👤 lab); 24 saatlik soak testi, paket kaybı ölçümü |
+| # | İş | Durum |
+|---|---|---|
+| 6.1 | `netguard monitor`: tek ve açıkça adlandırılmış arayüzde `tcpdump`, BPF filtresi, süre/paket sınırı, sınırlı kuyruk, `--write` (0600, boyut sınırı), Ctrl-C ile temiz kapanış, çekirdek düşürme istatistiği ([ADR-0010](docs/adr/0010-live-capture-and-alert-lifecycle.md)) | ✅ |
+| 6.2 | Yetki modeli: NetGuard root olarak çalışmayı reddediyor; Linux `setcap`, macOS BPF erişimi, `--sudo` (`sudo -n … -Z kullanıcı`); izin hatasında platforma özel açıklama ([LIVE_CAPTURE.md](docs/LIVE_CAPTURE.md)) | ✅ |
+| 6.3 | `netguard replay --speed N`; farklı profillerle yeniden analiz (Faz 5) | ✅ |
+| 6.4 | Alarm yaşam döngüsü: `early`/`final` aşamaları, `reported_at`, `max_incident_age`, sessizlikte saat ilerletme (`Engine.advance`); şema 1.1 | ✅ |
+| 6.5 | Canlı = offline doğrulaması gerçek arayüzde, soak testi, paket kaybı ölçümü | 👤 lab (bu makinede yakalama yetkisi yok) |
+
+**Kabul kriterleri:** ✅ replay'in final alarmları offline analizle birebir
+aynı (test); ✅ canlı boru hattı uçtan uca test edildi (tcpdump yerine
+betik kaynak); ✅ gerçek tcpdump izin hatası doğru açıklandı; ✅ tespit
+gecikmesi ölçüldü ve belgelendi. 👤 Gerçek arayüzde canlı yakalama lab'de
+doğrulanacak.
+
+**Bilinen sınırlamalar:** canlı yakalamayı dashboard'dan başlatmak bilinçli
+olarak yok (API sürecine yetkili yakalama başlatma gücü vermemek için);
+`monitor` sonuçları veritabanına doğrudan yazılmıyor (`--write` ile kaydedilen
+pcap yüklenebilir); IPv6 parça birleştirme yok.
+
+**Öğrenme notu:** [07 — Canlı trafik: yetki, zaman ve gecikme](docs/learning/07-live-capture.md).
 
 ### Faz 7 — İleri tespit ve tehdit istihbaratı ⏳ (v0.7.0)
 
@@ -304,7 +315,7 @@ uyum iddia edilmez.
 |---|---|---|
 | Dil | Python 3.11+ (okunabilirlik, test edilebilirlik; performans ölçülerek yönetiliyor) | ADR-0001 |
 | Paket ayrıştırma | Kendi pcap/pcapng okuyucuları + `struct` hızlı yol + dpkt yedek | ADR-0005 |
-| Canlı yakalama | `tcpdump`/`dumpcap` alt süreci; NetGuard root çalışmaz | ADR-0002 |
+| Canlı yakalama | `tcpdump` alt süreci, sınırlı kuyruk, saat ilerletme, erken uyarı; NetGuard root çalışmaz | ADR-0002, ADR-0010 |
 | Alarm modeli | Incident birleştirme, `rule_id`, deterministik `alert_id`, şema 1.0 | ADR-0003 |
 | Flow modeli | Zeek `conn_state` sözlüğü, zaman aşımı sınıfları, LRU | ADR-0004 |
 | Sonuca duyarlı tespit | Bağlantı olayları, TRW + pencere kuralı, protokol bazlı dağıtım | ADR-0006 |
@@ -337,7 +348,6 @@ Kapsama eşiği %90 (CI'da zorunlu). Gerçek pcap'ler git'e girmez (`.gitignore`
 | Aynı aktivite için birden çok kural | SYN taraması NG-SCAN-001 ve NG-SCAN-002 üretiyor | Faz 7 (korelasyon) |
 | Baseline kuralları ısınma istiyor | 10 dakikadan kısa yakalamalarda hız/hacim alarmı yok | Faz 4 (kalıcı baseline) |
 | Decoy/sahte kaynaklı taramalar | Bir tarama birçok kaynağa bölünüyor | Faz 7 |
-| Idle-timeout gecikmesi | Canlı alarmlar ≥ 10 sn gecikiyor | 6.4 |
 | IP fragment birleştirme yok | Parçalı probe'lar analiz edilmiyor; NG-FRAG-001 atlatmayı raporluyor | Faz 7 (gerekirse) |
 
 ## 9. Kullanıcı gerektiren işler 👤
@@ -355,6 +365,8 @@ Kapsama eşiği %90 (CI'da zorunlu). Gerçek pcap'ler git'e girmez (`.gitignore`
 
 ### Değişiklik kaydı
 
+- **2026-10-22:** Faz 6 tamamlandı (v0.6.0): `monitor`, `replay`, erken uyarı,
+  azami incident yaşı, tespit gecikmesi ölçümü. Gerçek arayüzde doğrulama 👤 lab.
 - **2026-10-22:** Faz 5 tamamlandı (v0.5.0 = MVP): web dashboard, kural
   profilleri, HTML rapor, CSV/ECS dışa aktarımı.
 - **2026-10-22:** Faz 4 tamamlandı (v0.4.0): SQLite depolama, iş yaşam

@@ -2,6 +2,19 @@
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning: [SemVer](https://semver.org/).
 
+## [0.6.0] - 2026-10-22
+
+Phase 6: live capture and replay.
+
+### Added
+- `netguard monitor -i IFACE`: live analysis via a `tcpdump` child process (argument vector, validated interface, BPF filter as one argument), `--duration`/`--count`, `--write` with a size limit (mode 0600), `--sudo` (`sudo -n … -Z $USER`), status lines, clean Ctrl-C shutdown, and a summary with tcpdump's kernel drop statistics. NetGuard refuses to run as root; permission errors explain the platform-specific fix (ADR-0010, docs/LIVE_CAPTURE.md).
+- `netguard replay CAPTURE --speed N`: recorded traffic through the live pipeline; its final alerts equal `netguard analyze` (tested).
+- Alert lifecycle, contract 1.1: `stage` (`early` when an incident crosses its threshold, `final` when it closes; same `alert_id`) and `reported_at` (capture-clock emission time). `[alerts] early_warning` (on for monitor/replay) and `max_incident_age_seconds`. All rule families support early warnings.
+- `Engine.advance()`: the capture clock moves during silence, so live incidents close without a following packet.
+- `benchmarks/detection_delay.py` and EVALUATION § Detection delay (time to first alert per attack scenario).
+- Dashboard: early-stage badge and detection delay on alerts; ECS export maps `reported_at` to `event.created` and adds `netguard.stage`.
+- ADR-0010, learning note 07 (Turkish).
+
 ## [0.5.0] - 2026-10-22
 
 Phase 5: the web dashboard. With it NetGuard reaches its MVP: upload a capture,

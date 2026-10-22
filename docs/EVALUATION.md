@@ -106,6 +106,48 @@ change in detection quality fails CI until this document is updated.
 - The baseline rules (NG-RATE-001, NG-VOL-001) need 10 minutes of history;
   their scenarios are 16–20 minutes long for that reason.
 
+## Detection delay
+
+How long after an attack starts does its first alert appear? Each attack
+scenario is run as `netguard monitor` would see it: early warnings on, and the
+engine clock ticking every second even when no packet arrives. Delay =
+first alert's `reported_at` − the incident's `first_seen` (ADR-0010).
+
+```bash
+uv run python benchmarks/detection_delay.py
+```
+
+| Scenario | Rule | Entity | Detected after | First alert | Traffic duration |
+|---|---|---|---:|---|---:|
+| `syn_scan_1000` | NG-SCAN-001 | `10.0.0.66->10.0.0.10` | 2.0 s | early | 1.0 s |
+| `syn_scan_1000` | NG-SCAN-002 | `10.0.0.66` | 2.0 s | early | 1.0 s |
+| `xmas_scan` | NG-SCAN-001 | `10.0.0.66->10.0.0.10` | 1.4 s | early | 0.4 s |
+| `slow_scan` | NG-SCAN-001 | `10.0.0.66->10.0.0.10` | not detected | - | 1485.0 s |
+| `slow_scan` | NG-SCAN-002 | `10.0.0.66` | 76.0 s | early | 1485.0 s |
+| `ping_sweep` | NG-SWEEP-001 | `10.0.0.66` | 1.0 s | early | 1.0 s |
+| `arp_sweep` | NG-SWEEP-001 | `10.0.0.66` | 1.5 s | early | 0.5 s |
+| `arp_spoof_mitm` | NG-ARP-001 | `10.0.0.1` | 0.0 s | final | 68.0 s |
+| `arp_spoof_mitm` | NG-ARP-001 | `10.0.0.20` | 0.0 s | final | 68.0 s |
+| `fragmented_scan` | NG-FRAG-001 | `10.0.0.66` | 1.5 s | early | 0.5 s |
+| `udp_scan` | NG-SCAN-003 | `10.0.0.66->10.0.0.10` | 1.0 s | early | 2.0 s |
+| `syn_flood_spoofed` | NG-SYN-001 | `10.0.0.10` | 11.0 s | early | 6.0 s |
+| `dns_tunnel` | NG-DNS-001 | `10.0.0.20` | 20.4 s | early | 119.6 s |
+| `dga_nxdomain` | NG-DNS-002 | `10.0.0.20` | 13.0 s | early | 29.5 s |
+| `connection_burst` | NG-RATE-001 | `10.0.0.20` | 60.8 s | early | 954.9 s |
+| `exfil_volume` | NG-VOL-001 | `10.0.0.20` | 60.1 s | early | 951.0 s |
+
+How to read it:
+
+- The engine ticks once per second, so even an instant decision is reported
+  with up to ~1–2 s delay (`syn_scan_1000` crosses its threshold after 15 ms).
+- Rule design sets the rest: NG-SYN-001 evaluates 10 s intervals (~11 s),
+  NG-DNS-001 needs 50 distinct subdomains (20 s at this tunnel's rate),
+  NG-SCAN-002 needs ≥ 5 failures and a likelihood-ratio crossing (6 probes
+  15 s apart = 76 s), the baseline rules evaluate 60 s intervals (~60 s).
+- ARP spoofing is reported at the first conflicting reply (0 s, no early stage).
+- Without early warnings, the first alert comes only when the incident closes
+  (idle timeout or end of capture): for the slow scan that was 1485 s.
+
 ## 3. Performance
 
 Hardware: Apple M1 (MacBook Air), 16 GB, macOS. Python 3.11, single process.
@@ -173,6 +215,11 @@ home and lab networks, low-traffic servers, and offline forensic analysis.
   mismatch (v0.3.0: 131 536 accepted, 0 mismatches, 0 exceptions). It found
   one during development: a quoted inner IP length smaller than its header,
   which the fast path now declines.
+- **Live pipeline:** `tests/test_live.py` runs the monitor pipeline end to end
+  with a scripted stand-in for tcpdump (this development machine has no
+  capture permission, which also exercised the real permission-denied path),
+  checks tcpdump statistics parsing, the pcap write limit, stop/duration
+  handling, and that a replay's final alerts equal offline analysis.
 - **Malformed DNS:** `tests/test_dns.py` covers compression-pointer loops,
   labels running past the end, reserved label types and names over 255 bytes.
 - **Malformed capture files:** `tests/test_formats.py` covers hostile length
