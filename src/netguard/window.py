@@ -9,15 +9,27 @@ Complexity, per key:
 * ``distinct``: O(1) — it is ``len()`` of a hash map of item -> count.
 * memory: O(events inside the window), capped by ``max_events``.
 
+Across keys, :class:`BurstTracker` keeps windows in least-recently-observed
+order, so garbage collection pops stale keys from the front and stops at the
+first live one (amortized O(1) per key), and a full table evicts the oldest
+key in O(1). An earlier version rescanned every window whenever the table was
+full, which let a spoofed-source flood cost O(max_keys) per packet.
+
 Why not a plain ``set`` per key? A set cannot *forget*: an item seen 10 minutes
-ago would still count. Why not recount the deque on every packet? That is
-O(window) per packet. The deque + counter pair gives exact distinct counts over
-a time window at O(1) amortized cost.
+ago would still count. Why not recount the events on every packet? That is
+O(window) per packet. The event queue + counter pair gives exact distinct
+counts over a time window at O(1) amortized cost.
+
+The queue is a list with a moving head index rather than a ``deque``: CPython
+allocates 760 bytes for even an empty deque, and under a spoofed-source flood
+there is one window per source. Popping advances the head; the consumed prefix
+is deleted once it is more than half the list, so each event is still moved at
+most a constant number of times (amortized O(1)).
 """
 
 from __future__ import annotations
 
-from collections import Counter, deque
+from collections import Counter, OrderedDict
 from collections.abc import Hashable, Iterator
 from dataclasses import dataclass, field
 from typing import Generic, TypeVar
@@ -25,37 +37,49 @@ from typing import Generic, TypeVar
 K = TypeVar("K", bound=Hashable)
 T = TypeVar("T", bound=Hashable)
 
+_COMPACT_MIN = 32  # do not bother compacting tiny lists
+
 
 class SlidingDistinct(Generic[T]):
     """Exact number of distinct items observed in the last ``window`` seconds."""
 
-    __slots__ = ("_counts", "_events", "max_events", "window")
+    __slots__ = ("_counts", "_events", "_head", "max_events", "window")
 
     def __init__(self, window: float, max_events: int = 10_000) -> None:
         self.window = window
         self.max_events = max_events
-        self._events: deque[tuple[float, T]] = deque()
-        self._counts: Counter[T] = Counter()
+        self._events: list[tuple[float, T, str | None]] = []
+        self._head = 0
+        self._counts: dict[T, int] = {}
 
-    def add(self, ts: float, item: T) -> None:
-        self._events.append((ts, item))
-        self._counts[item] += 1
+    def add(self, ts: float, item: T, tag: str | None = None) -> None:
+        self._events.append((ts, item, tag))
+        self._counts[item] = self._counts.get(item, 0) + 1
         # Memory bound: under a flood we forget the oldest events early. This may
         # *undercount* (a possible false negative) but can never exhaust RAM.
-        if len(self._events) > self.max_events:
+        if len(self) > self.max_events:
             self._pop_oldest()
         self.evict(ts)
 
     def evict(self, now: float) -> None:
         cutoff = now - self.window
-        while self._events and self._events[0][0] < cutoff:
+        events = self._events
+        while self._head < len(events) and events[self._head][0] < cutoff:
             self._pop_oldest()
 
     def _pop_oldest(self) -> None:
-        _, old = self._events.popleft()
-        self._counts[old] -= 1
-        if self._counts[old] == 0:
+        _, old, _ = self._events[self._head]
+        self._head += 1
+        if self._counts[old] == 1:
             del self._counts[old]
+        else:
+            self._counts[old] -= 1
+        if self._head == len(self._events):
+            self._events.clear()
+            self._head = 0
+        elif self._head >= _COMPACT_MIN and self._head * 2 >= len(self._events):
+            del self._events[: self._head]
+            self._head = 0
 
     def distinct(self) -> int:
         return len(self._counts)
@@ -63,12 +87,16 @@ class SlidingDistinct(Generic[T]):
     def items(self) -> Iterator[T]:
         return iter(self._counts)
 
+    def tags(self) -> Counter[str]:
+        """How many in-window events carried each tag."""
+        return Counter(tag for _, _, tag in self._events[self._head :] if tag is not None)
+
     def __len__(self) -> int:
-        return len(self._events)
+        return len(self._events) - self._head
 
     @property
     def first_ts(self) -> float | None:
-        return self._events[0][0] if self._events else None
+        return self._events[self._head][0] if len(self) else None
 
 
 @dataclass
@@ -133,13 +161,16 @@ class BurstTracker(Generic[K, T]):
         self.idle_timeout = idle_timeout
         self.max_keys = max_keys
         self.max_events_per_key = max_events_per_key
-        self._windows: dict[K, SlidingDistinct[T]] = {}
+        # Least recently observed first: see the module docstring.
+        self._windows: OrderedDict[K, SlidingDistinct[T]] = OrderedDict()
         self._incidents: dict[K, Incident[K, T]] = {}
-        # Evidence gathered *before* the threshold is crossed (probe tags and
-        # responses), merged into the incident when it opens. Without this the
-        # SYN-ACK for the very first probed port would be lost.
+        # Responses seen *before* the threshold is crossed, merged into the
+        # incident when it opens; without this the SYN-ACK for the very first
+        # probed port would be lost. Created only when a response arrives, so
+        # one-packet keys (a spoofed flood) cost just their window. Pre-threshold
+        # probe tags live in the window's events instead.
         self._pending: dict[K, Incident[K, T]] = {}
-        self.dropped_keys = 0  # observability: how often we hit the key cap
+        self.evicted_keys = 0  # observability: how often the key cap forced an early eviction
 
     def observe(self, key: K, ts: float, item: T, tag: str | None = None) -> Incident[K, T] | None:
         win = self._windows.get(key)
@@ -147,22 +178,26 @@ class BurstTracker(Generic[K, T]):
             if len(self._windows) >= self.max_keys:
                 self._gc(ts)
                 if len(self._windows) >= self.max_keys:
-                    self.dropped_keys += 1
-                    return self._incidents.get(key)
+                    # Fail open, in O(1): forget the least recently active key.
+                    # Its open incident (if any) survives; only pre-threshold
+                    # state is lost, which can cause a false negative.
+                    oldest, _ = self._windows.popitem(last=False)
+                    self._pending.pop(oldest, None)
+                    self.evicted_keys += 1
             win = self._windows[key] = SlidingDistinct(self.window, self.max_events_per_key)
-        win.add(ts, item)
+        else:
+            self._windows.move_to_end(key)
+        win.add(ts, item, tag)
 
         incident = self._incidents.get(key)
         if incident is None:
-            pending = self._pending.setdefault(key, Incident(key=key, first_seen=ts, last_seen=ts))
-            if tag:
-                pending.tags[tag] += 1
             if win.distinct() < self.threshold:
                 return None
-            # Threshold crossed: promote the pending evidence to a real incident.
-            incident = self._pending.pop(key)
+            # Threshold crossed: open an incident from the window's evidence.
+            incident = self._pending.pop(key, None) or Incident(key=key, first_seen=ts, last_seen=ts)
             incident.first_seen = ts if win.first_ts is None else win.first_ts  # not `or`: 0.0 is falsy
             incident.events = len(win)
+            incident.tags.update(win.tags())
             for seen in win.items():
                 incident.add_item(seen)
             self._incidents[key] = incident
@@ -177,7 +212,11 @@ class BurstTracker(Generic[K, T]):
 
     def note_response(self, key: K, kind: str, value: Hashable) -> None:
         """Record a reply (e.g. SYN-ACK = open port) for a key that is being tracked."""
-        target = self._incidents.get(key) or self._pending.get(key)
+        target = self._incidents.get(key)
+        if target is None and key in self._windows:
+            target = self._pending.get(key)
+            if target is None:
+                target = self._pending[key] = Incident(key=key, first_seen=0.0, last_seen=0.0)
         if target is not None:
             target.add_response(kind, value)
 
@@ -192,6 +231,10 @@ class BurstTracker(Generic[K, T]):
         closed = [inc for inc in self._incidents.values() if now - inc.last_seen > self.idle_timeout]
         for inc in closed:
             del self._incidents[inc.key]
+            # Each event belongs to at most one incident: start the key afresh,
+            # otherwise the next probe would re-open an incident from events
+            # that were already reported (overlapping, double-counted alerts).
+            self._windows.pop(inc.key, None)
         self._gc(now)
         return closed
 
@@ -202,12 +245,12 @@ class BurstTracker(Generic[K, T]):
         return closed
 
     def _gc(self, now: float) -> None:
-        stale = []
-        for key, win in self._windows.items():
+        """Drop keys whose window has emptied, oldest first, stopping at the first live key."""
+        while self._windows:
+            key, win = next(iter(self._windows.items()))
             win.evict(now)
-            if not len(win) and key not in self._incidents:
-                stale.append(key)
-        for key in stale:
+            if len(win):
+                break
             del self._windows[key]
             self._pending.pop(key, None)
 

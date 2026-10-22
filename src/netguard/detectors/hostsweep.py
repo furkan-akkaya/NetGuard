@@ -24,6 +24,7 @@ from netguard.models import ACK, RST, SYN, UNSPECIFIED_IPV4, Alert, Packet, Seve
 from netguard.window import BurstTracker, Incident
 
 T1018 = Technique("T1018", "Remote System Discovery")
+RULE_ID = "NG-SWEEP-001"
 
 ICMP_ECHO_REQUEST = {"icmp": 8, "icmp6": 128}
 ICMP_ECHO_REPLY = {"icmp": 0, "icmp6": 129}
@@ -114,6 +115,7 @@ class HostSweepDetector(Detector):
         summary += f": {', '.join(alive[:10])}{' …' if len(alive) > 10 else ''}." if alive else "."
         return Alert(
             detector=self.name,
+            rule_id=RULE_ID,
             title="Host discovery sweep",
             severity=severity,
             first_seen=inc.first_seen,

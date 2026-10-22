@@ -26,6 +26,7 @@ from netguard.detectors.base import Detector
 from netguard.models import UNSPECIFIED_IPV4, Alert, Packet, Severity, Technique
 
 T1557_002 = Technique("T1557.002", "Adversary-in-the-Middle: ARP Cache Poisoning")
+RULE_ID = "NG-ARP-001"
 
 ARP_REQUEST, ARP_REPLY = 1, 2
 REQUEST_MEMORY_SECONDS = 5.0  # how long an ARP request "solicits" a reply
@@ -118,6 +119,7 @@ class ArpSpoofDetector(Detector):
         summary = head + (f" — {'; '.join(reasons)}." if reasons else ".")
         return Alert(
             detector=self.name,
+            rule_id=RULE_ID,
             title="ARP binding change (possible ARP spoofing)",
             severity=severity,
             first_seen=pkt.ts,

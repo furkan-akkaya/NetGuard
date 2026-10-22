@@ -25,3 +25,14 @@ tcp_private_only = true      # ignore TCP SYNs to public IPs (web browsing looks
 enabled = true
 realert_seconds = 300        # one alert per IP per period, unless severity escalates
 critical_ips = []            # e.g. ["192.168.1.1"] for your default gateway -> HIGH severity
+
+[flows]
+# Flow table memory bound. ~0.3-0.5 KB per flow; when full, the least recently
+# seen flow is ended early ("evicted") and counted in the report.
+max_flows = 200000
+# Idle timeouts per state (seconds). Defaults follow Zeek; see ADR-0004.
+tcp_handshake_timeout_seconds = 30   # TCP with no reply yet
+tcp_idle_timeout_seconds = 300       # TCP with replies
+tcp_closed_linger_seconds = 5        # after FIN both ways or RST
+udp_idle_timeout_seconds = 60
+other_idle_timeout_seconds = 60

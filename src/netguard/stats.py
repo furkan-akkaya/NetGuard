@@ -1,54 +1,112 @@
-"""Traffic statistics and bidirectional flow tracking.
+"""Traffic statistics: capture totals, distributions, time series and endpoints.
 
-A *flow* is the set of packets sharing a 5-tuple (protocol, IP/port pairs),
-regardless of direction. Flows are the unit future detectors (beaconing, data
-exfiltration, long-lived connections) will operate on.
+Everything here is bounded in memory regardless of capture size, because a
+statistic that grows with the number of distinct IPs is a denial-of-service
+vector (one spoofed-source flood and the analyzer runs out of RAM):
+
+* protocol, packet-size and connection-state counters have a fixed key space;
+* the time series doubles its bucket width when it would exceed
+  ``max_buckets`` (downsampling instead of growing);
+* endpoint accounting keeps at most ``max_endpoints`` IPs. When it overflows
+  it prunes to the heaviest half by bytes and marks itself ``approximate``, so
+  top-talker numbers are exact for the heavy hitters that matter and the
+  report says when the tail was dropped.
+
+Per-packet work is O(1). Flow-level statistics are updated once per *finished*
+flow (see :meth:`TrafficStats.add_flow`), not per packet.
 """
 
 from __future__ import annotations
 
+import heapq
 from collections import Counter
 from dataclasses import dataclass, field
 from typing import Any
 
-from netguard.models import Packet
+from netguard.flows import Flow
+from netguard.models import Packet, iso_ts
 
-Endpoint = tuple[str, int]
-FlowKey = tuple[str, Endpoint, Endpoint]
+# Wireshark's "Packet Lengths" buckets (upper bounds, inclusive). Frame length
+# here is the *captured* length, which is smaller than the wire length when the
+# capture used a short snaplen.
+SIZE_BUCKETS = (64, 128, 256, 512, 1024, 1518)
+SIZE_LABELS = ("0-64", "65-128", "129-256", "257-512", "513-1024", "1025-1518", "1519+")
 
 
-def flow_key(pkt: Packet) -> FlowKey | None:
-    if pkt.src_ip is None or pkt.dst_ip is None:
-        return None
-    a: Endpoint = (pkt.src_ip, pkt.src_port or 0)
-    b: Endpoint = (pkt.dst_ip, pkt.dst_port or 0)
-    # Canonical ordering makes A->B and B->A map to the same flow.
-    return (pkt.proto, a, b) if a <= b else (pkt.proto, b, a)
+@dataclass(slots=True)
+class Endpoint:
+    packets_sent: int = 0
+    packets_received: int = 0
+    bytes_sent: int = 0
+    bytes_received: int = 0
+    flows_originated: int = 0
+    flows_responded: int = 0
+
+    @property
+    def total_bytes(self) -> int:
+        return self.bytes_sent + self.bytes_received
 
 
 @dataclass
-class Flow:
-    initiator: str
-    first_seen: float
-    last_seen: float
-    packets: int = 0
-    bytes: int = 0
+class TimeSeries:
+    """Packets and bytes per time bucket, with a hard cap on bucket count."""
+
+    max_buckets: int = 1440
+    width: float = 1.0
+    buckets: dict[float, list[int]] = field(default_factory=dict)  # start -> [packets, bytes]
+
+    def add(self, ts: float, length: int) -> None:
+        start = (ts // self.width) * self.width
+        cell = self.buckets.get(start)
+        if cell is None:
+            if len(self.buckets) >= self.max_buckets:
+                self._downsample()
+                start = (ts // self.width) * self.width
+                cell = self.buckets.get(start)
+            if cell is None:
+                cell = self.buckets[start] = [0, 0]
+        cell[0] += 1
+        cell[1] += length
+
+    def _downsample(self) -> None:
+        self.width *= 2
+        merged: dict[float, list[int]] = {}
+        for start, (pkts, nbytes) in self.buckets.items():
+            cell = merged.setdefault((start // self.width) * self.width, [0, 0])
+            cell[0] += pkts
+            cell[1] += nbytes
+        self.buckets = merged
+
+    def to_list(self) -> list[dict[str, Any]]:
+        return [
+            {"start": iso_ts(start), "packets": pkts, "bytes": nbytes}
+            for start, (pkts, nbytes) in sorted(self.buckets.items())
+        ]
 
 
 @dataclass
 class TrafficStats:
-    flow_idle_timeout: float = 120.0
-    max_flows: int = 200_000
+    max_endpoints: int = 10_000
+    top_n: int = 10
     packets: int = 0
     bytes: int = 0
     decode_errors: int = 0
     first_ts: float | None = None
     last_ts: float | None = None
     protocols: Counter[str] = field(default_factory=Counter)
-    bytes_by_ip: Counter[str] = field(default_factory=Counter)
+    unsupported_linktypes: Counter[int] = field(default_factory=Counter)
+    fragments: int = 0
+    sizes: list[int] = field(default_factory=lambda: [0] * len(SIZE_LABELS))
+    timeseries: TimeSeries = field(default_factory=TimeSeries)
+    # Flow-level aggregates, updated when a flow ends.
     flows_total: int = 0
-    flows_dropped: int = 0
-    _active: dict[FlowKey, Flow] = field(default_factory=dict)
+    flows_evicted: int = 0
+    conn_states: Counter[str] = field(default_factory=Counter)
+    services: Counter[str] = field(default_factory=Counter)  # "tcp/443" -> flows
+    retransmissions: int = 0
+    endpoints: dict[str, Endpoint] = field(default_factory=dict)
+    endpoints_approximate: bool = False
+    _top_flows: list[tuple[int, int, Flow]] = field(default_factory=list)
 
     def add(self, pkt: Packet) -> None:
         self.packets += 1
@@ -57,32 +115,54 @@ class TrafficStats:
         if self.first_ts is None:
             self.first_ts = pkt.ts
         self.last_ts = pkt.ts
-        if pkt.src_ip is not None:
-            self.bytes_by_ip[pkt.src_ip] += pkt.length
+        if pkt.fragment:
+            self.fragments += 1
+        for i, upper in enumerate(SIZE_BUCKETS):
+            if pkt.length <= upper:
+                self.sizes[i] += 1
+                break
+        else:
+            self.sizes[-1] += 1
+        self.timeseries.add(pkt.ts, pkt.length)
 
-        key = flow_key(pkt)
-        if key is None:
-            return
-        flow = self._active.get(key)
-        if flow is not None and pkt.ts - flow.last_seen > self.flow_idle_timeout:
-            flow = None  # same 5-tuple after a long pause counts as a new flow
-        if flow is None:
-            if len(self._active) >= self.max_flows:
-                self.expire(pkt.ts)
-                if len(self._active) >= self.max_flows:
-                    self.flows_dropped += 1
-                    return
-            assert pkt.src_ip is not None
-            flow = self._active[key] = Flow(initiator=pkt.src_ip, first_seen=pkt.ts, last_seen=pkt.ts)
-            self.flows_total += 1
-        flow.packets += 1
-        flow.bytes += pkt.length
-        flow.last_seen = pkt.ts
+    def add_flow(self, flow: Flow) -> None:
+        self.flows_total += 1
+        if flow.end_reason == "evicted":
+            self.flows_evicted += 1
+        self.conn_states[flow.state] += 1
+        if flow.proto in ("tcp", "udp"):
+            self.services[f"{flow.proto}/{flow.dst_port}"] += 1
+        self.retransmissions += flow.retransmissions
 
-    def expire(self, now: float) -> None:
-        stale = [k for k, f in self._active.items() if now - f.last_seen > self.flow_idle_timeout]
-        for k in stale:
-            del self._active[k]
+        orig = self._endpoint(flow.src_ip)
+        orig.flows_originated += 1
+        orig.packets_sent += flow.orig_packets
+        orig.bytes_sent += flow.orig_bytes
+        orig.packets_received += flow.resp_packets
+        orig.bytes_received += flow.resp_bytes
+        resp = self._endpoint(flow.dst_ip)
+        resp.flows_responded += 1
+        resp.packets_sent += flow.resp_packets
+        resp.bytes_sent += flow.resp_bytes
+        resp.packets_received += flow.orig_packets
+        resp.bytes_received += flow.orig_bytes
+
+        # Min-heap of the N largest flows; the counter breaks ties deterministically.
+        entry = (flow.bytes, -self.flows_total, flow)
+        if len(self._top_flows) < self.top_n:
+            heapq.heappush(self._top_flows, entry)
+        elif entry[:2] > self._top_flows[0][:2]:
+            heapq.heapreplace(self._top_flows, entry)
+
+    def _endpoint(self, ip: str) -> Endpoint:
+        ep = self.endpoints.get(ip)
+        if ep is None:
+            if len(self.endpoints) >= self.max_endpoints:
+                keep = sorted(self.endpoints.items(), key=lambda kv: kv[1].total_bytes, reverse=True)
+                self.endpoints = dict(keep[: self.max_endpoints // 2])
+                self.endpoints_approximate = True
+            ep = self.endpoints[ip] = Endpoint()
+        return ep
 
     @property
     def duration(self) -> float:
@@ -90,14 +170,47 @@ class TrafficStats:
             return 0.0
         return self.last_ts - self.first_ts
 
-    def to_dict(self, top: int = 5) -> dict[str, Any]:
+    def top_endpoints(self, n: int | None = None) -> list[tuple[str, Endpoint]]:
+        ranked = sorted(self.endpoints.items(), key=lambda kv: (-kv[1].total_bytes, kv[0]))
+        return ranked[: n or self.top_n]
+
+    def top_flows(self) -> list[Flow]:
+        return [f for _, _, f in sorted(self._top_flows, key=lambda e: e[:2], reverse=True)]
+
+    def to_dict(self) -> dict[str, Any]:
         return {
             "packets": self.packets,
             "bytes": self.bytes,
             "decode_errors": self.decode_errors,
+            "unsupported_linktype_frames": {str(k): v for k, v in sorted(self.unsupported_linktypes.items())},
+            "fragments": self.fragments,
+            "first_seen": iso_ts(self.first_ts) if self.first_ts is not None else None,
+            "last_seen": iso_ts(self.last_ts) if self.last_ts is not None else None,
             "duration_seconds": round(self.duration, 3),
-            "flows": self.flows_total,
-            "flows_dropped": self.flows_dropped,
             "protocols": dict(self.protocols.most_common()),
-            "top_talkers": [{"ip": ip, "bytes": b} for ip, b in self.bytes_by_ip.most_common(top)],
+            "packet_sizes": dict(zip(SIZE_LABELS, self.sizes, strict=True)),
+            "timeseries": {"bucket_seconds": self.timeseries.width, "buckets": self.timeseries.to_list()},
+            "flows": {
+                "total": self.flows_total,
+                "evicted": self.flows_evicted,
+                "states": dict(self.conn_states.most_common()),
+                "retransmissions": self.retransmissions,
+                "top_services": [{"service": s, "flows": n} for s, n in self.services.most_common(self.top_n)],
+                "top_by_bytes": [f.to_dict() for f in self.top_flows()],
+            },
+            "endpoints": {
+                "approximate": self.endpoints_approximate,
+                "top_by_bytes": [
+                    {
+                        "ip": ip,
+                        "bytes_sent": ep.bytes_sent,
+                        "bytes_received": ep.bytes_received,
+                        "packets_sent": ep.packets_sent,
+                        "packets_received": ep.packets_received,
+                        "flows_originated": ep.flows_originated,
+                        "flows_responded": ep.flows_responded,
+                    }
+                    for ip, ep in self.top_endpoints()
+                ],
+            },
         }

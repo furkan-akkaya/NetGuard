@@ -1,441 +1,330 @@
 # NetGuard Yol Haritası
 
-> Son güncelleme: **2026-10-21** · Mevcut sürüm: **v0.1.0** · Aktif faz: **Faz 2**
+> Son güncelleme: **2026-10-22** · Mevcut sürüm: **v0.2.0** · Aktif faz: **Faz 3 — Tespit motoru**
 >
 > Bu dosya projenin **tek** yol haritasıdır. Güncel iş listesi
 > [docs/TASKS.md](docs/TASKS.md), ölçülmüş sonuçlar
-> [docs/EVALUATION.md](docs/EVALUATION.md) dosyasındadır.
+> [docs/EVALUATION.md](docs/EVALUATION.md), mimari kararlar [docs/adr/](docs/adr/)
+> altındadır.
 
-Durum işaretleri: ✅ tamamlandı · 🔄 devam ediyor · ⏳ başlanmadı ·
-Efor: **S** (birkaç oturum) · **M** (1–2 hafta) · **L** (2+ hafta), yarı zamanlı
-çalışma varsayımıyla.
-Sahiplik: **F** = Furkan (öğrenme açısından kritik, kendi elinle) · **C** = birlikte.
+Durum: ✅ tamamlandı · 🔄 devam ediyor · ⏳ başlanmadı · 👤 kullanıcı gerekli
+(fiziksel lab, hesap ayarı veya yayın onayı).
 
 ---
 
-## 1. Amaç ve kapsam
+## 1. Ürün vizyonu ve kapsam
 
-**Amaç:** Ağ trafiğini (pcap/pcapng dosyaları, ileride canlı akış) analiz eden,
-şüpheli aktiviteleri tespit eden ve her tespiti **teknik gerekçesiyle**
-açıklayan bir Network IDS ve trafik analizörü. NetGuard'ı farklı kılan,
-alarmların *ne görüldüğünü, hangi eşiğin aşıldığını, saldırganın ne
-öğrendiğini/ne yapmaya çalıştığını* ve MITRE ATT&CK karşılığını söylemesi ve
-tespit kalitesinin **ölçülerek** yayınlanmasıdır.
+**NetGuard**, ağ trafiğini (pcap/pcapng, kontrollü canlı yakalama) analiz eden,
+paket/bağlantı/protokol özelliklerini çıkaran, şüpheli davranışı
+**açıklanabilir kurallarla** tespit eden, her alarmı kanıtıyla birlikte
+yapılandırılmış olarak üreten ve sonuçları bir web dashboard'da gösteren bir
+ağ güvenliği izleme ve analiz platformudur.
 
-**Kapsam içi:**
+**NetGuard'ı farklı kılan:**
 
-- Offline pcap/pcapng analizi; `tcpdump` üzerinden canlı akış analizi
-- Flow (akış) analizi ve trafik istatistikleri
-- Keşif (port tarama, host sweep), SYN flood, DNS anomalileri, L2 saldırıları
-  (ARP spoofing) ve olağan dışı trafik davranışının tespiti
-- Kural tabanlı, eşikleri yapılandırılabilir, açıklanabilir alarmlar
-- Raporlama, geçmiş analizlerin saklanması, REST API ve dashboard
-- Etiketli senaryolar, lab yakalamaları ve PCAP replay ile ölçülebilir değerlendirme
+1. **Açıklanabilirlik:** her alarm ne görüldüğünü, hangi eşiğin aşıldığını,
+   saldırganın ne öğrendiğini ve ATT&CK karşılığını söyler. Kesinlik yerine
+   kanıtın desteklediği ifade kullanılır ("possible ARP spoofing").
+2. **Ölçülebilirlik:** tespit kalitesi etiketli senaryolar ve lab yakalamalarıyla
+   ölçülür, sonuçlar (yanlış pozitifler dahil) yayınlanır.
+3. **Saldırgan girdiye dayanıklılık:** her bayt düşmanca kabul edilir, tüm
+   durum (state) sınırlıdır, sınır işlemleri O(1)'dir.
+4. **Okunabilirlik:** küçük, test edilmiş, belgelenmiş bir kod tabanı.
 
 **Kapsam dışı (bilinçli olarak):** satır hızında (10 Gbit/s) yakalama, inline
-engelleme (IPS), tam protokol ayrıştırma ve imza tabanlı exploit tespiti.
-Bunları Zeek ve Suricata zaten iyi yapıyor. NetGuard küçük, okunabilir ve
-açıklanabilir kalmayı hedefler; ileride onların loglarını ek girdi olarak
-okuyabilir.
+engelleme (IPS), imza tabanlı exploit tespiti, tam protokol ayrıştırma. Bunları
+Zeek ve Suricata zaten iyi yapıyor; NetGuard onlarla özellik özellik yarışmaz,
+ileride onların çıktılarını ek girdi olarak okuyabilir.
 
-## 2. Mevcut durum (2026-10-21, `main` @ `db54613`)
+**Donanım hedefi:** MacBook Air M1 (geliştirme), Kali (UTM, saldırgan), ~4 GB
+RAM'li Ubuntu sunucu (kurban / dağıtım hedefi). Bulut, ücretli API ve
+mikroservis yok.
 
-### Tamamlananlar
+## 2. Mevcut durum (2026-10-22)
 
-| Alan | Durum | Kanıt |
-|---|---|---|
-| Altyapı | `uv`, `src/` düzeni, ruff, mypy `--strict`, pytest; CI Linux/macOS × Python 3.11–3.13 | `pyproject.toml`, `.github/workflows/ci.yml` |
-| Girdi | pcap/pcapng okuma; stdin dahil seek edilemeyen akışlar | `sources.py`, `tests/test_sources.py` |
-| Decoder | Ethernet, Linux SLL, BSD loopback, raw IP; IPv4/IPv6; TCP/UDP/ICMP/ICMPv6/ARP; DNS sorgu adı. Bozuk paketler sayılıyor, hata fırlatılmıyor; fuzz testi var | `decode.py`, `tests/test_decode.py` |
-| Motor | Yakalama zamanına (wall clock değil) göre çalışan deterministik motor; incident birleştirme | `engine.py`, `window.py`, ADR-0003 |
-| Dedektörler | `portscan` (SYN/NULL/FIN/XMAS), `hostsweep` (ICMP/ARP/TCP), `arpspoof` | `detectors/` |
-| İstatistik | Paket/bayt sayaçları, protokol dağılımı, top talker'lar, çift yönlü flow tablosu (yalnızca sayım) | `stats.py` |
-| Çıktı | Metin, JSON, JSONL (canlı akış için); TOML config + allowlist | `output.py`, `config.py` |
-| Değerlendirme | 11 etiketli sentetik senaryo, `netguard lab evaluate`; sonuçlar testlerle sabitlenmiş | `lab/`, `tests/test_scenarios.py` |
-| Doküman | README, mimari, 3 ADR, değerlendirme, lab kurulumu, öğrenme notu 01 (TR) | `docs/` |
-| Ölçüm | 95 test geçiyor, kapsama %95; ~60k paket/s, ~37 MB RSS (M1) | `uv run pytest --cov`, EVALUATION.md §3 |
+| Faz | Konu | Durum | Sürüm |
+|---|---|---|---|
+| 0 | Araştırma, mimari, temel | ✅ | v0.1.0 |
+| 1 | Paket alma ve protokol analizi | ✅ | v0.1.0 + v0.2.0 |
+| 2 | Flow ve özellik çıkarımı | ✅ | **v0.2.0** |
+| 3 | Tespit motoru (genişletme) | 🔄 | v0.3.0 |
+| 4 | Backend, kalıcılık, API | ⏳ | v0.4.0 |
+| 5 | Web dashboard | ⏳ | v0.5.0 = **MVP** |
+| 6 | Canlı yakalama ve replay | ⏳ | v0.6.0 |
+| 7 | İleri tespit ve tehdit istihbaratı | ⏳ | v0.7.0 |
+| 8 | Test, benchmark, değerlendirme | 🔄 sürekli · 👤 lab | v0.8.0 |
+| 9 | Güvenlik sertleştirme ve CI/CD | 🔄 sürekli | v0.9.0 |
+| 10 | Dokümantasyon, release, portföy | ⏳ | **v1.0.0** |
 
-### Devam edenler
+**Ölçülmüş durum (v0.2.0):** 161 test, kapsama %94,8; ruff, mypy `--strict`
+temiz; 242k paketlik referans pcap ~2,2 sn / 35 MB (M1, ~110k paket/s);
+sahte kaynaklı 500k flow saldırısında tepe bellek 349 MB. Ayrıntı:
+[EVALUATION.md §3](docs/EVALUATION.md#3-performance).
 
-- GitHub reposu oluşturuldu ve push edildi (Faz 2.0 ✅). UTM lab kurulumu ve
-  gerçek yakalamalar henüz yapılmadı.
+**Gerçek dünyada doğrulama yok:** tüm tespit sonuçları şimdilik sentetik
+senaryolardan. Lab yakalamaları (Faz 8) kullanıcının UTM ortamını gerektirir.
 
-### Eksikler (hedef yeteneklere göre)
-
-| Hedef yetenek | Bugün | Eksik |
-|---|---|---|
-| PCAP analizi | ✅ | Farklı link tiplerinde çok arayüzlü pcapng, IP fragment birleştirme |
-| Flow analizi / istatistik | Kısmi | Yön bazlı bayt/paket, TCP bağlantı durumu, süre, flow dışa aktarımı, port/servis ve zaman serisi istatistikleri |
-| Port tarama | TCP ✅ | UDP tarama, yavaş tarama, bağlantı sonucuna bakan tespit (passive FTP FP'si) |
-| SYN flood | ❌ | Hiç yok |
-| DNS anomalileri | ❌ | Decoder yalnızca sorgu adını çıkarıyor: yanıt, rcode ve qtype yok |
-| Olağan dışı trafik | ❌ | Hacim/hız anomalisi, beaconing, veri sızdırma |
-| Açıklanabilir alarmlar | ✅ | Kararlı kural kimlikleri, alarm kimliği, şema sürümü, kural kataloğu |
-| API, rapor, geçmiş, dashboard | ❌ | Hiç yok |
-| Kontrollü test / replay / doğruluk | Sentetik ✅ | Gerçek lab yakalamaları, `tcpreplay`, açık veri setleri |
-| Canlı analiz | Temel (`tcpdump \| netguard -`) | Erken uyarı, en uzun incident süresi, uzun süreli çalışma kararlılığı |
-
-**Sonuç:** Proje tespit çekirdeği bitmiş, gerçek dünyada doğrulanmamış bir
-erken aşamada. Sıradaki kritik adım lab kurmak ve ölçmek, çünkü sonraki tüm
-eşik ve tasarım kararları gerçek trafikten gelecek veriye dayanacak.
-
-## 3. Genel bakış ve bağımlılıklar
+## 3. Fazlar arası bağımlılık
 
 ```mermaid
 flowchart LR
-    F0[Faz 0 ✅<br/>Temeller] --> F1[Faz 1 ✅<br/>Çekirdek pipeline]
-    F1 --> F2[Faz 2 🔄<br/>Lab & gerçek ölçüm]
-    F1 --> F3[Faz 3 ⏳<br/>Flow analizi &<br/>alarm modeli]
-    F2 --> F4
-    F3 --> F4[Faz 4 ⏳<br/>Tarama iyileştirme<br/>& SYN flood]
-    F3 --> F5[Faz 5 ⏳<br/>DNS & trafik<br/>anomalileri]
-    F2 --> F5
-    F4 --> F6[Faz 6 ⏳<br/>Rapor & geçmiş<br/>= MVP]
+    F0[0 ✅ Temel] --> F1[1 ✅ Paket alma]
+    F1 --> F2[2 ✅ Flow]
+    F2 --> F3[3 🔄 Tespit motoru]
+    F3 --> F4[4 Backend & API]
+    F4 --> F5[5 Dashboard<br/>= MVP]
+    F4 --> F6[6 Canlı & replay]
     F5 --> F6
-    F6 --> F7[Faz 7 ⏳<br/>API & dashboard]
-    F6 --> F8[Faz 8 ⏳<br/>Canlı analiz & replay]
-    F7 --> F8
-    F8 --> F9[Faz 9 ⏳<br/>Davranışsal analiz]
-    F9 --> F10[Faz 10 ⏳<br/>Araştırma]
+    F3 --> F7[7 İleri tespit]
+    F4 --> F7
+    F8[8 Değerlendirme<br/>sürekli] -.-> F3
+    F8 -.-> F7
+    F9[9 Sertleştirme & CI<br/>sürekli] -.-> F4
+    F6 --> F10[10 Release v1.0]
+    F7 --> F10
+    F8 --> F10
+    F9 --> F10
 ```
 
-| | Faz | Hedef sürüm | Neden bu sırada |
-|---|---|---|---|
-| **MVP** | 0–1 Temeller, çekirdek | v0.1.0 ✅ | |
-| | 2 Lab ve gerçek ölçüm | (doküman) | Eşikleri gerçek trafiğe göre kalibre etmeden yeni dedektör yazmak tahmine dayanır |
-| | 3 Flow analizi ve alarm modeli | v0.2.0 | TRW, SYN flood ve DNS yanıt eşleştirme, bağlantı *sonucunu* bilmeyi gerektirir |
-| | 4 Tarama iyileştirme, SYN flood | v0.3.0 | Faz 3'teki TCP durum takibini kullanır |
-| | 5 DNS ve trafik anomalileri | v0.4.0 | Faz 3'teki flow kayıtlarını ve DNS decoder genişlemesini kullanır |
-| | 6 Rapor ve geçmiş analizler | **v0.5.0 = MVP** | Saklanacak alarm şeması önce kararlı olmalı |
-| **İleri** | 7 REST API ve dashboard | v0.6.0 | Faz 6'daki saklama katmanının üstüne kurulur |
-| | 8 Canlı analiz ve PCAP replay | v0.7.0 → v1.0.0 | Alarm yaşam döngüsü ve dashboard hazır olunca anlam kazanır |
-| | 9 Davranışsal analiz | v1.x | Uzun zaman ufku ve geçmiş veri ister |
-| | 10 Araştırma (opsiyonel) | — | Kural tabanlı temel ölçülmeden ML karşılaştırması anlamsız |
+Faz 8 ve 9 her fazda sürekli yürütülür (her dedektör senaryo ve testle gelir,
+her değişiklik CI'dan geçer); kendi fazlarında eksikler toplanıp tamamlanır.
 
-### MVP tanımı
+**MVP (v0.5.0):** pcap yükle → analiz et → flow'ları, istatistikleri ve
+kanıtlı alarmları dashboard'da incele → rapor/olay dışa aktar. Tüm tespitler
+sentetik senaryolarda ölçülmüş, sınırlamalar belgelenmiş.
 
-v0.1.0 "tespit çekirdeği" idi. Proje hedefinin tamamına göre **MVP (v0.5.0)**
-şu durumda tamamlanmış sayılır:
+## 4. Çalışma yöntemi
 
-1. pcap/pcapng analizi, flow kayıtları ve trafik istatistikleri
-2. Port tarama (TCP+UDP), host sweep, ARP spoofing, SYN flood, DNS anomalileri
-   ve temel hacim anomalisi dedektörleri
-3. Her alarmın kural kimliği, gerekçesi, kanıtı ve ATT&CK karşılığı olması
-4. Tek dosyalık HTML rapor ve SQLite'ta saklanan geçmiş analizler (CLI ile sorgulanabilir)
-5. Hem sentetik senaryolarda hem gerçek lab yakalamalarında ölçülmüş ve
-   yayınlanmış precision/recall ile benign trafikte saat başına alarm sayısı
+Her faz için: gereksinim ve bağımlılık gözden geçirme → işlere bölme →
+uygulama → test → hata düzeltme → doküman → commit/push → kabul kriterleri
+karşılanınca faz kapanışı.
 
-API, dashboard, canlı analiz iyileştirmeleri ve davranışsal analiz MVP
-**sonrasıdır**.
+Her önemli algoritma ve güvenlik mekanizması için bir **öğrenme kontrol
+noktası** vardır: problem, çözüm, neden bu çözüm, alternatifler, karmaşıklık,
+sınırlamalar ve kısa deney/sorular. Bunlar `docs/learning/NN-*.md` (Türkçe)
+notlarında toplanır.
 
----
-
-## 4. Çalışma yöntemi: her iş bir öğrenme döngüsü
-
-Proje aynı zamanda bir öğrenme projesi. Bu yüzden her görev aynı döngüyü izler:
-
-1. **Kavram:** Konuyu kısaca açıklarız (protokol, saldırı, algoritma). Neden önemli?
-2. **Küçük deney:** Kod yazmadan önce gözlem yaparız: Wireshark/`tcpdump` ile
-   bir yakalamaya bakmak, Python REPL'de bir hesap yapmak, bir eşiği değiştirip
-   sonucu izlemek gibi.
-3. **Tasarım notu:** Dedektörler için yarım sayfalık bir not yazarız: sinyal,
-   eşik, bellek sınırı, beklenen yanlış pozitifler (FP), atlatma yolları.
-4. **Önce test:** Saldırı senaryosu, benzer görünen **benign** senaryo ve birim testler.
-5. **Uygulama:** Küçük ve gözden geçirilebilir commit'ler.
-6. **Ölçüm:** `lab evaluate` ve lab yakalamaları. Sonuçlar EVALUATION.md'ye yazılır.
-7. **Öğrenme notu:** `docs/learning/NN-*.md` (Türkçe), sonunda lab soruları.
-
-**F** işaretli görevleri Furkan yazar; Claude rehberlik eder ve kodu gözden
-geçirir. Her fazın bir öğrenme notu ve en az bir deneyi vardır.
+Kurallar: her yeni dedektör bir saldırı senaryosu, bir **benign benzeri**
+senaryo ve birim testlerle gelir; performans gerilemesi %20'yi geçemez;
+ölçülmemiş sonuç yazılmaz; büyük kararlar ADR ile belgelenir.
 
 ---
 
 ## 5. Fazlar
 
-### Faz 0 — Temeller ✅
+### Faz 0 — Araştırma, mimari ve temel ✅
 
-Repo, MIT lisansı, `uv` projesi, ruff/mypy/pytest, CI, mimari doküman,
-ADR 0001–0003, AI co-author trailer'larını reddeden `commit-msg` hook'u,
-SSH imzalı commit'ler.
+Kapsam analizi, Python + dpkt seçimi ([ADR-0001](docs/adr/0001-python-and-dpkt.md)),
+canlı yakalamanın `tcpdump`'a devri ([ADR-0002](docs/adr/0002-capture-via-tcpdump.md)),
+incident birleştirme ([ADR-0003](docs/adr/0003-incident-aggregation.md)), `uv`,
+ruff, mypy `--strict`, pytest, CI (Linux/macOS × Python 3.11–3.13), MIT lisansı,
+AI co-author trailer'larını reddeden `commit-msg` hook'u, SSH imzalı commit'ler.
 
-### Faz 1 — Çekirdek offline tespit pipeline'ı ✅ (v0.1.0)
+### Faz 1 — Paket alma ve protokol analizi ✅
 
-Ayrıntılar için [CHANGELOG.md](CHANGELOG.md) ve
-[learning/01](docs/learning/01-scan-detection.md).
-**Karşılanan kriterler:** belgelenmiş slow-scan kaçınması dışında tüm saldırı
-senaryoları tespit ediliyor, her FP nedeniyle belgelenmiş, kapsama ≥ %90, CI yeşil.
-
----
-
-### Faz 2 — Lab ve gerçek trafikte doğrulama 🔄
-
-**Amaç:** "Sentetik veride çalışıyor" iddiasını "gerçek yakalamalarda
-ölçüldü" ile değiştirmek ve sonraki fazlar için tekrar kullanılabilir bir ölçüm
-düzeni kurmak.
-
-| # | İş | Sahip | Efor | Durum |
-|---|---|---|---|---|
-| 2.0 | GitHub reposu, `main` push | F | S | ✅ |
-| 2.1 | UTM lab: Kali (saldırgan) + Ubuntu (kurban), izole host-only ağ ([LAB_SETUP.md](docs/LAB_SETUP.md)) | F | S | ⏳ |
-| 2.2 | Saldırı yakalamaları: `nmap -sS/-sT/-sX/-sN/-sF/-sU/-sn`, `-T1`, `masscan`, `arp-scan`, `bettercap arp.spoof` | F | S | ⏳ |
-| 2.3 | En az 1 saatlik benign trafik: güncellemeler, SSH, HTTP, mümkünse SMB | F | S | ⏳ |
-| 2.4 | **Gerçek yakalama manifestosu:** `eval/captures.toml` dosyası; her pcap için sha256, araç sürümü, komut, beklenen `(detector, entity)`. pcap'ler git'e girmez | C | S | ⏳ |
-| 2.5 | `netguard lab evaluate --manifest eval/captures.toml [-c config]`: aynı skor tablosunu gerçek yakalamalar için üretir | C | M | ⏳ |
-| 2.6 | EVALUATION.md §6: araç/flag bazında tespit, benign trafikte saat başına alarm, hata analizi | C | S | ⏳ |
-| 2.7 | Öğrenme notu 01'deki lab görevleri (`docs/learning/answers-01.md`) | F | M | ⏳ |
-
-**Çıktılar:** lab, 10'dan fazla etiketli gerçek pcap (yerelde), manifesto,
-gerçek-yakalama skor tablosu, öğrenme notu 02 (*"Lab kurmak ve bir IDS'i
-dürüstçe ölçmek"*).
-
-**Tamamlanma kriterleri:**
-
-- Her mevcut dedektör için en az bir gerçek saldırı yakalaması ve sonucu yayınlanmış
-- Benign baseline'da saat başına alarm sayısı ölçülmüş
-- Beklenenden farklı her sonuç ya düzeltilmiş ya da TASKS.md'de "bilinen sorun" olarak kaydedilmiş
-- Manifestoyla değerlendirme tek komutla tekrarlanabiliyor
-
-**Deney:** Aynı `nmap -sS` taramasını `-T2`, `-T3` ve `-T4` ile çalıştır. Paket
-zamanlamasını Wireshark'ta (*Statistics → I/O Graph*) incele ve sentetik
-`syn_scan_1000` ile farkını not et: retransmission, rastgele port sırası,
-paralellik.
-
-**Öğrenme hedefleri:** güvenli lab tasarımı ve kuralları, `tcpdump`/BPF
-filtreleri, Wireshark ile analiz, ground truth etiketleme, base-rate yanılgısı
-(düşük FP oranı bile çok alarm demek olabilir).
-
----
-
-### Faz 3 — Flow analizi, trafik istatistikleri ve alarm modeli ⏳ (v0.2.0)
-
-**Amaç:** Paket seviyesinden bağlantı seviyesine çıkmak. Sonraki dedektörlerin
-çoğu "bu bağlantı kuruldu mu, kim ne kadar veri gönderdi, yanıt geldi mi"
-sorularına dayanıyor.
-
-| # | İş | Sahip | Efor |
-|---|---|---|---|
-| 3.1 | Flow kaydını zenginleştirme: yön bazlı paket/bayt, süre, TCP flag birikimi | C | M |
-| 3.2 | **Basitleştirilmiş TCP bağlantı durumu** (Zeek `conn_state`'ten esinlenerek): `S0` (yanıt yok), `REJ` (RST), `SF` (kuruldu ve kapandı), `S1` (kuruldu, açık), `RSTO/RSTR` | F | M |
-| 3.3 | Dedektör arayüzüne `on_flow_end(flow)` kancası; motor flow'ları kapanış/timeout ile yayınlar | C | S |
-| 3.4 | `netguard flows capture.pcap -f csv\|jsonl`: flow dışa aktarımı | C | S |
-| 3.5 | İstatistikler: en çok kullanılan hedef portlar/servisler, en büyük flow'lar, dakikalık pps/bps zaman serisi, flow durum dağılımı | C | S |
-| 3.6 | **Alarm modeli v1:** kararlı `rule_id` (ör. `NG-SCAN-001`), deterministik `alert_id`, JSON'da `schema_version`; uyumluluk testleri | C | S |
-| 3.7 | **Kural kataloğu:** her kural için `docs/rules/<rule_id>.md` (ne tespit eder, sinyal, eşikler, bilinen FP'ler, ayar önerisi, ATT&CK) | C | S |
-| 3.8 | Decoder: farklı link tipli çok arayüzlü pcapng desteği (bilinen sorun) | C | S |
-
-**Tasarım kararları:**
-
-- Mevcut sınırlı bellekli flow tablosu (`max_flows`, idle expiry) korunur;
-  bir ADR ile flow kapanış semantiği belgelenir (FIN/RST + idle timeout).
-- Kurallar için ayrı bir DSL yazılmaz. Dedektörler Python'da kalır, kural
-  meta verisi koda ve kataloğa yazılır. Gerekçe: ek karmaşıklık getirir ve
-  açıklanabilirlik zaten kanıt alanlarından gelir.
-
-**Tamamlanma kriterleri:** `flows` komutu çalışıyor, TCP durumları birim
-testlerle doğrulanmış (her durum için bir hand-built paket dizisi), lab
-yakalamalarında `nmap -sS` için `S0`/`REJ` dağılımı beklendiği gibi, tüm
-alarmlarda `rule_id` ve `schema_version` var, performans gerilemesi %20'nin altında.
-
-**Deney:** Bir lab pcap'ini hem NetGuard `flows` ile hem de (kuruluysa)
-Zeek `conn.log` ile işle, durum dağılımlarını karşılaştır ve farkların
-nedenini açıkla.
-
-**Öğrenme hedefleri:** 5-tuple ve çift yönlü flow, TCP durum makinesi
-(RFC 9293), half-open bağlantı, NetFlow/IPFIX fikri, akış işlemede zaman aşımı.
-→ öğrenme notu 03.
-
----
-
-### Faz 4 — Tarama tespitini güçlendirme ve SYN flood ⏳ (v0.3.0)
-
-**Amaç:** Bilinen tarama zayıflıklarını kapatmak ve ilk DoS tespitini eklemek.
-
-| # | İş | Sahip | Efor |
-|---|---|---|---|
-| 4.1 | **TRW (Threshold Random Walk) tarama dedektörü** (Jung vd., 2004): başarılı/başarısız bağlantı sonuçlarıyla ardışık hipotez testi. Önce tasarım notu, sonra uygulama | C | L |
-| 4.2 | TRW ile pencere tabanlı dedektörü aynı sentetik ve lab verisinde karşılaştırma; ikisinin birlikte kullanım kararı (ADR) | C | S |
-| 4.3 | UDP tarama tespiti: "kapalı port" sinyali olarak ICMP port-unreachable | F | M |
-| 4.4 | Yavaş tarama: uzun ufuklu (ör. 1 saat) ve düşük eşikli ikinci pencere; bellek bütçesi belgelenir | C | M |
-| 4.5 | **SYN flood dedektörü:** hedef `ip:port` başına SYN hızı, SYN / tamamlanan handshake oranı, `S0` oranı, kaynak IP çeşitliliği (spoofing göstergesi), sunucu SYN-ACK retransmission'ları. ATT&CK T1499.001 | F | M |
-| 4.6 | Benign benzerleri: flash crowd (çok sayıda meşru istemci), yük testi, passive FTP | C | S |
-| 4.7 | Lab: `hping3 -S --flood` (yalnızca izole ağda, süre sınırlı), `nmap -sU`, `-T1` yakalamaları; manifestoya ekleme | F | S |
-
-**Tamamlanma kriterleri:** `passive_ftp` FP'si giderilmiş ya da nedeniyle
-belgelenmiş, `slow_scan` tespit ediliyor, `nmap -sU` gerçek yakalamada
-tespit ediliyor, SYN flood saldırı ve flash crowd senaryoları ayırt ediliyor,
-TRW ile pencere karşılaştırması EVALUATION.md'de yayınlanmış.
-
-**Deney:** Python REPL'de TRW olabilirlik oranını elle hesapla: başarı
-olasılıkları θ₀ = 0.8 (benign) ve θ₁ = 0.2 (tarayıcı) iken kaç başarısız
-bağlantıdan sonra karar verilir? α/β değiştikçe bu sayı nasıl değişiyor?
-
-**Öğrenme hedefleri:** ardışık olasılık oranı testi (SPRT), SYN cookies ve
-backlog, spoofed kaynaklar ve backscatter, hız ve oran tabanlı tespitin
-farkı. → öğrenme notu 04.
-
----
-
-### Faz 5 — DNS anomalileri ve olağan dışı trafik ⏳ (v0.4.0)
-
-**Amaç:** Yeni bir tespit sınıfı eklemek: uygulama katmanı protokolünün kötüye
-kullanımı ve istatistiksel sapma.
-
-| # | İş | Sahip | Efor |
-|---|---|---|---|
-| 5.1 | DNS decoder genişlemesi: tüm sorular, `qtype`, yanıtlar, `rcode`, cevap sayısı, transaction ID ile sorgu-yanıt eşleştirme; DNS istatistikleri (en çok sorgulanan domainler, rcode dağılımı) | C | M |
-| 5.2 | Kayıtlı domain çıkarma: gömülü küçük bir çok parçalı sonek listesiyle heuristik (bağımlılık eklemeden); sınırlamalar belgelenir | C | S |
-| 5.3 | **DNS tünelleme dedektörü:** label uzunluğu, Shannon entropisi, ana domain başına benzersiz alt domain sayısı, TXT/NULL oranı, sorgu hacmi. ATT&CK T1071.004 / T1048 | F | L |
-| 5.4 | **DGA / NXDOMAIN dedektörü:** istemci başına NXDOMAIN oranı ve entropi. ATT&CK T1568.002 | F | M |
-| 5.5 | Politika kuralları: onaylı resolver dışına doğrudan DNS, 53 dışı portta DNS / 53'te DNS olmayan trafik | C | S |
-| 5.6 | **Hacim/hız anomalisi:** host başına bps/pps için EWMA baseline + MAD tabanlı sapma; açıklama "normalin N katı" şeklinde | C | M |
-| 5.7 | Benign benzerleri: CDN alt domainleri, antivirüs/telemetri DNS'i, yedekleme trafiği; lab: `dnscat2` veya `iodine` (yalnızca lab), yapay DGA listesi | F | M |
-
-**Tamamlanma kriterleri:** tünelleme ve DGA lab/sentetik senaryolarda tespit
-ediliyor, benign DNS yakalamasında (1 saat) FP oranı yayınlanmış, her DNS
-alarmı örnek sorgular ve hesaplanmış metriklerle (entropi, uzunluk, oran)
-açıklanıyor.
-
-**Deney:** 100 popüler domain ve 100 DGA tarzı rastgele domain için entropi
-dağılımını çiz ve tek bir entropi eşiğinin neden yetmediğini göster.
-
-**Öğrenme hedefleri:** DNS protokolü (RFC 1035), tünelleme teknikleri,
-entropi, robust istatistik (medyan/MAD ile ortalama/std farkı), concept drift.
-→ öğrenme notu 05.
-
----
-
-### Faz 6 — Raporlama ve geçmiş analizler ⏳ (v0.5.0 = **MVP**)
-
-**Amaç:** Analiz sonuçlarını kalıcı, karşılaştırılabilir ve paylaşılabilir hale getirmek.
-
-| # | İş | Sahip | Efor |
-|---|---|---|---|
-| 6.1 | SQLite saklama katmanı (standart kütüphane `sqlite3`): `analyses`, `alerts`, `stats` tabloları, sürümlü şema migrasyonu | C | M |
-| 6.2 | `netguard analyze --save`, `netguard history list/show/diff` | C | S |
-| 6.3 | **Tek dosyalık HTML rapor** (`-f html`): özet, zaman çizelgesi, top talker'lar, alarm kartları (gerekçe + kanıt + ATT&CK), kural kataloğu bağlantıları; harici kaynak kullanmadan | C | M |
-| 6.4 | Rapor için güvenlik: pcap'ten gelen tüm stringler (DNS adları vb.) HTML-escape edilir; XSS testi | C | S |
-| 6.5 | Sürüm, paketleme: `pipx install` ile kurulum; v0.5.0 release notları | C | S |
-
-**Tamamlanma kriterleri:** bir analiz kaydedilip sonradan raporlanabiliyor,
-iki analiz arasında alarm farkı görülebiliyor, kötü niyetli DNS adı içeren
-pcap raporda script çalıştırmıyor, MVP tanımındaki 5 madde karşılanmış.
-
-**Öğrenme hedefleri:** veri modelleme, şema evrimi, saldırgan kontrollü
-verinin çıktıda tehlikesi (stored XSS), rapor tasarımı (analist ne görmeli?).
-
----
-
-### Faz 7 — REST API ve dashboard ⏳ (v0.6.0)
-
-| # | İş | Efor |
+| # | İş | Durum |
 |---|---|---|
-| 7.1 | `netguard[web]` opsiyonel bağımlılık grubu. Çekirdek yalnızca `dpkt` bağımlılığıyla kalır (ADR-0001) | S |
-| 7.2 | FastAPI: `POST /analyses` (pcap yükleme, boyut sınırı, arka planda analiz), `GET /analyses`, `GET /analyses/{id}`, `GET /alerts?severity=&rule_id=`, OpenAPI dokümanı | M |
-| 7.3 | Dashboard: sunucu tarafında render edilen Jinja2 + htmx ve tek bir grafik kütüphanesi (SPA yok). Analiz listesi, alarm filtreleme, zaman serisi | M |
-| 7.4 | Güvenlik: varsayılan olarak `127.0.0.1`'e bağlanma, opsiyonel token, yükleme boyut/tür kontrolü, path traversal testleri | S |
-| 7.5 | Docker imajı (non-root kullanıcı) | S |
+| 1.1 | pcap/pcapng okuma, stdin dahil seek edilemeyen akışlar | ✅ v0.1 |
+| 1.2 | Decoder: Ethernet, Linux SLL, BSD loopback, raw IP; IPv4/IPv6; TCP/UDP/ICMP/ICMPv6/ARP; DNS sorgu adı | ✅ v0.1 |
+| 1.3 | Bozuk paketler sayılır, hata fırlatılmaz; fuzz testi | ✅ v0.1 |
+| 1.4 | CLI: `analyze` (text/JSON/JSONL), `lab` | ✅ v0.1 |
+| 1.5 | **Kendi pcap/pcapng okuyucuları:** çok arayüzlü pcapng (arayüz başına link tipi, `if_tsresol`), uzunluk alanı sınırları, kesik dosya raporlama ([ADR-0005](docs/adr/0005-own-capture-readers-and-fast-decoder.md)) | ✅ v0.2 |
+| 1.6 | Decoder: TCP seq/ack, payload uzunluğu (IP uzunluğundan, snaplen'e dayanıklı), TTL, IP fragment işareti | ✅ v0.2 |
+| 1.7 | `struct` tabanlı hızlı decode yolu + dpkt ile diferansiyel fuzz testi | ✅ v0.2 |
+| 1.8 | Paket boyutu dağılımı, desteklenmeyen link tipi sayacı | ✅ v0.2 |
 
-**Tamamlanma kriterleri:** API testleri (`TestClient`) yeşil, OpenAPI şeması
-yayınlanmış, dashboard'da bir pcap yüklenip alarmlar görüntülenebiliyor.
+**Kabul kriterleri:** ✅ bozuk girdiyle çökmeme (fuzz), ✅ sınırlı bellek (düşmanca
+uzunluk alanları testli), ✅ çok arayüzlü pcapng testli, ✅ CLI testli.
 
-**Öğrenme hedefleri:** REST tasarımı, asenkron iş kuyruğu, web uygulama
-güvenliği (OWASP Top 10'un ilgili maddeleri).
+**Bilinen sınırlama:** IP fragment birleştirme yok (fragment'lar işaretlenir ve
+sayılır); IPv6 extension header'lı paketlerde payload uzunluğu yakalanan
+bayttan hesaplanır.
 
----
+### Faz 2 — Flow ve özellik çıkarımı ✅ (v0.2.0)
 
-### Faz 8 — Canlı trafik analizi ve PCAP replay ⏳ (v0.7.0 → v1.0.0)
-
-| # | İş | Efor |
+| # | İş | Durum |
 |---|---|---|
-| 8.1 | Alarm yaşam döngüsü: eşik aşılınca **erken uyarı**, incident bitince **nihai alarm**; `max_incident_age` ile hiç durmayan taramaların periyodik raporlanması (ADR-0003'ün planı) | M |
-| 8.2 | `netguard monitor`: `tcpdump`'ı alt süreç olarak başlatma, yetkileri düşürme (`-Z`), JSONL + SQLite'a yazma, düzgün kapanma | M |
-| 8.3 | Dashboard'a canlı alarm akışı (SSE) | S |
-| 8.4 | **PCAP replay testleri:** lab'de `tcpreplay` ile kaydedilmiş saldırıları farklı hızlarda oynatma; offline ve canlı sonuçların aynı olduğunu doğrulama | M |
-| 8.5 | Uzun süreli çalışma: 24 saatlik soak testi, bellek tavanı, paket kaybı ölçümü (`tcpdump` drop sayaçları) | M |
-| 8.6 | Tespit gecikmesi metriği (saldırı başlangıcı → ilk alarm) EVALUATION.md'de | S |
+| 2.1 | Çift yönlü flow, originator tespiti (SYN-ACK ile yön düzeltme) | ✅ |
+| 2.2 | Yön bazlı paket/bayt/payload sayaçları, süre, TCP bayrak birikimi, Zeek tarzı `history` | ✅ |
+| 2.3 | Zeek uyumlu `conn_state` (S0, S1, SF, REJ, S2, S3, RSTO, RSTR, RSTOS0, RSTRH, SH, SHR, OTH) | ✅ |
+| 2.4 | Retransmission ve sequence gap tespiti (RFC 1982 serial aritmetik) | ✅ |
+| 2.5 | Zaman aşımı sınıfları ve O(1) expiry; port yeniden kullanımı; LRU eviction ([ADR-0004](docs/adr/0004-flow-semantics.md)) | ✅ |
+| 2.6 | Dedektörlere `on_flow_end(flow)` kancası | ✅ |
+| 2.7 | `netguard flows -f csv\|jsonl` | ✅ |
+| 2.8 | İstatistikler: flow durum dağılımı, servisler, en büyük flow'lar, uyarlanabilir zaman serisi, sınırlı endpoint tablosu | ✅ |
+| 2.9 | Alarm modeli v1: `rule_id`, deterministik `alert_id`, `schema_version`; sözleşme testi; [kural kataloğu](docs/rules/README.md) | ✅ |
+| 2.10 | Tracker DoS düzeltmesi: dolu tabloda O(n) GC → O(1) LRU; anahtar başına bellek 1 996 → 668 bayt | ✅ |
+| 2.11 | Gerçek lab yakalamasında `nmap -sS` durum dağılımı, Zeek `conn.log` karşılaştırması | 👤 Faz 8'e taşındı |
 
-**v1.0.0 kriterleri:** alarm şeması kararlı, canlı ve offline sonuçlar replay
-ile eşleşiyor, 24 saatlik soak testinde bellek sınırlı kalıyor.
+**Kabul kriterleri:** ✅ `flows` komutu çalışıyor, ✅ her TCP durumu el yapımı
+paket dizisiyle test edildi, ✅ tüm alarmlarda `rule_id`/`schema_version`,
+✅ performans gerilemesi yok (v0.1'den ~1,6× hızlı), ✅ sentetik sonuçlar v0.1
+ile aynı (bilinçli incident düzeltmesi hariç). Lab doğrulaması 👤 Faz 8'de.
 
-**Öğrenme hedefleri:** yetki ayrımı (privilege separation), backpressure,
-paket kaybının tespite etkisi, offline ve canlı ölçüm farkları.
+**Öğrenme notu:** [02 — Paketten bağlantıya](docs/learning/02-flows-and-tcp-state.md).
+
+### Faz 3 — Tespit motoru 🔄 (v0.3.0)
+
+**Amaç:** istenen tespit kategorilerinin tamamını, her biri için gözlenebilir
+davranış, mantık, eşik, kanıt, test ve FP/FN belgesiyle tamamlamak.
+
+| # | İş | Kategori |
+|---|---|---|
+| 3.1 | DNS decoder genişlemesi: tüm sorular, `qtype`, yanıt, `rcode`, cevap sayısı, ID ile sorgu-yanıt eşleştirme; DNS istatistikleri | DNS |
+| 3.2 | **TRW tarama dedektörü** (Jung vd., 2004): flow sonuçlarıyla (SF vs S0/REJ) ardışık hipotez testi; pencere tabanlı dedektörle karşılaştırma ve ADR. `passive_ftp` FP'sini hedefler | Port tarama |
+| 3.3 | UDP tarama: ICMP port-unreachable'ı "kapalı port" sinyali olarak kullanma | Port tarama |
+| 3.4 | Yavaş tarama: uzun ufuklu, düşük eşikli ikinci pencere; bellek bütçesi | Port tarama |
+| 3.5 | **SYN flood:** hedef `ip:port` başına S0 oranı ve SYN hızı, kaynak çeşitliliği (spoofing göstergesi). T1499.001 | SYN |
+| 3.6 | ICMP anomalileri: anormal tip/kod dağılımı, büyük/fragment'lı ICMP, ICMP hızı | ICMP |
+| 3.7 | DNS anomalileri: tünelleme göstergeleri (label uzunluğu, entropi, alt domain sayısı, TXT oranı), NXDOMAIN/DGA oranı, onaysız resolver | DNS |
+| 3.8 | Olağan dışı bağlantı sıklığı: kaynak başına yeni flow hızı (EWMA baseline + robust sapma) | Bağlantı |
+| 3.9 | Olağan dışı trafik hacmi: host başına bps/pps sapması ("normalin N katı") | Hacim |
+| 3.10 | Fragment anomalisi: küçük/çakışan fragment'lar (`nmap -f` göstergesi) | Diğer |
+| 3.11 | Her kural için senaryo + benign benzeri + `docs/rules/<rule_id>.md` | Hepsi |
+| 3.12 | Kural yapılandırması: kural bazında aç/kapa ve eşikler TOML'da; kural listesi CLI'da (`netguard rules`) | Motor |
+
+**Kabul kriterleri:** her kategori için en az bir kural; her kural saldırı ve
+benign senaryoda test edilmiş; kural sayfaları FP/FN ve ayar önerisi içeriyor;
+skor tablosu güncel; şüphe ifadesi kanıta uygun.
+
+**Öğrenme notları:** 03 TRW ve ardışık hipotez testi; 04 DNS kötüye kullanımı,
+entropi ve robust istatistik.
+
+### Faz 4 — Backend, kalıcılık ve API ⏳ (v0.4.0)
+
+| # | İş |
+|---|---|
+| 4.1 | Teknoloji kararı (ADR): aday SQLite (stdlib) + FastAPI; çekirdek bağımlılıksız kalır (`netguard[web]`) |
+| 4.2 | Şema: `captures`, `analysis_jobs`, `flows`, `alerts`, `rules`, `stats`; sürümlü migrasyon |
+| 4.3 | İş yaşam döngüsü: `queued → running → done/failed`, iptal, hata kaydı, kesilen işlerin kurtarılması |
+| 4.4 | API v1: yükleme, analiz, flow/alarm arama, sıralama, filtreleme, sayfalama; OpenAPI dokümanı |
+| 4.5 | Olay şeması: SIEM entegrasyonu için sürümlü JSON (ECS eşlemesi) |
+| 4.6 | Entegrasyon testleri (`TestClient`), yükleme boyut/tür sınırları |
+
+### Faz 5 — Web dashboard ⏳ (v0.5.0 = MVP)
+
+| # | İş |
+|---|---|
+| 5.1 | Teknoloji kararı (ADR): sunucu tarafı render + htmx ile React/Vite SPA karşılaştırması |
+| 5.2 | Güvenlik özeti, trafik istatistikleri, protokol dağılımı, flow ve endpoint görünümleri |
+| 5.3 | Alarm akışı, alarm detayı ve kanıt görünümü, kural sayfalarına bağlantı |
+| 5.4 | pcap yükleme ve analiz iş akışı; yükleme, boş ve hata durumları |
+| 5.5 | Kural yönetimi; rapor (HTML/JSON) ve dışa aktarma |
+| 5.6 | Pcap'ten gelen tüm stringler için XSS testi; yalnızca gerçek veri, sahte metrik yok |
+
+### Faz 6 — Canlı yakalama ve replay ⏳ (v0.6.0)
+
+| # | İş |
+|---|---|
+| 6.1 | `netguard monitor`: yetkili arayüzde `tcpdump` alt süreci, `-Z` ile yetki düşürme, başlat/durdur, kaynak sınırları |
+| 6.2 | macOS/Linux izin farkları ve sınırlamaların belgelenmesi |
+| 6.3 | Kaydedilmiş yakalamaların kontrollü replay'i ve farklı konfigürasyonla yeniden analiz |
+| 6.4 | Alarm yaşam döngüsü: eşikte **erken uyarı**, incident sonunda nihai alarm, `max_incident_age` |
+| 6.5 | Canlı = offline doğrulaması (`tcpreplay`, 👤 lab); 24 saatlik soak testi, paket kaybı ölçümü |
+
+### Faz 7 — İleri tespit ve tehdit istihbaratı ⏳ (v0.7.0)
+
+Her özellik ölçülebilir değerine göre seçilir. Adaylar: davranışsal baseline,
+alarm tekilleştirme ve korelasyon (decoy tarama, DHCP korelasyonuyla ARP FP
+azaltma), açıklanabilir güven/şiddet puanı, beaconing ve veri sızdırma,
+Zeek `conn.log`/Suricata EVE JSON girdisi, kural içe/dışa aktarma, offline
+IoC listeleri. ML yalnızca somut ve ölçülmüş bir kullanım durumu varsa.
+
+### Faz 8 — Test, benchmark ve değerlendirme 🔄 sürekli · 👤 lab
+
+| # | İş | Durum |
+|---|---|---|
+| 8.1 | Etiketli sentetik senaryolar, `lab evaluate`, CI'da skor tablosu | ✅ |
+| 8.2 | Tekrarlanabilir benchmark'lar (`benchmarks/`), flood bellek testi | ✅ v0.2 |
+| 8.3 | UTM lab: Kali → Ubuntu, izole host-only ağ ([LAB_SETUP.md](docs/LAB_SETUP.md)) | 👤 |
+| 8.4 | Saldırı yakalamaları (`nmap` tipleri ve zamanlamaları, `masscan`, `arp-scan`, `bettercap`) ve ≥ 1 saat benign trafik | 👤 |
+| 8.5 | Yakalama manifestosu (`eval/captures.toml`: sha256, araç, komut, beklenen alarm); `lab evaluate --manifest` | ⏳ |
+| 8.6 | Precision/recall, benign trafikte saat başına alarm, tespit gecikmesi; açık veri setleri (lisansına uygun) | ⏳ |
+| 8.7 | Kesilen iş, bozuk girdi, uzun çalışma senaryoları | ⏳ |
+
+### Faz 9 — Güvenlik sertleştirme ve CI/CD 🔄 sürekli
+
+Girdi doğrulama, yükleme/kaynak/zaman aşımı/depolama sınırları, API ve
+dashboard erişim kontrolü (varsayılan `127.0.0.1`), gizli bilgi ve yakalama
+verisinin sızmaması, bağımlılık lisans ve güvenlik taraması (`pip-audit`),
+statik analiz (ruff `S` kuralları mevcut), GitHub Actions, kurulum/dağıtım
+doğrulaması.
+
+### Faz 10 — Dokümantasyon, release ve portföy ⏳ (v1.0.0)
+
+Kod kalitesi incelemesi, mimari ve operasyon dokümanları, kurulum ve
+geliştirici rehberi, gerçek demo ve ekran görüntüleri, desteklenen protokoller
+ve tespit sınırlamaları, mühendislik değerlendirme raporu, CHANGELOG ve
+release notları, GitHub release'i (👤 yayın onayı), LinkedIn portföy metni
+taslağı.
+
+**v1.0 tamamlanma tanımı:** brief'teki "Definition of Done" maddelerinin
+hepsi kanıtla karşılanmış; karşılanamayan madde varsa açıkça yazılır ve tam
+uyum iddia edilmez.
 
 ---
 
-### Faz 9 — Davranışsal analiz ⏳ (v1.x)
+## 6. Teknoloji kararları
 
-- **C2 beaconing:** flow başlangıçları arasındaki sürelerin düzenliliği
-  (değişim katsayısı, jitter toleransı) ve sabit payload boyutu
-- **Veri sızdırma:** dış hedefe giden/gelen bayt oranı, hedef başına olağan dışı hacim
-- **Rogue DHCP** ve yeni cihaz tespiti; DHCP korelasyonuyla `arpspoof` FP'sinin azaltılması
-- **Decoy tarama korelasyonu** (`nmap -D`): hedef merkezli anahtar, gerçek tarayıcıyı ayırt etme
-- Geçmişe dayalı host baseline'ları (Faz 6 saklama katmanı)
+| Alan | Karar | Durum |
+|---|---|---|
+| Dil | Python 3.11+ (okunabilirlik, test edilebilirlik; performans ölçülerek yönetiliyor) | ADR-0001 |
+| Paket ayrıştırma | Kendi pcap/pcapng okuyucuları + `struct` hızlı yol + dpkt yedek | ADR-0005 |
+| Canlı yakalama | `tcpdump`/`dumpcap` alt süreci; NetGuard root çalışmaz | ADR-0002 |
+| Alarm modeli | Incident birleştirme, `rule_id`, deterministik `alert_id`, şema 1.0 | ADR-0003 |
+| Flow modeli | Zeek `conn_state` sözlüğü, zaman aşımı sınıfları, LRU | ADR-0004 |
+| Depolama | SQLite (aday) | Faz 4 ADR |
+| API | FastAPI (aday) | Faz 4 ADR |
+| Dashboard | htmx vs React/Vite | Faz 5 ADR |
 
-**Öğrenme hedefleri:** zaman serisi özellikleri, periyodiklik istatistiği,
-baselining, korelasyon kuralları.
+## 7. Test stratejisi
 
-### Faz 10 — Araştırma (opsiyonel) ⏳
-
-- Flow özellikleri üzerinde denetimsiz anomali tespiti (ör. Isolation Forest),
-  kural tabanlı dedektörlerle **aynı veri ve metriklerle** dürüstçe karşılaştırma
-- TLS istemci parmak izi (JA4); TLS ClientHello'dan SNI çıkarma
-- Performans: profil çıkarma, flow hash'e göre multiprocessing, gerekirse PyO3 ile Rust decoder
-- Açık veri setleriyle doğrulama (CTU-13, CIC-IDS2017 vb.), lisanslarına uyarak
-
----
-
-## 6. Test stratejisi
-
-| Katman | Ne doğrular | Araç / yer | Ne zaman |
+| Seviye | Ne | Araç | Ne zaman |
 |---|---|---|---|
-| Birim | Dedektör mantığı, elle oluşturulmuş `Packet` dizileri | `tests/test_*.py`, `tests/helpers.py` | Her commit (CI) |
-| Senaryo (sentetik) | Uçtan uca pipeline; saldırı + benign benzeri; TP/FP/FN sabitlenmiş | `lab/scenarios.py`, `test_scenarios.py` | Her commit (CI) |
-| Dayanıklılık | Bozuk/kesik paketler, fuzz; bellek sınırları | `test_decode.py`; büyük girdi testleri | Her commit (CI) |
-| Gerçek yakalama | Gerçek araç davranışı; benign FP oranı | `eval/captures.toml` + yerel pcap'ler | Her dedektör değişikliğinde, elle |
-| Replay | Canlı yol = offline yol; gecikme, paket kaybı | `tcpreplay` (lab) | Faz 8'den itibaren |
-| Performans | Throughput, RSS; %20'den fazla gerileme olmaması | Benchmark pcap'i, `/usr/bin/time` | Her release |
-| API/Web | Endpoint sözleşmesi, yükleme güvenliği, XSS | FastAPI `TestClient` | Faz 6–7'den itibaren (CI) |
+| Birim | Decoder, okuyucular, flow durumları, pencereler, dedektörler | pytest, el yapımı `Packet`/frame | Her commit (CI) |
+| Diferansiyel | Hızlı decode yolu = dpkt yolu | 5 000 mutasyonlu frame | Her commit |
+| Senaryo | Saldırı + benign benzeri; TP/FP/FN sabitlenmiş | `lab/scenarios.py` | Her commit |
+| Dayanıklılık | Bozuk frame/dosya, düşmanca uzunluklar, flood bellek | `test_decode`, `test_formats`, `benchmarks/` | Her commit / release |
+| Gerçek yakalama | Gerçek araç davranışı, benign FP oranı | Manifesto + yerel pcap'ler (git dışı) | Dedektör değişikliklerinde 👤 |
+| Performans | Throughput, RSS; gerileme < %20 | `benchmarks/make_bench_pcap.py` | Her faz sonu |
+| API/Web | Sözleşme, yükleme güvenliği, XSS | `TestClient` | Faz 4–5'ten itibaren |
 
-**Kurallar:**
+Kapsama eşiği %90 (CI'da zorunlu). Gerçek pcap'ler git'e girmez (`.gitignore`).
 
-- Her yeni dedektör en az bir saldırı senaryosu, bir **benign benzeri**
-  senaryo ve gerçek bir lab yakalamasıyla gelir.
-- Metrikler: entity seviyesinde precision/recall, benign trafikte saat başına
-  alarm, tespit gecikmesi, throughput. Sentetik ve gerçek sonuçlar ayrı raporlanır.
-- Kapsama eşiği %90 (CI'da zorunlu). `lab/evaluate.py` şu an %60; Faz 2.5'te yükseltilir.
-- Gerçek pcap'ler git'e girmez (`.gitignore`). Yalnızca manifesto ve hash'ler commit edilir.
-
-## 7. Bilinen sorunlar ve hedef fazları
+## 8. Bilinen sorunlar
 
 | Sorun | Etki | Hedef |
 |---|---|---|
-| Sonuca bakmayan SYN sayımı | `passive_ftp` FP | 4.1 TRW |
-| Sabit 60 sn pencere | `slow_scan` kaçıyor | 4.4 |
-| UDP tarama tespiti yok | `nmap -sU` görünmüyor | 4.3 |
-| Tek ARP bağlama değişikliği alarm üretiyor | `dhcp_reassignment` FP | Faz 9 (DHCP korelasyonu) |
-| Decoy/sahte kaynaklı taramalar | Bir tarama birçok kaynağa bölünüyor | Faz 9 |
-| Idle-timeout gecikmesi | Canlı alarmlar ≥ 10 sn gecikiyor | 8.1 |
-| IP fragment birleştirme yok | `nmap -f` probe'ları TCP olarak ayrıştırılmıyor | Faz 10 veya fragment anomali kuralı |
-| Farklı link tipli çok arayüzlü pcapng | İlk arayüzün link tipi kullanılıyor | 3.8 |
+| Sonuca bakmayan SYN sayımı | `passive_ftp` FP | 3.2 TRW |
+| Sabit 60 sn pencere | `slow_scan` kaçıyor | 3.4 |
+| UDP tarama tespiti yok | `nmap -sU` görünmüyor | 3.3 |
+| Tek ARP bağlama değişikliği alarm üretiyor | `dhcp_reassignment` FP | Faz 7 (DHCP korelasyonu) |
+| İzleme sunucusu ping sweep gibi görünüyor | `monitoring_poller` FP (allowlist ile çözülüyor) | Faz 7 (baseline) |
+| Decoy/sahte kaynaklı taramalar | Bir tarama birçok kaynağa bölünüyor | Faz 7 |
+| Idle-timeout gecikmesi | Canlı alarmlar ≥ 10 sn gecikiyor | 6.4 |
+| IP fragment birleştirme yok | `nmap -f` probe'ları TCP olarak ayrıştırılmıyor | 3.10 |
+| Dedektör `max_keys` TOML'dan ayarlanamıyor | 4 GB sunucuda bellek ayarı yalnız `max_flows` ile | 3.12 |
 
-## 8. İleride eklenebilecek özellikler (sıralanmamış)
+## 9. Kullanıcı gerektiren işler 👤
 
-- Elastic Common Schema (ECS) çıktısı; Filebeat/Vector örnekleri; Sigma tarzı kural açıklamaları
-- Girdi olarak Zeek `conn.log`/`dns.log` ve Suricata EVE JSON
-- Alarmlar için webhook/Slack/e-posta bildirimleri
-- Ring buffer ile kayıt: alarmdan önceki/sonraki paketlerin pcap olarak saklanması
-- GeoIP/ASN zenginleştirme (offline veritabanı ile)
-- ICMP/UDP flood, NTP/DNS amplification tespiti
-- Lateral movement göstergeleri (SMB/RDP fan-out)
-- İmzalı GitHub release'leri, SBOM
+- UTM lab kurulumu ve gerçek yakalamalar (8.3, 8.4); yalnızca sahip olunan,
+  izole ağda.
+- GitHub: repo görünürlüğünü değiştirmek (şu an private), release yayınlamak.
+- Canlı yakalama testleri için yetkili arayüz seçimi ve `sudo`.
 
-## 9. Bu dosyanın bakımı
+## 10. Bu dosyanın bakımı
 
-- Bir iş bittiğinde durum işareti burada, ayrıntısı [docs/TASKS.md](docs/TASKS.md)'de güncellenir.
-- Faz bittiğinde "Mevcut durum" bölümü ve aşağıdaki değişiklik kaydı güncellenir, CHANGELOG'a sürüm eklenir.
-- Plan değişirse (sıra, kapsam) nedeni bir satırla değişiklik kaydına yazılır. Mimari etkisi varsa ADR açılır.
+- İş bitince durum burada, ayrıntı [docs/TASKS.md](docs/TASKS.md)'de güncellenir.
+- Faz bitince §2 ve değişiklik kaydı güncellenir, CHANGELOG'a sürüm eklenir.
+- Plan değişirse nedeni bir satırla aşağıya yazılır; mimari etkisi varsa ADR açılır.
 
 ### Değişiklik kaydı
 
-- **2026-10-21:** Yol haritası Türkçe olarak yeniden yazıldı ve `docs/ROADMAP.md`'den köke taşındı. Mevcut durum analizi eklendi. MVP, proje hedefinin tamamına göre v0.5.0 olarak yeniden tanımlandı. Flow analizi (Faz 3), SYN flood (4.5), DNS anomalileri ve hacim anomalisi (Faz 5), API/dashboard (Faz 7), canlı analiz ve replay (Faz 8) ayrı fazlar oldu. Not: ADR-0003'teki "Phase 3" ifadesi eski plana aittir; o iş artık 8.1'dir.
+- **2026-10-22:** Yol haritası, proje brief'indeki 0–10 faz yapısına göre
+  yeniden düzenlendi. Eski Faz 2 (lab) → Faz 8; eski Faz 3 (flow) → Faz 2;
+  eski Faz 4–5 (tarama, SYN flood, DNS, hacim) → Faz 3; eski Faz 6–7 (rapor,
+  API, dashboard) → Faz 4–5; eski Faz 8 (canlı) → Faz 6; eski Faz 9–10 →
+  Faz 7. MVP, dashboard dahil olacak şekilde v0.5.0 olarak yeniden tanımlandı.
+  Faz 2 tamamlandı (v0.2.0).
+- **2026-10-21:** Yol haritası Türkçe olarak yeniden yazıldı, mevcut durum analizi eklendi.
 - **2026-10-20:** Faz 0–1 tamamlandı (v0.1.0).

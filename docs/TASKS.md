@@ -2,34 +2,36 @@
 
 The current phase's work items. Planning, phase order and exit criteria live
 in [ROADMAP.md](../ROADMAP.md); task numbers here match it.
-When the project is on GitHub, each open item becomes an issue and this file
-links to it.
+👤 = needs the user (physical lab, account settings or a publishing decision).
 
-Owner: **F** = Furkan (learning-critical, hands-on), **C** = shared/assisted.
+## Done
 
-## Done (Phase 0–1, v0.1.0)
+- [x] Phase 0 — foundation, tooling, CI, ADR 0001–0003 (v0.1.0)
+- [x] Phase 1 — ingestion and protocol analysis (v0.1.0; own pcap/pcapng readers, fast decoder and new packet fields in v0.2.0)
+- [x] Phase 2 — flows and feature extraction (v0.2.0): flow table, `conn_state`, retransmissions, timeout classes, `netguard flows`, flow statistics, alert model v1, rule catalog, tracker DoS fix, ADR 0004–0005, learning note 02
 
-- [x] Project scaffolding, tooling, CI (C)
-- [x] Decoder, stream reader, engine (C)
-- [x] `portscan`, `hostsweep`, `arpspoof` detectors (C)
-- [x] Lab scenarios + evaluation harness (C)
-- [x] Documentation: README, architecture, ADRs, evaluation, learning note 01 (C)
+## Now: Phase 3, detection engine
 
-## Now: Phase 2, lab and real-traffic validation
+- [ ] **3.1** DNS decoder: all questions, `qtype`, responses, `rcode`, answer count, query/response matching by id; DNS statistics
+- [ ] **3.2** TRW scan detector on flow outcomes; compare with the window detector; ADR
+- [ ] **3.3** UDP scan detection (ICMP port unreachable as the "closed" signal)
+- [ ] **3.4** Slow-scan detection (long horizon, memory budget)
+- [ ] **3.5** SYN flood detector (S0 ratio, SYN rate, source diversity)
+- [ ] **3.6** ICMP anomalies
+- [ ] **3.7** DNS anomalies: tunnelling indicators, NXDOMAIN/DGA ratio, unapproved resolvers
+- [ ] **3.8** Unusual connection frequency (EWMA baseline, robust deviation)
+- [ ] **3.9** Abnormal traffic volume per host
+- [ ] **3.10** IP fragment anomalies
+- [ ] **3.11** Scenario + benign look-alike + rule page for every rule
+- [ ] **3.12** Per-rule enable/thresholds in TOML, `netguard rules`, configurable detector `max_keys`
 
-- [x] **2.0** Create the GitHub repository and push `main` (F)
-- [ ] **2.1** Build the UTM lab: Kali (attacker) + Ubuntu (victim) on an isolated host-only network ([LAB_SETUP.md](LAB_SETUP.md)) (F)
-- [ ] **2.2** Capture attack traffic: `nmap` scan types and timing templates, `masscan`, `arp-scan`, `bettercap`; save under `captures/` (git-ignored) (F)
-- [ ] **2.3** Capture ≥ 1 h of benign traffic (F)
-- [ ] **2.4** Real-capture manifest `eval/captures.toml` (sha256, tool, command, expected alerts) (C)
-- [ ] **2.5** `netguard lab evaluate --manifest … [-c config]`; raise `lab/evaluate.py` coverage (C)
-- [ ] **2.6** `docs/EVALUATION.md § Real captures` with the results (C)
-- [ ] **2.7** Work through the lab questions in learning note 01 (`docs/learning/answers-01.md`) (F)
+## Waiting on the user 👤
 
-## Next: Phase 3, flow analysis and alert model
-
-See [ROADMAP.md § Faz 3](../ROADMAP.md#faz-3--flow-analizi-trafik-istatistikleri-ve-alarm-modeli--v020).
+- [ ] **8.3** Build the UTM lab: Kali (attacker) + Ubuntu (victim) on an isolated host-only network ([LAB_SETUP.md](LAB_SETUP.md))
+- [ ] **8.4** Capture attack traffic (`nmap -sS/-sT/-sX/-sN/-sF/-sU/-sn`, `-T1`, `masscan`, `arp-scan`, `bettercap arp.spoof`) and ≥ 1 h of benign traffic into `captures/` (git-ignored)
+- [ ] **2.11** On those captures: `netguard flows` state distribution for `nmap -sS`, compared with Zeek `conn.log`
+- [ ] Work through the questions in learning notes 01 and 02
 
 ## Known issues
 
-Tracked with their target phase in [ROADMAP.md § 7](../ROADMAP.md#7-bilinen-sorunlar-ve-hedef-fazları).
+Tracked with their target phase in [ROADMAP.md § 8](../ROADMAP.md#8-bilinen-sorunlar).

@@ -5,9 +5,40 @@ from __future__ import annotations
 from netguard.models import Packet
 
 
-def tcp(ts: float, src: str, dst: str, dport: int, flags: int, sport: int = 40000) -> Packet:
+def tcp(
+    ts: float,
+    src: str,
+    dst: str,
+    dport: int,
+    flags: int,
+    sport: int = 40000,
+    seq: int | None = None,
+    payload: int = 0,
+) -> Packet:
     return Packet(
-        ts=ts, length=60, proto="tcp", src_ip=src, dst_ip=dst, src_port=sport, dst_port=dport, tcp_flags=flags
+        ts=ts,
+        length=60 + payload,
+        proto="tcp",
+        src_ip=src,
+        dst_ip=dst,
+        src_port=sport,
+        dst_port=dport,
+        tcp_flags=flags,
+        tcp_seq=seq,
+        payload_len=payload,
+    )
+
+
+def udp(ts: float, src: str, dst: str, dport: int, sport: int = 50000, payload: int = 20) -> Packet:
+    return Packet(
+        ts=ts,
+        length=42 + payload,
+        proto="udp",
+        src_ip=src,
+        dst_ip=dst,
+        src_port=sport,
+        dst_port=dport,
+        payload_len=payload,
     )
 
 
