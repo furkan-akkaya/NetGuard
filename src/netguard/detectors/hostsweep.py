@@ -18,7 +18,7 @@ from collections.abc import Iterable
 from functools import lru_cache
 
 from netguard.config import Config
-from netguard.detectors.base import Detector, RuleInfo
+from netguard.detectors.base import Detector, RuleInfo, as_early
 from netguard.detectors.portscan import probe_type
 from netguard.models import ACK, RST, SYN, UNSPECIFIED_IPV4, Alert, Packet, Severity, Technique
 from netguard.window import BurstTracker, Incident
@@ -56,6 +56,8 @@ class HostSweepDetector(Detector):
             threshold=self.cfg.min_distinct_hosts,
             idle_timeout=self.cfg.idle_timeout_seconds,
             max_keys=self.cfg.max_keys,
+            max_age=config.alerts.max_incident_age_seconds,
+            track_opened=config.alerts.early_warning,
         )
 
     def on_packet(self, pkt: Packet) -> Iterable[Alert]:
@@ -100,7 +102,8 @@ class HostSweepDetector(Detector):
             self.tracker.note_response(pkt.dst_ip, "alive", pkt.src_ip)
 
     def tick(self, now: float) -> Iterable[Alert]:
-        return [self._alert(inc) for inc in self.tracker.expire(now)]
+        early = as_early(self._alert(inc) for inc in self.tracker.take_opened())
+        return early + [self._alert(inc) for inc in self.tracker.expire(now)]
 
     def flush(self) -> Iterable[Alert]:
         return [self._alert(inc) for inc in self.tracker.drain()]

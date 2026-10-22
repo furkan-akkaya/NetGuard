@@ -11,8 +11,10 @@ const HOSTILE = '"><script>window.pwned=1</script><img src=x onerror="window.pwn
 const alert: Alert = {
   id: 1,
   analysis_id: "a".repeat(32),
-  schema_version: "1.0",
+  schema_version: "1.1",
   alert_id: "x",
+  stage: "early",
+  reported_at: "2025-01-01T00:00:30Z",
   rule_id: "NG-DNS-001",
   detector: "dnstunnel",
   title: HOSTILE,

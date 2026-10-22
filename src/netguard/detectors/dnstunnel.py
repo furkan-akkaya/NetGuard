@@ -25,7 +25,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 
 from netguard.config import Config
-from netguard.detectors.base import Detector, RuleInfo
+from netguard.detectors.base import Detector, RuleInfo, as_early
 from netguard.dns import registered_domain, shannon_entropy
 from netguard.models import Alert, Packet, Severity, Technique
 from netguard.window import BurstTracker, Incident
@@ -50,6 +50,8 @@ class DnsTunnelDetector(Detector):
             threshold=self.cfg.min_distinct_subdomains,
             idle_timeout=self.cfg.idle_timeout_seconds,
             max_keys=self.cfg.max_keys,
+            max_age=config.alerts.max_incident_age_seconds,
+            track_opened=config.alerts.early_warning,
         )
         self.suppressed = 0
 
@@ -66,7 +68,8 @@ class DnsTunnelDetector(Detector):
         return ()
 
     def tick(self, now: float) -> Iterable[Alert]:
-        return self._report(self.tracker.expire(now))
+        early = as_early(self._report(self.tracker.take_opened()))
+        return early + self._report(self.tracker.expire(now))
 
     def flush(self) -> Iterable[Alert]:
         return self._report(self.tracker.drain())

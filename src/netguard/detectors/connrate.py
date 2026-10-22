@@ -17,7 +17,7 @@ from collections.abc import Iterable
 
 from netguard.baseline import Anomaly, IntervalBaselines
 from netguard.config import Config
-from netguard.detectors.base import Detector, RuleInfo
+from netguard.detectors.base import Detector, RuleInfo, as_early
 from netguard.flows import ATTEMPT, Flow
 from netguard.models import Alert, Severity
 
@@ -38,6 +38,8 @@ class ConnRateDetector(Detector):
             sensitivity=self.cfg.sensitivity,
             min_value=self.cfg.min_count,
             max_entities=self.cfg.max_sources,
+            max_age=config.alerts.max_incident_age_seconds,
+            track_opened=config.alerts.early_warning,
         )
 
     def on_conn_event(self, event: str, flow: Flow, ts: float) -> Iterable[Alert]:
@@ -46,7 +48,8 @@ class ConnRateDetector(Detector):
         return [self._alert(a) for a in self.baselines.add(flow.src_ip, ts, 1)]
 
     def tick(self, now: float) -> Iterable[Alert]:
-        return [self._alert(a) for a in self.baselines.roll(now)]
+        ended = [self._alert(a) for a in self.baselines.roll(now)]
+        return as_early(self._alert(a) for a in self.baselines.take_opened()) + ended
 
     def flush(self) -> Iterable[Alert]:
         return [self._alert(a) for a in self.baselines.drain()]

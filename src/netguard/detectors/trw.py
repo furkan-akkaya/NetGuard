@@ -44,7 +44,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 
 from netguard.config import Config
-from netguard.detectors.base import Detector, RuleInfo
+from netguard.detectors.base import Detector, RuleInfo, as_early
 from netguard.flows import ANSWERED, ATTEMPT, REJECTED, Flow
 from netguard.models import Alert, Severity, Technique
 
@@ -101,6 +101,9 @@ class TrwDetector(Detector):
         self._sources: OrderedDict[str, _Source] = OrderedDict()
         self._scanners: dict[str, _Source] = {}
         self.evicted_sources = 0
+        self.early_warning = config.alerts.early_warning
+        self.max_age = config.alerts.max_incident_age_seconds
+        self._decided: list[str] = []  # newly decided scanners awaiting an early warning
 
     def on_conn_event(self, event: str, flow: Flow, ts: float) -> Iterable[Alert]:
         if flow.proto != "tcp":
@@ -172,6 +175,8 @@ class TrwDetector(Detector):
             state.scanner_since = ts
             state.decided_after = state.outcomes
             self._scanners[src] = self._sources.pop(src)
+            if self.early_warning:
+                self._decided.append(src)
         elif state.llr <= self.lower:
             # Benign so far: restart the walk (Jung et al.), keep the contact history.
             state.llr = 0.0
@@ -183,8 +188,14 @@ class TrwDetector(Detector):
             if now - state.last_seen <= self.cfg.state_timeout_seconds:
                 break
             del self._sources[src]
-        done = [s for s, st in self._scanners.items() if now - st.last_seen > self.cfg.idle_timeout_seconds]
-        return [self._alert(s, self._scanners.pop(s)) for s in done]
+        decided, self._decided = self._decided, []
+        early = as_early(self._alert(s, self._scanners[s]) for s in decided if s in self._scanners)
+        done = [
+            s
+            for s, st in self._scanners.items()
+            if now - st.last_seen > self.cfg.idle_timeout_seconds or now - st.first_seen > self.max_age
+        ]
+        return early + [self._alert(s, self._scanners.pop(s)) for s in done]
 
     def flush(self) -> Iterable[Alert]:
         alerts = [self._alert(src, st) for src, st in self._scanners.items()]

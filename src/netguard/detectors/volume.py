@@ -17,7 +17,7 @@ from collections.abc import Iterable
 
 from netguard.baseline import Anomaly, IntervalBaselines
 from netguard.config import Config
-from netguard.detectors.base import Detector, RuleInfo
+from netguard.detectors.base import Detector, RuleInfo, as_early
 from netguard.models import Alert, Packet, Severity
 
 RULE_ID = "NG-VOL-001"
@@ -41,6 +41,8 @@ class VolumeDetector(Detector):
             sensitivity=self.cfg.sensitivity,
             min_value=self.cfg.min_bytes,
             max_entities=self.cfg.max_sources,
+            max_age=config.alerts.max_incident_age_seconds,
+            track_opened=config.alerts.early_warning,
         )
 
     def on_packet(self, pkt: Packet) -> Iterable[Alert]:
@@ -49,7 +51,8 @@ class VolumeDetector(Detector):
         return [self._alert(a) for a in self.baselines.add(pkt.src_ip, pkt.ts, pkt.length)]
 
     def tick(self, now: float) -> Iterable[Alert]:
-        return [self._alert(a) for a in self.baselines.roll(now)]
+        ended = [self._alert(a) for a in self.baselines.roll(now)]
+        return as_early(self._alert(a) for a in self.baselines.take_opened()) + ended
 
     def flush(self) -> Iterable[Alert]:
         return [self._alert(a) for a in self.baselines.drain()]

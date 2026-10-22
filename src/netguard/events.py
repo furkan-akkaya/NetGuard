@@ -10,7 +10,8 @@ ECS field              NetGuard source
 =====================  ==============================================
 ``@timestamp``         ``first_seen``
 ``event.*``            kind ``alert``, category network/intrusion_detection,
-                       ``start``/``end``, ``id`` = ``alert_id``, ``severity``
+                       ``start``/``end``, ``id`` = ``alert_id``, ``severity``,
+                       ``created`` = ``reported_at``
 ``rule.*``             ``rule_id``, ``title``, ``detector``, rule page
 ``source.ip`` /        ``src`` / ``dst`` when they are IP addresses;
 ``destination.*``      a non-IP ``dst`` (a DNS domain) goes to
@@ -71,11 +72,14 @@ def to_ecs(alert: dict[str, Any]) -> dict[str, Any]:
         "observer": {"type": "ids", "vendor": "NetGuard", "product": "NetGuard"},
         "netguard": {
             "schema_version": alert["schema_version"],
+            "stage": alert.get("stage", "final"),
             "severity": alert["severity"],
             "analysis_id": alert.get("analysis_id"),
             "evidence": alert["evidence"],
         },
     }
+    if alert.get("reported_at"):
+        doc["event"]["created"] = alert["reported_at"]  # when NetGuard emitted it (capture clock)
     if _is_ip(alert.get("src")):
         doc["source"] = {"ip": alert["src"]}
     dst = alert.get("dst")
