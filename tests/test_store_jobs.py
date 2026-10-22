@@ -112,3 +112,25 @@ def test_worker_skips_jobs_that_are_no_longer_running(store, tmp_path):
     aid = _running(store)
     store.cancel_analysis(aid)
     assert run(str(store.path), aid, str(tmp_path / "x"), 10) == 0
+
+
+def test_upgrade_from_schema_1_keeps_data(tmp_path):
+    """A database created by v0.4.0 (schema 1) migrates in place."""
+    import sqlite3
+
+    from netguard.store import MIGRATIONS
+
+    path = tmp_path / "old.db"
+    conn = sqlite3.connect(path)
+    conn.executescript(MIGRATIONS[0])
+    conn.execute("CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+    conn.execute("INSERT INTO meta VALUES ('schema_version', '1')")
+    conn.execute("INSERT INTO captures VALUES ('c1', 'a.pcap', 'ff', 1, 'pcap', 0)")
+    conn.commit()
+    conn.close()
+    store = Store(path)
+    assert store.migrate() == SCHEMA_VERSION == 2
+    capture = store.get_capture("c1")
+    assert capture is not None
+    assert capture["filename"] == "a.pcap"
+    assert store.create_analysis("c1", {}, "t")["profile_id"] is None
