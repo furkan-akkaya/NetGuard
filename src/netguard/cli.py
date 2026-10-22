@@ -5,6 +5,7 @@ netguard analyze --format json capture.pcapng > report.json
 sudo tcpdump -i eth0 -U -w - | netguard analyze --format jsonl -
 netguard flows --format csv capture.pcap > flows.csv
 netguard rules
+netguard serve --data-dir ./netguard-data          # REST API on 127.0.0.1:8000
 netguard lab list | generate DIR | evaluate
 """
 
@@ -55,6 +56,21 @@ def build_parser() -> argparse.ArgumentParser:
     ru = sub.add_parser("rules", help="list the detection rules and whether the configuration enables them")
     ru.add_argument("-c", "--config", type=Path, help="TOML configuration file")
     ru.add_argument("-f", "--format", choices=("text", "json"), default="text")
+
+    sv = sub.add_parser("serve", help="run the REST API (needs: pip install 'netguard[web]')")
+    sv.add_argument("--data-dir", type=Path, default=Path("netguard-data"), help="database and stored captures")
+    sv.add_argument("--host", default="127.0.0.1", help="bind address (default: 127.0.0.1, local only)")
+    sv.add_argument("--port", type=int, default=8000)
+    sv.add_argument("-c", "--config", type=Path, help="base TOML configuration for analyses")
+    sv.add_argument("--max-upload-mb", type=int, default=256)
+    sv.add_argument("--job-timeout", type=float, default=600.0, help="seconds per analysis")
+    sv.add_argument("--job-memory-mb", type=int, default=1024, help="worker memory limit (enforced on Linux)")
+    sv.add_argument("--max-stored-flows", type=int, default=500_000, help="flow rows kept per analysis")
+    sv.add_argument(
+        "--insecure-no-auth",
+        action="store_true",
+        help="allow a non-loopback --host without NETGUARD_API_TOKEN (only behind another auth layer)",
+    )
 
     lab = sub.add_parser("lab", help="synthetic lab scenarios")
     lab_sub = lab.add_subparsers(dest="lab_command", required=True)
@@ -126,6 +142,39 @@ def cmd_rules(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def cmd_serve(args: argparse.Namespace) -> int:
+    try:
+        import uvicorn
+
+        from netguard.jobs import JobLimits
+        from netguard.web.app import create_app
+        from netguard.web.settings import TOKEN_ENV, ServerSettings, SettingsError
+    except ImportError:
+        print("netguard: error: the API needs the web extra: pip install 'netguard[web]'", file=sys.stderr)
+        return EXIT_ERROR
+    settings = ServerSettings(
+        data_dir=args.data_dir,
+        host=args.host,
+        port=args.port,
+        token=os.environ.get(TOKEN_ENV) or None,
+        allow_remote_without_token=args.insecure_no_auth,
+        max_upload_bytes=args.max_upload_mb * 1024 * 1024,
+        analysis_config=load_config(args.config),
+        jobs=JobLimits(
+            timeout_seconds=args.job_timeout, memory_mb=args.job_memory_mb, max_stored_flows=args.max_stored_flows
+        ),
+    )
+    try:
+        app = create_app(settings)
+    except SettingsError as exc:
+        print(f"netguard: error: {exc}", file=sys.stderr)
+        return EXIT_ERROR
+    auth = "token required" if settings.token else "no token (local only)"
+    print(f"NetGuard API on http://{args.host}:{args.port}/api/v1/docs  data: {args.data_dir}  auth: {auth}")
+    uvicorn.run(app, host=args.host, port=args.port, log_level="info", server_header=False)
+    return EXIT_OK
+
+
 def cmd_lab(args: argparse.Namespace) -> int:
     from netguard.lab import evaluate, scenarios, synth
 
@@ -153,6 +202,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             return cmd_flows(args)
         if args.command == "rules":
             return cmd_rules(args)
+        if args.command == "serve":
+            return cmd_serve(args)
         return cmd_lab(args)
     except (ConfigError, CaptureFormatError, UnsupportedLinkType, KeyError) as exc:
         print(f"netguard: error: {exc}", file=sys.stderr)
