@@ -139,7 +139,16 @@ class JobRunner:
             if time.monotonic() - started > self.limits.timeout_seconds:
                 _kill(proc)
                 return "timeout"
-            if self.store.status(analysis_id) != "running":
+            status = self.store.status(analysis_id)
+            if status == "done":
+                # The worker stored its result and is exiting: let it finish. (Treating
+                # this window as a cancellation killed healthy workers, see jobs tests.)
+                try:
+                    proc.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    _kill(proc)
+                return "exited"
+            if status != "running":
                 _kill(proc)
                 return "cancelled"
 
@@ -171,6 +180,8 @@ class JobRunner:
 
 
 def _kill(proc: subprocess.Popen[bytes]) -> None:
-    with contextlib.suppress(ProcessLookupError):
+    # Already gone (ProcessLookupError) or exiting (macOS reports EPERM for a
+    # process group whose leader is a zombie): nothing left to kill.
+    with contextlib.suppress(ProcessLookupError, PermissionError):
         os.killpg(proc.pid, signal.SIGKILL)
     proc.wait()

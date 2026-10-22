@@ -112,3 +112,45 @@ def test_worker_skips_jobs_that_are_no_longer_running(store, tmp_path):
     aid = _running(store)
     store.cancel_analysis(aid)
     assert run(str(store.path), aid, str(tmp_path / "x"), 10) == 0
+
+
+def test_upgrade_from_schema_1_keeps_data(tmp_path):
+    """A database created by v0.4.0 (schema 1) migrates in place."""
+    import sqlite3
+
+    from netguard.store import MIGRATIONS
+
+    path = tmp_path / "old.db"
+    conn = sqlite3.connect(path)
+    conn.executescript(MIGRATIONS[0])
+    conn.execute("CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+    conn.execute("INSERT INTO meta VALUES ('schema_version', '1')")
+    conn.execute("INSERT INTO captures VALUES ('c1', 'a.pcap', 'ff', 1, 'pcap', 0)")
+    conn.commit()
+    conn.close()
+    store = Store(path)
+    assert store.migrate() == SCHEMA_VERSION == 2
+    capture = store.get_capture("c1")
+    assert capture is not None
+    assert capture["filename"] == "a.pcap"
+    assert store.create_analysis("c1", {}, "t")["profile_id"] is None
+
+
+def test_deleting_a_profile_keeps_its_analyses(store):
+    profile = store.save_profile("p", "", {})
+    cap, _ = store.add_capture("x.pcap", "ef" * 32, 10, "pcap")
+    aid = store.create_analysis(cap["id"], {}, "t", profile["id"])["id"]
+    assert store.delete_profile(profile["id"])
+    analysis = store.get_analysis(aid)
+    assert analysis is not None
+    assert analysis["profile_id"] is None
+
+
+def test_worker_that_finished_is_not_treated_as_cancelled(store, tmp_path):
+    """Regression: a job marked done just before its worker exited was killed as 'cancelled'."""
+    aid = _running(store)
+    runner = JobRunner(store, tmp_path, JobLimits(timeout_seconds=30, poll_seconds=0.01))
+    proc = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(0.5)"], start_new_session=True)
+    assert store.finish_analysis(aid, "done")  # the worker stored its result...
+    assert runner._supervise(proc, aid, time.monotonic()) == "exited"  # ...and is allowed to exit
+    assert proc.returncode == 0

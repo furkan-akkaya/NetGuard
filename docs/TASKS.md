@@ -11,17 +11,17 @@ in [ROADMAP.md](../ROADMAP.md); task numbers here match it.
 - [x] Phase 2 — flows and feature extraction (v0.2.0)
 - [x] Phase 3 — detection engine (v0.3.0): TRW, UDP scan, SYN flood, DNS tunnel, NXDOMAIN/DGA, fragmentation, connection-rate and volume baselines; `netguard rules`; ADR 0006–0007; learning notes 03–04
 - [x] Phase 4 — backend, persistence and API (v0.4.0): SQLite store, job runner with isolated workers, REST API v1, ECS export; ADR-0008; learning note 05
+- [x] Phase 5 — web dashboard (v0.5.0 = MVP): React/TypeScript SPA, rule profiles, HTML report, CSV export; ADR-0009; learning note 06
 
 Deferred to Phase 7 until they show measurable value: ICMP tunnel/payload rule, unapproved-resolver policy.
 
-## Now: Phase 5, web dashboard (MVP)
+## Now: Phase 6, live capture and replay
 
-- [ ] **5.1** ADR: dashboard technology (server-rendered + htmx vs. a React/Vite SPA served by the API)
-- [ ] **5.2** Overview, traffic statistics, protocol distribution, flows and endpoints
-- [ ] **5.3** Alert feed, alert detail with evidence, links to rule pages
-- [ ] **5.4** Capture upload and analysis workflow; loading, empty and error states
-- [ ] **5.5** Rule management (editable configuration profiles), reports and exports
-- [ ] **5.6** XSS tests for every string that comes from a capture; real data only
+- [ ] **6.1** `netguard monitor`: run `tcpdump` on an explicitly named interface, drop privileges (`-Z`), start/stop, resource limits, stream alerts to JSONL and the store
+- [ ] **6.2** Document macOS/Linux permission differences (BPF devices, capabilities, `sudo`)
+- [ ] **6.3** Controlled replay of stored captures (time-scaled), re-analysis with different profiles
+- [ ] **6.4** Alert lifecycle: early warning at threshold, final alert at incident end, `max_incident_age`
+- [ ] **6.5** 👤 Validate live = offline on the lab (`tcpreplay`); soak test; packet-loss measurement
 
 ## Waiting on the user 👤
 

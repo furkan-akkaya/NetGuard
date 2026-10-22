@@ -3,9 +3,14 @@
 ## Setup
 
 ```bash
-uv sync
-git config core.hooksPath .githooks   # enables the commit-msg policy hook
+uv sync                                  # Python, including the web extra (dev group)
+pnpm --dir frontend install              # dashboard (Node >= 22, pnpm)
+git config core.hooksPath .githooks      # enables the commit-msg policy hook
 ```
+
+Dashboard development: run `uv run netguard serve` and `pnpm --dir frontend dev`
+(Vite on port 5173 proxies `/api` to the server). `pnpm --dir frontend build`
+writes the bundle that `netguard serve` serves at `/`.
 
 ## Before every commit
 
@@ -13,6 +18,7 @@ git config core.hooksPath .githooks   # enables the commit-msg policy hook
 uv run ruff check . && uv run ruff format --check .
 uv run mypy
 uv run pytest --cov
+pnpm --dir frontend typecheck && pnpm --dir frontend test   # when frontend/ changed
 ```
 
 ## Rules

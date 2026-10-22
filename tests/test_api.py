@@ -266,3 +266,102 @@ def test_stored_data_is_owner_only(server, tmp_path):
     assert settings.data_dir.stat().st_mode & 0o777 == 0o700
     assert settings.db_path.stat().st_mode & 0o777 == 0o600
     assert (settings.captures_dir / cid).stat().st_mode & 0o777 == 0o600
+
+
+# --- Phase 5 backend: profiles, summary, exports, dashboard ------------------------------
+
+
+def test_profiles_crud_and_validation(server):
+    client, _ = server
+    created = client.post(
+        f"{API}/profiles", json={"name": "strict scans", "config": {"portscan": {"min_distinct_ports": 5}}}
+    )
+    assert created.status_code == 201
+    pid = created.json()["id"]
+    assert client.post(f"{API}/profiles", json={"name": "strict scans"}).status_code == 400  # duplicate name
+    bad = client.post(f"{API}/profiles", json={"name": "bad", "config": {"portscan": {"nope": 1}}})
+    assert bad.status_code == 422
+    assert client.post(f"{API}/profiles", json={"name": "<script>"}).status_code == 422  # name pattern
+    updated = client.put(f"{API}/profiles/{pid}", json={"name": "strict", "config": {"trw": {"enabled": False}}})
+    assert updated.json()["config"] == {"trw": {"enabled": False}}
+    assert [p["name"] for p in client.get(f"{API}/profiles").json()] == ["strict"]
+    assert client.put(f"{API}/profiles/nope", json={"name": "x"}).status_code == 404
+    assert client.delete(f"{API}/profiles/{pid}").status_code == 204
+    assert client.get(f"{API}/profiles/{pid}").status_code == 404
+
+
+def test_analysis_with_profile_and_extra_overrides(server, tmp_path):
+    client, app = server
+    pid = client.post(
+        f"{API}/profiles", json={"name": "no scan rules", "config": {"portscan": {"enabled": False}}}
+    ).json()["id"]
+    cid = _upload(client, _pcap_bytes(tmp_path)).json()["id"]
+    r = client.post(f"{API}/captures/{cid}/analyses", json={"profile_id": pid, "config": {"trw": {"enabled": False}}})
+    assert r.status_code == 202
+    assert r.json()["profile_id"] == pid
+    app.state.runner.run_pending()
+    analysis = client.get(f"{API}/analyses/{r.json()['id']}").json()
+    assert analysis["alert_count"] == 0  # profile disabled portscan, request disabled trw
+    assert analysis["config"]["portscan"]["enabled"] is False
+    missing = client.post(f"{API}/captures/{cid}/analyses", json={"profile_id": "nope"})
+    assert missing.status_code == 404
+
+
+def test_summary_counts_everything(server, tmp_path):
+    client, app = server
+    _analyse(client, app, _upload(client, _pcap_bytes(tmp_path)).json()["id"])
+    s = client.get(f"{API}/summary").json()
+    assert s["captures"] == 1
+    assert s["analyses"]["done"] == 1
+    assert s["alerts"]["HIGH"] == 2
+    assert {r["rule_id"] for r in s["alerts_by_rule"]} == {"NG-SCAN-001", "NG-SCAN-002"}
+    assert len(s["recent_alerts"]) == 2
+
+
+def test_flows_csv_export(server, tmp_path):
+    client, app = server
+    analysis = _analyse(client, app, _upload(client, _pcap_bytes(tmp_path)).json()["id"])
+    r = client.get(f"{API}/analyses/{analysis['id']}/flows.csv")
+    assert r.headers["content-type"].startswith("text/csv")
+    lines = r.text.splitlines()
+    assert lines[0].startswith("proto,src_ip,src_port")
+    assert len(lines) == 1001
+
+
+def test_html_report_is_scriptless_and_requires_done(server, tmp_path):
+    client, app = server
+    cid = _upload(client, _pcap_bytes(tmp_path), name="<img src=x onerror=alert(1)>.pcap").json()["id"]
+    aid = client.post(f"{API}/captures/{cid}/analyses", json={}).json()["id"]
+    assert client.get(f"{API}/analyses/{aid}/report.html").status_code == 409  # still queued
+    app.state.runner.run_pending()
+    r = client.get(f"{API}/analyses/{aid}/report.html")
+    assert r.status_code == 200
+    assert "<script" not in r.text.lower()
+    assert "onerror=" not in r.text  # the filename was sanitised and escaped
+    assert "default-src 'none'" in r.headers["content-security-policy"]
+    assert "NG-SCAN-001" in r.text
+
+
+def test_dashboard_fallback_and_csp(server, tmp_path):
+    client, _ = server
+    r = client.get("/alerts/42")  # a client-side route
+    assert r.status_code == 200
+    assert "script-src 'self'" in r.headers["content-security-policy"]
+    assert client.get("/api/v1/nope").status_code == 404
+
+
+def test_dashboard_bundle_is_served(tmp_path):
+    static = tmp_path / "static"
+    (static / "assets").mkdir(parents=True)
+    (static / "index.html").write_text("<!doctype html><div id=root></div>")
+    (static / "assets" / "app.js").write_text("console.log(1)")
+    settings = ServerSettings(data_dir=tmp_path / "data", run_jobs=False, static_dir=static)
+    with TestClient(create_app(settings)) as client:
+        assert "id=root" in client.get("/analyses/abc").text
+        assert client.get("/assets/app.js").text == "console.log(1)"
+        (static / "favicon.svg").write_text("<svg/>")
+        assert client.get("/favicon.svg").text == "<svg/>"
+        secret = tmp_path / "secret.txt"
+        secret.write_text("do not serve")
+        for attempt in ("/../secret.txt", "/%2e%2e/secret.txt", "/assets/../../secret.txt"):
+            assert "do not serve" not in client.get(attempt).text

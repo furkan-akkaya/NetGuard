@@ -2,6 +2,7 @@
 
 netguard analyze capture.pcap
 netguard analyze --format json capture.pcapng > report.json
+netguard analyze --format html capture.pcap > report.html
 sudo tcpdump -i eth0 -U -w - | netguard analyze --format jsonl -
 netguard flows --format csv capture.pcap > flows.csv
 netguard rules
@@ -24,6 +25,7 @@ from netguard.decode import UnsupportedLinkType
 from netguard.detectors import DETECTORS
 from netguard.engine import Engine
 from netguard.output import FlowWriter, render_json, render_text, use_color, write_jsonl_alert
+from netguard.report import render_report
 from netguard.sources import CaptureFormatError, CaptureInfo, open_capture
 
 EXIT_OK, EXIT_ERROR = 0, 2
@@ -40,9 +42,10 @@ def build_parser() -> argparse.ArgumentParser:
     an.add_argument(
         "-f",
         "--format",
-        choices=("text", "json", "jsonl"),
+        choices=("text", "json", "jsonl", "html"),
         default="text",
-        help="text report (default), one JSON document, or JSON Lines alerts streamed as they fire",
+        help="text report (default), one JSON document, JSON Lines alerts streamed as they fire, "
+        "or a single-file HTML report",
     )
     an.add_argument("--no-color", action="store_true", help="disable ANSI colors")
 
@@ -106,6 +109,9 @@ def cmd_analyze(args: argparse.Namespace) -> int:
         sys.stdout.write(render_text(result, source, color=use_color(sys.stdout) and not args.no_color))
     elif args.format == "json":
         sys.stdout.write(render_json(result, source, info))
+    elif args.format == "html":
+        alerts = [a.to_dict() for a in result.alerts]
+        sys.stdout.write(render_report(result.stats.to_dict(), alerts, source, info.to_dict()))
     return EXIT_OK
 
 
