@@ -246,3 +246,25 @@ def test_replay_cli_streams_jsonl_with_stages(tmp_path, capsys):
 def test_replay_missing_file_is_a_clean_error(tmp_path, capsys):
     assert main(["replay", str(tmp_path / "nope.pcap")]) == EXIT_ERROR
     assert "no such capture" in capsys.readouterr().err
+
+
+def test_write_never_overwrites_or_follows_symlinks(tmp_path):
+    pcap = _pcap(tmp_path, "ping_sweep")
+    victim = tmp_path / "victim.txt"
+    victim.write_text("precious")
+    link = tmp_path / "out.pcap"
+    link.symlink_to(victim)
+    for target in (victim, link):
+        source = TcpdumpSource(CaptureSpec("en0"), write_to=target, command=_fake_tcpdump(pcap))
+        with pytest.raises(SourceError, match="already exists"):
+            LiveSession(source, Config()).run()
+    assert victim.read_text() == "precious"
+
+
+def test_tcpdump_that_cannot_be_executed_is_explained(tmp_path):
+    script = tmp_path / "tcpdump"
+    script.write_text("#!/bin/sh\n")
+    script.chmod(0o600)  # not executable: exec fails with a permission error
+    source = TcpdumpSource(CaptureSpec("en0"), command=[str(script)])
+    with pytest.raises(SourceError, match="not permitted to run"):
+        LiveSession(source, Config()).run()

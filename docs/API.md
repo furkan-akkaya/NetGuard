@@ -18,6 +18,8 @@ NETGUARD_API_TOKEN=$(python -c "import secrets; print(secrets.token_urlsafe(32))
 | `--host`, `--port` | `127.0.0.1`, `8000` | Bind address; non-loopback requires `NETGUARD_API_TOKEN` |
 | `-c, --config` | built-in defaults | Base TOML configuration for every analysis |
 | `--max-upload-mb` | 256 | Upload cap, enforced while streaming |
+| `--max-storage-gb` | 10 | Quota for all stored captures together (507 when full) |
+| `--allowed-host` | none | Extra Host names clients may use (e.g. behind a proxy); others get 421 |
 | `--job-timeout` | 600 | Seconds per analysis before the worker is killed |
 | `--job-memory-mb` | 1024 | Worker address-space limit (enforced on Linux) |
 | `--max-stored-flows` | 500 000 | Flow rows kept per analysis (`flows_truncated` reports the rest) |
@@ -30,8 +32,12 @@ NETGUARD_API_TOKEN=$(python -c "import secrets; print(secrets.token_urlsafe(32))
 - Timestamps are ISO 8601 UTC strings; `since`/`until` filters take Unix time.
 - Lists return `{"items": [...], "total": N, "limit": L, "offset": O}`;
   `limit` is 1–1000 (default 50); `sort` is a field name, `-` for descending.
-- Errors: `{"detail": "..."}` with 400 (bad query), 401, 404, 409 (conflict),
-  413 (too large), 415 (not a capture), 422 (validation).
+- Uploads must be sent as `application/octet-stream`, profile imports as
+  `application/toml`; state-changing requests from another `Origin` are
+  refused (403) and unknown `Host` names get 421 (see THREAT_MODEL.md).
+- Errors: `{"detail": "..."}` with 400 (bad query), 401, 403 (cross-origin),
+  404, 409 (conflict), 413 (too large), 415 (wrong content type), 421 (unknown
+  host), 422 (validation), 429 (too many pending analyses), 507 (storage quota).
 
 ## Endpoints
 

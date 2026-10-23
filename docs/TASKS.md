@@ -14,21 +14,24 @@ in [ROADMAP.md](../ROADMAP.md); task numbers here match it.
 - [x] Phase 5 — web dashboard (v0.5.0 = MVP): React/TypeScript SPA, rule profiles, HTML report, CSV export; ADR-0009; learning note 06
 - [x] Phase 6 — live capture and replay (v0.6.0): `netguard monitor`, `netguard replay`, early warnings, max incident age, detection-delay benchmark; ADR-0010; learning note 07
 - [x] Phase 7 — advanced detection (v0.7.0): explainable confidence, alert correlation, DHCP lease correlation, profile TOML import/export, `netguard config`; ADR-0011; learning note 08
+- [x] Phase 9 — hardening and CI/CD (v0.8.0): threat model and 7 fixes, dependency audit and SBOM, security CI job, release workflow, clean-install and Linux container verification, systemd unit; learning note 09
 
 Deferred (ADR-0011): Zeek/Suricata input, ICMP tunnel rule, resolver policy, seasonal baselines; ML rejected for now.
 
-## Now: Phase 9, hardening and CI/CD (Phase 8 lab work waits on the user)
+## Now: Phase 10, documentation, release and portfolio (Phase 8 lab work waits on the user)
 
-- [ ] **9.1** Threat-model review of every input path (captures, API, uploads, profiles, dashboard)
-- [ ] **9.2** Dependency audit (`pip-audit`), license inventory, SBOM
-- [ ] **9.3** CI: security checks (pip-audit, pnpm audit, ruff `S`), release workflow that builds the dashboard into the wheel
-- [ ] **9.4** Installation and deployment check from a clean environment (wheel install, `netguard serve` on Ubuntu)
-- [ ] **9.5** Secure defaults review (limits, timeouts, headers, permissions) and documentation
+- [ ] **10.1** Code-quality review across modules (consistency, dead code, naming)
+- [ ] **10.2** Engineering evaluation report (what was built, measured, not measured)
+- [ ] **10.3** Accurate screenshots and a short demo from real analyses
+- [ ] **10.4** v1.0 release checklist against the brief's Definition of Done
+- [ ] **10.5** 👤 Tag, run the release workflow, review and publish the draft release; decide on repository visibility
+- [ ] **10.6** LinkedIn/portfolio text draft (technically grounded, no unmeasured claims)
 
 ## Waiting on the user 👤
 
 - [ ] **8.3** Build the UTM lab: Kali (attacker) + Ubuntu (victim) on an isolated host-only network ([LAB_SETUP.md](LAB_SETUP.md))
-- [ ] **6.5** Live capture on a real interface: `netguard monitor -i <iface> --write live.pcap` during lab attacks; compare with `netguard analyze live.pcap`; note kernel drops ([LIVE_CAPTURE.md](LIVE_CAPTURE.md))
+- [ ] **9.5** Run `deploy/netguard.service` under systemd on the Ubuntu server ([DEPLOYMENT.md](DEPLOYMENT.md))
+- [ ] **6.5** Live capture on a real interface (loopback already verified in an Ubuntu container): `netguard monitor -i <iface> --write live.pcap` during lab attacks; compare with `netguard analyze live.pcap`; note kernel drops ([LIVE_CAPTURE.md](LIVE_CAPTURE.md))
 - [ ] **8.4** Capture attack traffic (`nmap -sS/-sT/-sX/-sN/-sF/-sU/-sn`, `-T1`, `masscan`, `arp-scan`, `bettercap arp.spoof`) and ≥ 1 h of benign traffic into `captures/` (git-ignored)
 - [ ] **2.11** On those captures: `netguard flows` state distribution for `nmap -sS`, compared with Zeek `conn.log`
 - [ ] On lab captures: `nmap -sS -T1`, `nmap -sU`, `nmap -f`, `hping3 -S --flood` (isolated lab only) to validate NG-SCAN-002/003, NG-FRAG-001, NG-SYN-001

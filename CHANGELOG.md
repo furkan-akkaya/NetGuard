@@ -2,6 +2,32 @@
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning: [SemVer](https://semver.org/).
 
+## [0.8.0] - 2026-10-22
+
+Phase 9: security hardening and CI/CD, against a written threat model
+(docs/THREAT_MODEL.md).
+
+### Security
+- DNS rebinding: requests with an unknown `Host` are refused (421); `--allowed-host` adds names (e.g. behind a proxy). Before, a malicious page re-resolving its domain to 127.0.0.1 could read all data of a token-less localhost server.
+- Cross-site writes: state-changing requests from another `Origin` are refused (403); uploads require `application/octet-stream` and profile imports `application/toml` (415), types a browser cannot send cross-site without a CORS preflight. Before, a page could upload captures and import a rule-disabling profile with `text/plain` requests.
+- Request bodies outside the upload are capped at 1 MiB, counted while reading (chunked requests included).
+- Global storage quota `--max-storage-gb` (default 10; 507/413) and at most 100 pending analyses (429).
+- `monitor --write` creates its file exclusively and without following symlinks, before tcpdump starts.
+- The server sets umask 077 (SQLite WAL/SHM files are owner-only) and warns when the data directory is shared.
+
+### Added
+- CI `security` job: pip-audit on the runtime dependency set, a copyleft license gate, weekly schedule; Python 3.14 in the test matrix.
+- Release workflow (tags `v*`): builds the dashboard fresh, builds sdist and wheel, smoke-tests the wheel in a clean environment, CycloneDX SBOM and checksums, **draft** GitHub release with the changelog section.
+- `deploy/netguard.service` (hardened systemd unit, `systemd-analyze security` 1.6 "OK") and `deploy/Caddyfile` (TLS proxy).
+- docs/THREAT_MODEL.md, docs/DEPLOYMENT.md, learning note 09 (Turkish).
+
+### Fixed
+- Broken-pipe at interpreter exit returned code 120 (seen on Python 3.14): stdout is flushed inside the error handler.
+- A tcpdump binary the process may not execute (file capabilities outside a container's bounding set) is explained instead of reported as a bare OS error.
+
+### Verified
+- Clean-environment install on macOS and in an Ubuntu 26.04 ARM64 container (Python 3.14): analysis, server and dashboard, worker memory limit enforced on Linux, live capture on loopback as an unprivileged user with `setcap` (early warnings 1 s after the scan started; live = offline on the saved pcap).
+
 ## [0.7.0] - 2026-10-22
 
 Phase 7: advanced detection, chosen by measurable value (ADR-0011).

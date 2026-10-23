@@ -1,0 +1,57 @@
+# NetGuard API and dashboard as a systemd service (see docs/DEPLOYMENT.md).
+# Install: /etc/systemd/system/netguard.service, then
+#   systemctl daemon-reload && systemctl enable --now netguard
+[Unit]
+Description=NetGuard network intrusion detection API and dashboard
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=exec
+User=netguard
+Group=netguard
+# NETGUARD_API_TOKEN=... (mode 0600, owned by root): required when not bound to loopback.
+EnvironmentFile=-/etc/netguard/env
+ExecStart=/opt/netguard/venv/bin/netguard serve \
+    --data-dir /var/lib/netguard \
+    --host 127.0.0.1 --port 8000 \
+    --max-upload-mb 256 --max-storage-gb 20 \
+    --job-timeout 600 --job-memory-mb 1024
+Restart=on-failure
+RestartSec=5
+
+# State lives in /var/lib/netguard (created 0700 for the service user).
+StateDirectory=netguard
+StateDirectoryMode=0700
+UMask=0077
+
+# Sandboxing: the service parses untrusted captures; give it nothing else.
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+# Not ~@resources: each analysis worker calls setrlimit() to cap its own memory and CPU.
+SystemCallFilter=~@privileged
+
+# Resource ceiling for a 4 GB host (each analysis worker is also limited).
+MemoryMax=2G
+TasksMax=64
+
+[Install]
+WantedBy=multi-user.target

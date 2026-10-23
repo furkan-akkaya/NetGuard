@@ -3,7 +3,7 @@
 **Network intrusion detection & traffic analysis with explainable, measured detections.**
 
 [![CI](https://github.com/furkan-akkaya/NetGuard/actions/workflows/ci.yml/badge.svg)](https://github.com/furkan-akkaya/NetGuard/actions/workflows/ci.yml)
-![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue)
+![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13%20%7C%203.14-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 NetGuard reads network traffic (pcap/pcapng files or a live `tcpdump` stream),
@@ -13,15 +13,16 @@ single **explainable alert**. Every alert states what was observed, which
 threshold it crossed, what the attacker likely learned, and which MITRE ATT&CK
 technique it maps to.
 
-> **Status:** v0.7.0 — packet ingestion, flow engine, eleven detection rules
+> **Status:** v0.8.0 — packet ingestion, flow engine, eleven detection rules
 > with explainable confidence, alert correlation, a REST API, a web dashboard
-> and live capture, tested on 27 labelled synthetic scenarios. Validation on
-> real lab captures is next (see the [roadmap](ROADMAP.md)).
+> and live capture, tested on 27 labelled synthetic scenarios and hardened
+> against a written threat model. Validation on real lab captures is next
+> (see the [roadmap](ROADMAP.md)).
 
 ```text
 $ netguard analyze syn_scan.pcap
 
-NetGuard 0.7.0 — syn_scan.pcap
+NetGuard 0.8.0 — syn_scan.pcap
 
 Packets: 2,003   Bytes: 108,162   Duration: 1.0s   Flows: 1,000   Decode errors: 0
 Protocols: tcp 2,003
@@ -185,6 +186,8 @@ See [ARCHITECTURE.md](docs/ARCHITECTURE.md) and the [decision records](docs/adr/
 | [Architecture](docs/ARCHITECTURE.md) | Components, data flow, extension points |
 | [API](docs/API.md) | REST API v1 reference, examples, ECS export |
 | [Live capture](docs/LIVE_CAPTURE.md) | `monitor` and `replay`: permissions, options, alert lifecycle |
+| [Deployment](docs/DEPLOYMENT.md) | Install, systemd service, TLS proxy, upgrades |
+| [Threat model](docs/THREAT_MODEL.md) | Entry points, threats, mitigations, residual risks |
 | [Confidence](docs/CONFIDENCE.md) | How confidence is computed (every factor justified) and how alerts become incidents |
 | [Contributing](CONTRIBUTING.md) | Development setup (Python and dashboard), checks before committing |
 | [ADRs](docs/adr/) | Python + dpkt, tcpdump capture, incidents, flow semantics, own capture readers, connection events, baselines |
