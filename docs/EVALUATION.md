@@ -217,11 +217,21 @@ uv run python benchmarks/flood_memory.py 500000
 | Before the tracker fixes (flow table already bounded) | 519 MB peak RSS | did not finish in 120 s (O(max_keys) work per packet once full) |
 | v0.2.0 (3 rules) | 219 MB, 1.5 s | 349 MB, 8.7 s (~57k pkt/s); 300 000 flows evicted, endpoint table approximate |
 | v0.3.0 (11 rules) | 263 MB, 2.3 s | 469 MB, 11.6 s (~43k pkt/s) |
+| v0.8.0 + Phase 10 (11 rules, Apple M1, Python 3.11) | 263 MB, 2.3 s | 469 MB, 11.7 s (~43k pkt/s) |
 
 Peak memory is bounded by `[flows] max_flows` (200 000) and each rule's key
 limit (`max_keys`, `max_sources`, `max_targets`), not by traffic volume. On the
 4 GB Ubuntu host the v0.3.0 worst case uses about 12% of RAM; lowering
 `max_flows` and the per-rule limits shrinks it further.
+
+What the flood costs in detection (measured in Phase 10, 500k packets): the
+flood itself is detected (one final NG-SYN-001 alert; its state is keyed by
+target, so it does not fill up), but the per-source tables of other rules
+overflow and drop state: portscan and hostsweep 400 000 keys each, TRW
+450 000 sources, the connection-rate and volume baselines 490 000 hosts each.
+A real scan hidden inside such a flood can therefore be missed. Since Phase 10
+the output says so (`stats.detectors`, a warning in the text output, the HTML
+report and the dashboard) instead of only counting it internally.
 
 For scale: a fully loaded 1 Gbit/s link carries roughly 80k–1.4M packets/s
 depending on packet size, so NetGuard is **not** a line-rate sensor. It fits
