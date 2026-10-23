@@ -5,7 +5,7 @@ import { AlertTable } from "../components/AlertTable";
 import { BarList, TimeSeries } from "../components/charts";
 import { FlowBrowser } from "../components/FlowBrowser";
 import { ConfidenceBadge, Empty, ErrorBox, Loading, Panel, SeverityBadge, Stat, StatusBadge } from "../components/ui";
-import { endpoint, formatBytes, formatDuration, formatNumber, formatTime } from "../format";
+import { endpoint, formatBytes, formatDuration, formatNumber, formatTime, stateLosses } from "../format";
 import { useAsync } from "../hooks";
 
 const active = (a: Analysis | undefined) => !!a && (a.status === "queued" || a.status === "running");
@@ -13,8 +13,21 @@ const active = (a: Analysis | undefined) => !!a && (a.status === "queued" || a.s
 function Traffic({ stats }: { stats: Stats }) {
   const [unit, setUnit] = useState<"packets" | "bytes">("packets");
   const points = stats.timeseries.buckets.map((b) => ({ t: b.start, value: unit === "bytes" ? b.bytes : b.packets }));
+  const losses = stateLosses(stats);
   return (
     <>
+      {losses.length > 0 && (
+        <div className="state error" role="alert">
+          <strong>Detection state was dropped under memory pressure; some activity may be missing from the alerts.</strong>
+          <ul className="list compact">
+            {losses.map(([name, n]) => (
+              <li key={name}>
+                {name}: {formatNumber(n)} entries dropped (table full, see the detector's max_* setting)
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       <div className="stats">
         <Stat label="Packets" value={formatNumber(stats.packets)} hint={`${formatNumber(stats.decode_errors)} decode errors`} />
         <Stat label="Bytes" value={formatBytes(stats.bytes)} />

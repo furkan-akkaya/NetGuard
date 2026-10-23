@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import heapq
 from collections import Counter
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -31,6 +32,17 @@ from netguard.models import Packet, iso_ts
 # capture used a short snaplen.
 SIZE_BUCKETS = (64, 128, 256, 512, 1024, 1518)
 SIZE_LABELS = ("0-64", "65-128", "129-256", "257-512", "513-1024", "1025-1518", "1519+")
+#: Detector counters with these prefixes count detection state dropped by a full table.
+LOSS_PREFIXES = ("evicted", "untracked")
+
+
+def state_losses(detector_counters: Mapping[str, Mapping[str, int]]) -> dict[str, int]:
+    """Detectors that dropped detection state under memory pressure: name -> items lost."""
+    losses = {
+        name: sum(v for k, v in counters.items() if k.startswith(LOSS_PREFIXES))
+        for name, counters in detector_counters.items()
+    }
+    return {name: n for name, n in losses.items() if n}
 
 
 @dataclass(slots=True)
@@ -107,6 +119,8 @@ class TrafficStats:
     endpoints: dict[str, Endpoint] = field(default_factory=dict)
     endpoints_approximate: bool = False
     _top_flows: list[tuple[int, int, Flow]] = field(default_factory=list)
+    # Detector name -> Detector.counters values, filled in at the end of an analysis.
+    detector_counters: dict[str, dict[str, int]] = field(default_factory=dict)
 
     def add(self, pkt: Packet) -> None:
         self.packets += 1
@@ -164,6 +178,9 @@ class TrafficStats:
             ep = self.endpoints[ip] = Endpoint()
         return ep
 
+    def state_losses(self) -> dict[str, int]:
+        return state_losses(self.detector_counters)
+
     @property
     def duration(self) -> float:
         if self.first_ts is None or self.last_ts is None:
@@ -198,6 +215,7 @@ class TrafficStats:
                 "top_services": [{"service": s, "flows": n} for s, n in self.services.most_common(self.top_n)],
                 "top_by_bytes": [f.to_dict() for f in self.top_flows()],
             },
+            "detectors": self.detector_counters,
             "endpoints": {
                 "approximate": self.endpoints_approximate,
                 "top_by_bytes": [

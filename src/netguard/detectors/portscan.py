@@ -54,6 +54,7 @@ class PortScanDetector(Detector):
     name = "portscan"
     packet_protos = frozenset({"tcp"})
     rules = (RuleInfo(RULE_ID, "TCP port scan", T1046),)
+    counters = ("tracker.evicted_keys", "suppressed")
 
     def __init__(self, config: Config) -> None:
         self.cfg = config.portscan

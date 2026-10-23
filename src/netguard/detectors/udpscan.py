@@ -41,6 +41,7 @@ class UdpScanDetector(Detector):
     name = "udpscan"
     packet_protos = frozenset({"icmp"})
     rules = (RuleInfo(RULE_ID, "UDP port scan", T1046),)
+    counters = ("tracker.evicted_keys", "suppressed")
 
     def __init__(self, config: Config) -> None:
         self.cfg = config.udpscan

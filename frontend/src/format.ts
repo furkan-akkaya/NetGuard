@@ -1,5 +1,7 @@
 // Display helpers. Pure functions, unit-tested in format.test.ts.
 
+import type { Stats } from "./api";
+
 const UNITS = ["B", "KB", "MB", "GB", "TB"];
 
 export function formatBytes(n: number): string {
@@ -55,4 +57,16 @@ export function endpoint(ip: string | null, port?: number | null): string {
 export function humanize(key: string): string {
   const words = key.replace(/_/g, " ").trim();
   return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+/** Detectors that dropped state because a table was full (same rule as stats.state_losses). */
+export function stateLosses(stats: Stats): [string, number][] {
+  return Object.entries(stats.detectors ?? {})
+    .map(([name, counters]): [string, number] => [
+      name,
+      Object.entries(counters)
+        .filter(([key]) => key.startsWith("evicted") || key.startsWith("untracked"))
+        .reduce((sum, [, n]) => sum + n, 0),
+    ])
+    .filter(([, n]) => n > 0);
 }

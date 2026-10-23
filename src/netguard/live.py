@@ -30,7 +30,7 @@ import subprocess
 import threading
 import time
 from collections.abc import Callable, Iterator
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import IO, BinaryIO
 
@@ -336,7 +336,6 @@ class SessionResult:
     seconds: float
     stopped_by: str
     error: str | None = None
-    status_lines: list[str] = field(default_factory=list)
 
 
 class LiveSession:

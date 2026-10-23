@@ -47,6 +47,7 @@ class HostSweepDetector(Detector):
     name = "hostsweep"
     packet_protos = frozenset({"arp", "icmp", "icmp6", "tcp"})
     rules = (RuleInfo(RULE_ID, "Host discovery sweep", T1018),)
+    counters = ("tracker.evicted_keys",)
 
     def __init__(self, config: Config) -> None:
         self.cfg = config.hostsweep

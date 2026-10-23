@@ -71,6 +71,7 @@ class _Incident:
 class SynFloodDetector(Detector):
     name = "synflood"
     rules = (RuleInfo(RULE_ID, "Possible TCP SYN flood", T1499_001),)
+    counters = ("evicted_targets",)
 
     def __init__(self, config: Config) -> None:
         self.cfg = config.synflood

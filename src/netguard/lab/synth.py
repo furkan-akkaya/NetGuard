@@ -51,11 +51,6 @@ class Host:
         seg = dpkt.tcp.TCP(sport=sport, dport=dport, flags=flags, seq=seq, ack=ack, data=payload)
         return _eth(self.mac, dst.mac, dpkt.ethernet.ETH_TYPE_IP, _ipv4(self.ip, dst.ip, dpkt.ip.IP_PROTO_TCP, seg))
 
-    def tcp_to_ip(self, gateway: Host, dst_ip: str, sport: int, dport: int, flags: int) -> bytes:
-        """TCP to an off-link IP: L2 destination is the gateway."""
-        seg = dpkt.tcp.TCP(sport=sport, dport=dport, flags=flags, seq=1000)
-        return _eth(self.mac, gateway.mac, dpkt.ethernet.ETH_TYPE_IP, _ipv4(self.ip, dst_ip, dpkt.ip.IP_PROTO_TCP, seg))
-
     def udp(self, dst: Host, sport: int, dport: int, payload: bytes = b"") -> bytes:
         dgram = dpkt.udp.UDP(sport=sport, dport=dport, data=payload)
         dgram.ulen = len(dgram)

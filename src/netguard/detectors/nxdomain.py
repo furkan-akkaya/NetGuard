@@ -34,6 +34,7 @@ class NxdomainDetector(Detector):
     name = "nxdomain"
     packet_protos = frozenset({"udp"})
     rules = (RuleInfo(RULE_ID, "Burst of failed DNS lookups (possible DGA)", T1568_002),)
+    counters = ("tracker.evicted_keys",)
 
     def __init__(self, config: Config) -> None:
         self.cfg = config.nxdomain

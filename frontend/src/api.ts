@@ -94,6 +94,8 @@ export interface Stats {
     top_by_bytes: FlowRecord[];
   };
   endpoints: { approximate: boolean; top_by_bytes: Endpoint[] };
+  /** Detector name -> counters; absent in analyses stored before v0.9. */
+  detectors?: Record<string, Record<string, number>>;
 }
 
 export interface Analysis extends AnalysisSummary {

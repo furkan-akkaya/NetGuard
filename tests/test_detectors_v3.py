@@ -13,6 +13,8 @@ from netguard.detectors.trw import TrwDetector
 from netguard.dns import DnsInfo
 from netguard.engine import Engine, analyze_packets
 from netguard.models import ACK, RST, SYN, Alert, Packet
+from netguard.output import render_text
+from netguard.report import render_report
 
 from .helpers import tcp, udp
 
@@ -128,6 +130,21 @@ def test_synflood_target_table_is_bounded():
     det = next(d for d in engine.detectors if d.name == "synflood")
     assert len(det._intervals) <= 10  # type: ignore[attr-defined]
     assert det.evicted_targets == 90  # type: ignore[attr-defined]
+
+
+def test_detector_state_losses_are_reported():
+    # Dropped detection state must be visible to the analyst, not only counted.
+    cfg = Config(synflood=SynFloodConfig(max_targets=10))
+    engine = Engine(cfg)
+    for port in range(100):
+        engine.process(tcp(port * 0.01, SCANNER, TARGET, port + 1, SYN, sport=4000))
+    result = engine.finish()
+    doc = result.stats.to_dict()
+    assert doc["detectors"]["synflood"] == {"evicted_targets": 90}
+    assert doc["detectors"]["portscan"]["evicted_keys"] == 0
+    assert result.stats.state_losses() == {"synflood": 90}
+    assert "detector synflood dropped state 90 times" in render_text(result, "x")
+    assert "Detector synflood dropped state 90 times" in render_report(doc, [], source="x")
 
 
 # --- UDP scan -------------------------------------------------------------------

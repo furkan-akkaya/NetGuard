@@ -134,6 +134,7 @@ class Engine:
         for det in self.detectors:
             self._emit(det.flush())
         self.alerts.sort(key=lambda a: (a.first_seen, a.detector))
+        self.stats.detector_counters = {d.name: d.counter_values() for d in self.detectors if d.counters}
         return AnalysisResult(stats=self.stats, alerts=self.alerts)
 
 

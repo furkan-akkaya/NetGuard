@@ -179,8 +179,7 @@ class Flow:
             self.history += letter
 
     def update(self, pkt: Packet, orig: bool) -> None:
-        if pkt.ts > self.last_seen:
-            self.last_seen = pkt.ts
+        self.last_seen = max(self.last_seen, pkt.ts)
         payload = pkt.payload_len or 0
         if orig:
             self.orig_packets += 1
@@ -296,16 +295,12 @@ class FlowTable:
         }
         self._flows: dict[FlowKey, Flow] = {}
         self._lru: dict[int, OrderedDict[FlowKey, Flow]] = {c: OrderedDict() for c in self._timeouts}
-        self.flows_started = 0
         self.flows_evicted = 0
         self.current: Flow | None = None
         self.event: str | None = None
 
     def __len__(self) -> int:
         return len(self._flows)
-
-    def active(self) -> list[Flow]:
-        return list(self._flows.values())
 
     @staticmethod
     def _class_of(flow: Flow) -> int:
@@ -371,7 +366,6 @@ class FlowTable:
         flow._cls = self._class_of(flow)
         self._flows[key] = flow
         self._lru[flow._cls][key] = flow
-        self.flows_started += 1
         return flow
 
     def _end(self, key: FlowKey, reason: str) -> Flow:

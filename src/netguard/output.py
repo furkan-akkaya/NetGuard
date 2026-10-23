@@ -70,6 +70,8 @@ def render_text(result: AnalysisResult, source: str, color: bool = False) -> str
         out.append(f"Warning: {n:,} frames skipped, unsupported link type {linktype}")
     if s.flows_evicted:
         out.append(f"Warning: {s.flows_evicted:,} flows evicted early because the flow table was full (max_flows)")
+    for name, lost in s.state_losses().items():
+        out.append(f"Warning: detector {name} dropped state {lost:,} times because its table was full")
     out.append("")
     if not result.alerts:
         out.append("No alerts.")

@@ -2,6 +2,17 @@
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning: [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+Phase 10: code-quality review, evaluation report and release preparation.
+
+### Added
+- Analysis statistics report every detector's counters (`stats.detectors`). When a detector dropped state because its table was full (`evicted_*`, `untracked_*`), the text output, the HTML report and the dashboard show a warning. Before, these losses were counted internally but never shown, although the docs said they were.
+- NG-ARP-001 counts new IPs it could not track because the binding table was full (`untracked_ips`).
+
+### Removed
+- Unused code found in the review: `FlowTable.active()`, `FlowTable.flows_started`, `SessionResult.status_lines`, `Host.tcp_to_ip()` in the lab generator.
+
 ## [0.8.0] - 2026-10-22
 
 Phase 9: security hardening and CI/CD, against a written threat model
