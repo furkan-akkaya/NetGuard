@@ -10,6 +10,12 @@ Phase 10: code-quality review, evaluation report and release preparation.
 - Analysis statistics report every detector's counters (`stats.detectors`). When a detector dropped state because its table was full (`evicted_*`, `untracked_*`), the text output, the HTML report and the dashboard show a warning. Before, these losses were counted internally but never shown, although the docs said they were.
 - NG-ARP-001 counts new IPs it could not track because the binding table was full (`untracked_ips`).
 
+### Fixed
+- The dashboard's traffic chart drew a line across empty time buckets, so a gap followed by a burst looked like a gradual ramp. It is now a step chart that drops to zero where no traffic was seen. Its axis labels no longer grow with the chart's width.
+
+### Documentation
+- docs/DEMO.md: screenshots and command-line output from real runs on the synthetic lab scenarios, with the steps to reproduce them.
+
 ### Removed
 - Unused code found in the review: `FlowTable.active()`, `FlowTable.flows_started`, `SessionResult.status_lines`, `Host.tcp_to_ip()` in the lab generator.
 

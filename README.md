@@ -129,6 +129,10 @@ rule profiles for re-analysing with different thresholds, and exports (HTML
 report, alerts as NDJSON or Elastic Common Schema, flows as CSV). Everything
 it shows comes from real analyses; nothing is mocked.
 
+![Analysis of a synthetic multi-stage lab scenario in the dashboard](docs/img/analysis.png)
+
+More screenshots and the exact steps to reproduce them: [docs/DEMO.md](docs/DEMO.md).
+
 The same functions are available through the REST API: [docs/API.md](docs/API.md).
 `netguard analyze -f html capture.pcap > report.html` writes the same
 single-file report from the command line.

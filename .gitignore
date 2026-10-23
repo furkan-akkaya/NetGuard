@@ -22,6 +22,7 @@ lab-pcaps/
 # Local config
 netguard.toml
 .claude/settings.local.json
+.claude/launch.json
 
 # OS / editors
 .DS_Store

@@ -52,7 +52,13 @@ export interface Point {
   value: number;
 }
 
-/** Area chart of a time series (packets or bytes per bucket), plain SVG. */
+/**
+ * Step chart of a time series (packets or bytes per bucket), plain SVG.
+ *
+ * The API sends only non-empty buckets, so a gap between two buckets means no
+ * traffic: the line drops to zero instead of interpolating across the gap.
+ * Axis labels are HTML, so they keep their size when the chart is scaled.
+ */
 export function TimeSeries({
   points,
   bucketSeconds,
@@ -66,39 +72,45 @@ export function TimeSeries({
 }) {
   if (points.length === 0) return <p className="muted">No traffic.</p>;
   const width = 640;
-  const pad = { l: 8, r: 8, t: 10, b: 22 };
+  const pad = { t: 6, b: 2 };
+  const step = bucketSeconds * 1000;
   const times = points.map((p) => new Date(p.t).getTime());
   const t0 = Math.min(...times);
-  const t1 = Math.max(...times) + bucketSeconds * 1000;
+  const t1 = Math.max(...times) + step;
   const peak = Math.max(...points.map((p) => p.value), 1);
-  const x = (t: number) => pad.l + ((t - t0) / Math.max(t1 - t0, 1)) * (width - pad.l - pad.r);
-  const y = (v: number) => height - pad.b - (v / peak) * (height - pad.t - pad.b);
-  // Each value holds for its whole bucket, so the last one extends to the bucket's end.
-  const last = points[points.length - 1]?.value ?? 0;
-  const path =
-    points.map((p, i) => `${i ? "L" : "M"}${x(times[i] ?? t0).toFixed(1)},${y(p.value).toFixed(1)}`).join(" ") +
-    ` L${x(t1).toFixed(1)},${y(last).toFixed(1)}`;
-  const area = `${path} L${x(t1).toFixed(1)},${height - pad.b} L${x(t0).toFixed(1)},${height - pad.b} Z`;
+  const x = (t: number) => (((t - t0) / Math.max(t1 - t0, 1)) * width).toFixed(1);
+  const y = (v: number) => (height - pad.b - (v / peak) * (height - pad.t - pad.b)).toFixed(1);
+  const segments: string[] = [`M${x(t0)},${y(0)}`];
+  let end = t0;
+  points.forEach((p, i) => {
+    const start = times[i] ?? t0;
+    if (start > end) segments.push(`L${x(end)},${y(0)}`, `L${x(start)},${y(0)}`);
+    segments.push(`L${x(start)},${y(p.value)}`, `L${x(start + step)},${y(p.value)}`);
+    end = start + step;
+  });
+  const path = segments.join(" ");
+  const area = `${path} L${x(end)},${y(0)} Z`;
   const fmt = unit === "bytes" ? formatBytes : formatNumber;
   const label = (t: number) => new Date(t).toISOString().slice(11, 19);
   const total = points.reduce((s, p) => s + p.value, 0);
   return (
     <figure className="chart">
-      <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`${unit} per ${bucketSeconds} seconds, peak ${fmt(peak)}`}>
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        preserveAspectRatio="none"
+        role="img"
+        aria-label={`${unit} per ${bucketSeconds} seconds, peak ${fmt(peak)}`}
+      >
         <path d={area} className="chart-area" />
         <path d={path} className="chart-line" />
-        <text x={pad.l} y={height - 6} className="chart-axis">
-          {label(t0)}
-        </text>
-        <text x={width - pad.r} y={height - 6} className="chart-axis" textAnchor="end">
-          {label(t1)} UTC
-        </text>
-        <text x={width - pad.r} y={pad.t + 4} className="chart-axis" textAnchor="end">
-          peak {fmt(peak)}
-        </text>
       </svg>
+      <div className="chart-axis">
+        <span>{label(t0)}</span>
+        <span>peak {fmt(peak)} per bucket</span>
+        <span>{label(t1)} UTC</span>
+      </div>
       <figcaption className="muted">
-        {fmt(total)} {unit === "bytes" ? "" : "packets "}in {points.length} buckets of {bucketSeconds} s
+        {fmt(total)} {unit === "bytes" ? "" : "packets "}in {bucketSeconds} s buckets
       </figcaption>
     </figure>
   );
