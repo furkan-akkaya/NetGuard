@@ -10,12 +10,16 @@ Phase 10: code-quality review, evaluation report and release preparation.
 - Analysis statistics report every detector's counters (`stats.detectors`). When a detector dropped state because its table was full (`evicted_*`, `untracked_*`), the text output, the HTML report and the dashboard show a warning. Before, these losses were counted internally but never shown, although the docs said they were.
 - NG-ARP-001 counts new IPs it could not track because the binding table was full (`untracked_ips`).
 
+### Changed
+- Release workflow: a version with letters (`1.0.0rc1`) becomes a draft *pre-release*.
+
 ### Fixed
 - The dashboard's traffic chart drew a line across empty time buckets, so a gap followed by a burst looked like a gradual ramp. It is now a step chart that drops to zero where no traffic was seen. Its axis labels no longer grow with the chart's width.
 
 ### Documentation
 - docs/ENGINEERING_REPORT.md: what was built, the decisions behind it, the defects found by measuring, what was verified and what was not.
 - docs/EVALUATION.md: the limitations table is brought up to date (Phase 6–7 fixes, flood state losses); current throughput and flood measurements.
+- docs/RELEASE_CHECKLIST.md: the brief's Definition of Done checked item by item. Verdict: not met yet (real-traffic evaluation, live capture on a real interface and a release run are missing), so no v1.0.0 claim.
 - docs/DEMO.md: screenshots and command-line output from real runs on the synthetic lab scenarios, with the steps to reproduce them.
 
 ### Removed

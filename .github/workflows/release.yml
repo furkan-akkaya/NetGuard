@@ -72,4 +72,7 @@ jobs:
           version="${GITHUB_REF_NAME#v}"
           awk -v v="## [$version]" '$0 ~ "^## \\[" { if (found) exit; if (index($0, v) == 1) found = 1 } found' CHANGELOG.md > notes.md
           test -s notes.md || echo "See CHANGELOG.md" > notes.md
-          gh release create "$GITHUB_REF_NAME" dist/* --draft --title "NetGuard $GITHUB_REF_NAME" --notes-file notes.md
+          # A version with letters (1.0.0rc1) is a release candidate: mark it as a pre-release.
+          prerelease=()
+          case "$version" in *[a-z]*) prerelease=(--prerelease) ;; esac
+          gh release create "$GITHUB_REF_NAME" dist/* --draft "${prerelease[@]}" --title "NetGuard $GITHUB_REF_NAME" --notes-file notes.md
