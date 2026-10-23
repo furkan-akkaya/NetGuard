@@ -196,6 +196,7 @@ uv run python benchmarks/make_bench_pcap.py /tmp/bench.pcap
 | v0.2.0 `netguard flows` (export only) | 2.15 s | 31 MB | ~113k pkt/s |
 | v0.3.0, 11 rules, before protocol dispatch | 2.6–2.7 s | 36 MB | ~90k pkt/s |
 | v0.3.0, 11 rules (protocol dispatch, ADR-0006) | 2.45–2.5 s (first run 3.0 s) | 36 MB | ~97k pkt/s |
+| v0.8.0 + Phase 10 changes (11 rules, confidence, correlation) | 2.47–2.48 s | 34 MB | ~98k pkt/s |
 
 v0.2.0 does strictly more work per packet (flow table, connection state,
 sequence tracking, richer statistics) and is still ~1.6× faster than v0.1.0.
@@ -265,23 +266,28 @@ home and lab networks, low-traffic servers, and offline forensic analysis.
   time series. When a cap is hit, NetGuard degrades to *missed detections*
   (fail-open), counts it in the output, and never grows without bound.
 
-## 5. Known limitations (v0.3.0)
+## 5. Known limitations (reviewed in Phase 10)
 
-| Limitation | Impact | Planned fix |
+Detection limitations. Each rule page lists its own false positives and
+negatives in more detail.
+
+| Limitation | Impact | Status |
 |---|---|---|
-| Window rule (NG-SCAN-001) has a fixed 60 s window | Slow scans evade it | TRW (NG-SCAN-002) covers them up to its 1 h state horizon |
-| TRW needs SYN-based probes | NULL/FIN/XMAS scans are only seen by the window rule | — (by design) |
-| UDP scans and Linux ICMP rate limiting | Closed UDP ports mostly look silent | Evidence only; the rule does not depend on ICMP |
-| Baseline rules need warm-up | No rate/volume alerts in captures shorter than 10 min | Persistent baselines once Phase 4 stores history |
+| Window rule (NG-SCAN-001) has a fixed 60 s window | Slow scans evade it | Mitigated: TRW (NG-SCAN-002) detects them up to its 1 h state horizon (`slow_scan`) |
+| TRW needs SYN-based probes | NULL/FIN/XMAS scans are only seen by the window rule | By design |
+| UDP scans and ICMP rate limiting | Closed UDP ports often look silent | The rule does not depend on ICMP replies; they are evidence only |
+| Baseline rules need warm-up | No rate/volume alerts in captures shorter than 10 min; baselines are per analysis, not kept between analyses | Open (seasonal/persistent baselines deferred, ADR-0011) |
 | DNS over HTTPS/TLS | Tunnels and DGA lookups inside DoH/DoT are invisible | Out of scope (encrypted) |
-| Registered domain heuristic | Multi-level public suffixes may be keyed one level too high | Optional Public Suffix List (Phase 7) |
-| Overlapping alerts | A SYN scan raises NG-SCAN-001 and NG-SCAN-002 | Correlation (Phase 7) |
-| ARP: one change = alert | DHCP re-assignment and VRRP failover raise MEDIUM alerts | DHCP/lease correlation, flip-flop-only mode (Phase 7) |
-| Spoofed source IPs | Decoy scans (`nmap -D`) split one scan into many sources | Target-centric correlation (Phase 7) |
-| Idle-timeout reporting | Live alerts arrive ≥ 10 s after the scan pauses | Early-warning alerts (6.4) |
-| No IP fragment reassembly | Probes inside fragments (`nmap -f`) are not analysed; NG-FRAG-001 reports the evasion itself. IPv6 fragments not inspected | Reassembly only if lab data shows the need (Phase 7) |
-| Flow orientation without a SYN | Mid-stream flows keep the first sender as originator | Port heuristics only if lab data shows the need |
-| Retransmission vs. reordering | Late out-of-order segments are counted as retransmissions | Inherent to passive observation; documented (ADR-0004) |
+| Registered-domain heuristic | Names under multi-level public suffixes may be grouped one level too high | Open (no Public Suffix List, to avoid a download/dependency) |
+| ARP without visible DHCP | A re-assigned IP or a VRRP/HSRP failover raises a MEDIUM alert (`dhcp_reassignment`, low confidence) | Mitigated when the DHCP ACK is in the capture (ADR-0011); a rogue DHCP server answering first is trusted (TOFU, configure `dhcp_servers`) |
+| Decoy scans with spoofed sources (`nmap -D`) | One scan becomes many small ones per source, each possibly below threshold | Open: correlation groups by actor, not by target |
+| Spoofed-source floods | Per-source detector tables overflow: a real scan inside such a flood can be missed (§3) | Reported since Phase 10 (`stats.detectors`, warnings) |
+| No IP fragment reassembly | Probes inside fragments (`nmap -f`) are not analysed; NG-FRAG-001 reports the evasion itself. IPv6 fragments and DHCPv6 not inspected | Open; reassembly only if lab data shows the need |
+| Flow orientation without a SYN | Mid-stream flows keep the first sender as originator | Open; documented (ADR-0004) |
+| Retransmission vs. reordering | Late out-of-order segments are counted as retransmissions | Inherent to passive observation (ADR-0004) |
+| Live alert latency | Early warnings arrive 1–2 s after a threshold is crossed; rules with intervals add their interval (§2, detection delay) | By design (ADR-0010) |
+| Throughput | ~100k packets/s offline on an M1; not a line-rate sensor (§3) | By design: home/lab networks, low-traffic servers, forensics |
+| Confidence scores | Factors and scenarios come from the same author; separation is a consistency check, not accuracy | Must be re-checked on real lab captures (Phase 8) |
 
 ## 6. Real captures
 

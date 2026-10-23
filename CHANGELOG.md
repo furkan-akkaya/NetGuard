@@ -14,9 +14,12 @@ Phase 10: code-quality review, evaluation report and release preparation.
 - The dashboard's traffic chart drew a line across empty time buckets, so a gap followed by a burst looked like a gradual ramp. It is now a step chart that drops to zero where no traffic was seen. Its axis labels no longer grow with the chart's width.
 
 ### Documentation
+- docs/ENGINEERING_REPORT.md: what was built, the decisions behind it, the defects found by measuring, what was verified and what was not.
+- docs/EVALUATION.md: the limitations table is brought up to date (Phase 6–7 fixes, flood state losses); current throughput and flood measurements.
 - docs/DEMO.md: screenshots and command-line output from real runs on the synthetic lab scenarios, with the steps to reproduce them.
 
 ### Removed
+- `python-multipart` from the `web` extra: installed but never used (uploads are streamed raw bodies).
 - Unused code found in the review: `FlowTable.active()`, `FlowTable.flows_started`, `SessionResult.status_lines`, `Host.tcp_to_ip()` in the lab generator.
 
 ## [0.8.0] - 2026-10-22

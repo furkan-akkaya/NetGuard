@@ -74,7 +74,7 @@ Traffic analysis:
 - **Flows:** bidirectional connections with originator, per-direction packets/bytes/payload, duration, TCP history, Zeek-style `conn_state` (`S0`, `REJ`, `SF`, `RSTO`, …), retransmission and sequence-gap counts. Export with `netguard flows`.
 - **DNS:** queries and responses (name, type, response code) from NetGuard's own bounded parser.
 - **Statistics:** protocol and packet-size distributions, time series, flow states, top services, top flows, top endpoints (sent/received).
-- **Capture formats:** pcap and pcapng, including multi-interface pcapng with different link types; Ethernet, Linux SLL, BSD loopback, raw IP; IPv4/IPv6; TCP, UDP, ICMP, ICMPv6, ARP, DNS query names.
+- **Capture formats:** pcap and pcapng, including multi-interface pcapng with different link types; Ethernet, Linux SLL, BSD loopback, raw IP; IPv4/IPv6; TCP, UDP, ICMP, ICMPv6, ARP, DNS (queries and responses), DHCP (leases).
 
 Engineering properties:
 
@@ -194,9 +194,11 @@ See [ARCHITECTURE.md](docs/ARCHITECTURE.md) and the [decision records](docs/adr/
 | [Threat model](docs/THREAT_MODEL.md) | Entry points, threats, mitigations, residual risks |
 | [Confidence](docs/CONFIDENCE.md) | How confidence is computed (every factor justified) and how alerts become incidents |
 | [Contributing](CONTRIBUTING.md) | Development setup (Python and dashboard), checks before committing |
-| [ADRs](docs/adr/) | Python + dpkt, tcpdump capture, incidents, flow semantics, own capture readers, connection events, baselines |
+| [ADRs](docs/adr/) | Eleven decisions: Python + dpkt, tcpdump capture, incidents, flows, capture readers, connection events, baselines, backend, dashboard, live capture, Phase 7 scope |
 | [Rule catalog](docs/rules/README.md) | One page per detection rule |
 | [Evaluation](docs/EVALUATION.md) | Method, scorecard, benchmark, limitations |
+| [Engineering report](docs/ENGINEERING_REPORT.md) | What was built, verified and not verified; defects found by measuring |
+| [Demo](docs/DEMO.md) | Screenshots and CLI output from real runs, with reproduction steps |
 | [Lab setup](docs/LAB_SETUP.md) | Building a safe UTM/Kali/Ubuntu lab to validate detections |
 | [Learning notes](docs/learning/) | Technical deep-dives (Turkish) |
 
