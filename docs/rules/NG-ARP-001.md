@@ -26,6 +26,21 @@ The suspect MAC is the one that took over a binding with an established owner.
 |---|---:|---|
 | `realert_seconds` | 300 | Do not repeat an alert for the same IP at the same or lower severity within this time |
 | `critical_ips` | `[]` | IPs whose takeover is always HIGH |
+| `trust_dhcp` | `true` | Do not report a change that a DHCP ACK from a trusted server just assigned |
+| `dhcp_servers` | `[]` | Trusted DHCP servers; empty = the first server seen (trust on first use) |
+| `dhcp_window_seconds` | 3600 | How long after its ACK a lease explains a change |
+
+### DHCP lease correlation (v0.7)
+
+The detector also reads DHCP ACKs. When an IP moves to a new MAC that a DHCP
+ACK from a **trusted** server assigned it to within `dhcp_window_seconds`, the
+new device becomes the owner and no alert is raised (counted as
+`explained_by_dhcp`). Safeguards: ACKs from any other server never explain a
+change (a rogue DHCP server cannot launder spoofing — scenario
+`arp_spoof_with_rogue_dhcp`), and a binding that has already changed (a fight
+over the IP) is never explained. With trust on first use, a rogue server that
+answers *before* the real one would become trusted; set `dhcp_servers`
+explicitly on networks where that matters.
 
 ## Evidence
 
@@ -35,7 +50,9 @@ The suspect MAC is the one that took over a binding with an established owner.
 
 ## Known false positives
 
-- **DHCP re-assignment** of an IP to a new device (`dhcp_reassignment`).
+- **DHCP re-assignment** of an IP to a new device when the DHCP exchange is
+  not visible to the sensor (`dhcp_reassignment`); with the ACK visible it is
+  explained and not reported (`dhcp_reassignment_seen`).
 - **First-hop redundancy failover** (VRRP/HSRP/CARP), NIC replacement, VM
   migration. These usually change the binding once and do not flip back.
 
@@ -47,5 +64,6 @@ sensor has learned the real binding.
 
 ## Tuning
 
-Put the gateway and other infrastructure IPs in `critical_ips`. Correlating
-with DHCP leases (planned) is the real fix for the DHCP false positive.
+Put the gateway and other infrastructure IPs in `critical_ips`, and list your
+DHCP servers in `dhcp_servers`. Place the sensor where DHCP traffic is visible
+(e.g. on the uplink of the DHCP server) to benefit from lease correlation.

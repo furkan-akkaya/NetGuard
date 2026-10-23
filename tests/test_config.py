@@ -101,3 +101,24 @@ def test_merge_config_overrides_single_keys_and_validates():
         merge_config(Config(), {"portscan": {"nope": 1}})
     with pytest.raises(ConfigError, match="must be a section"):
         merge_config(Config(), {"portscan": 5})
+
+
+def test_toml_writer_round_trips_full_and_partial_configs(tmp_path):
+    from netguard.config import config_from_mapping, config_to_mapping, merge_config, parse_toml, to_toml
+
+    full = config_to_mapping(load_config("netguard.example.toml"))
+    full["allowlist"] = ["10.0.0.5", 'quote"and\\backslash']
+    assert parse_toml(to_toml(full, header="generated")) == full
+    partial = {"portscan": {"min_distinct_ports": 30}, "arpspoof": {"critical_ips": ["10.0.0.1"]}}
+    path = tmp_path / "profile.toml"
+    path.write_text(to_toml(partial))
+    loaded = load_config(path)
+    assert loaded == merge_config(Config(), partial)
+    assert config_from_mapping(parse_toml(to_toml(config_to_mapping(loaded)))) == loaded
+
+
+def test_parse_toml_errors_are_config_errors():
+    from netguard.config import parse_toml
+
+    with pytest.raises(ConfigError, match="invalid TOML"):
+        parse_toml("[portscan\nx = 1")

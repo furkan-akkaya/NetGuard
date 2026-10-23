@@ -24,6 +24,7 @@ const alert: Alert = {
   src: "10.0.0.20",
   dst: HOSTILE,
   summary: HOSTILE,
+  confidence: { score: 50, level: "medium", base: 50, factors: [{ reason: HOSTILE, weight: 5 }] },
   technique: null,
   evidence: { sample_names: [HOSTILE] },
 };

@@ -28,6 +28,9 @@ max_keys = 100000
 enabled = true
 realert_seconds = 300        # one alert per IP per period, unless severity escalates
 critical_ips = []            # e.g. ["192.168.1.1"] for your default gateway -> HIGH severity
+trust_dhcp = true            # a change a DHCP ACK just assigned is a re-assignment, not spoofing
+dhcp_servers = []            # trusted DHCP servers; empty = trust the first server seen
+dhcp_window_seconds = 3600   # how long after its ACK a lease explains a change
 
 [udpscan]
 enabled = true

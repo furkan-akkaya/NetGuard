@@ -13,11 +13,12 @@ from datetime import UTC, datetime
 from enum import IntEnum
 from typing import Any
 
+from netguard.dhcp import DhcpInfo
 from netguard.dns import DnsInfo
 
 #: Version of the alert JSON contract. Bump the major on breaking changes
 #: (renamed/removed fields), the minor when fields are added.
-ALERT_SCHEMA_VERSION = "1.1"
+ALERT_SCHEMA_VERSION = "1.2"
 
 #: Alert stages (ADR-0010). ``early``: the incident just crossed its threshold
 #: and is still open; ``final``: the incident closed. Both share one alert_id.
@@ -80,6 +81,7 @@ class Packet:
     icmp_orig_proto: str | None = None
     icmp_orig_dst_port: int | None = None
     dns: DnsInfo | None = None  # UDP port 53, queries and responses
+    dhcp: DhcpInfo | None = None  # UDP ports 67/68
 
     @property
     def dns_query(self) -> str | None:
@@ -134,6 +136,8 @@ class Alert:
     # Capture-clock time at which the alert was emitted (set by the engine);
     # reported_at - first_seen is the detection delay.
     reported_at: float | None = None
+    # Explainable confidence {score, level, base, factors} (confidence.py, ADR-0011).
+    confidence: dict[str, Any] | None = None
 
     @property
     def alert_id(self) -> str:
@@ -161,6 +165,7 @@ class Alert:
             "src": self.src,
             "dst": self.dst,
             "summary": self.summary,
+            "confidence": self.confidence,
             "technique": (
                 {"id": self.technique.id, "name": self.technique.name, "url": self.technique.url}
                 if self.technique

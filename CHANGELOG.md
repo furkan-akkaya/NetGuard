@@ -2,6 +2,22 @@
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning: [SemVer](https://semver.org/).
 
+## [0.7.0] - 2026-10-22
+
+Phase 7: advanced detection, chosen by measurable value (ADR-0011).
+
+### Added
+- Explainable confidence on every alert (contract 1.2, `confidence`: score 5–95, level, base and the evidence factors that raised or lowered it), with every factor justified in docs/CONFIDENCE.md. On the scenarios all false positives score 25–30 and all true positives 45–95 (a consistency check, not an accuracy claim).
+- Alert correlation into incidents by actor and time, with ATT&CK tactics in kill-chain order: in `analyze` text/JSON output, `/api/v1/analyses/{id}/incidents` and the dashboard.
+- DHCP lease correlation for NG-ARP-001: a binding change assigned by an ACK from the trusted DHCP server (configured, or the first one seen) is not reported; ACKs from other servers never explain a change. New `dhcp.py` parser; `trust_dhcp`, `dhcp_servers`, `dhcp_window_seconds`.
+- Rule profiles as TOML: `/profiles/{id}/export.toml`, `/profiles/import`, dashboard export/import; `netguard config` prints the effective configuration as TOML.
+- Scenarios: `compromised_workstation` (multi-stage), `dhcp_reassignment_seen` (benign), `arp_spoof_with_rogue_dhcp` (attack).
+- Dashboard: confidence column and breakdown, incidents panel.
+- ADR-0011, docs/CONFIDENCE.md, learning note 08 (Turkish).
+
+### Deferred
+- Zeek/Suricata input, ICMP tunnel rule, resolver policy, seasonal baselines; machine learning rejected until labelled real data exists.
+
 ## [0.6.0] - 2026-10-22
 
 Phase 6: live capture and replay.

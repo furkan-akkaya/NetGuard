@@ -23,6 +23,7 @@ from dataclasses import dataclass, field
 
 from netguard.config import Config
 from netguard.detectors.base import Detector, RuleInfo
+from netguard.dhcp import ACK
 from netguard.models import UNSPECIFIED_IPV4, Alert, Packet, Severity, Technique
 
 T1557_002 = Technique("T1557.002", "Adversary-in-the-Middle: ARP Cache Poisoning")
@@ -45,7 +46,7 @@ class Binding:
 
 class ArpSpoofDetector(Detector):
     name = "arpspoof"
-    packet_protos = frozenset({"arp"})
+    packet_protos = frozenset({"arp", "udp"})  # udp: DHCP leases explain legitimate changes
     rules = (RuleInfo(RULE_ID, "ARP binding change (possible ARP spoofing)", T1557_002),)
 
     def __init__(self, config: Config) -> None:
@@ -54,8 +55,40 @@ class ArpSpoofDetector(Detector):
         self.bindings: dict[str, Binding] = {}
         self._last_request: dict[str, float] = {}  # target IP -> ts of last who-has
         self._last_alert: dict[str, tuple[float, Severity]] = {}  # ip -> (ts, severity)
+        self._leases: dict[str, tuple[str, float]] = {}  # ip -> (client MAC, ACK time)
+        self._dhcp_servers = set(self.cfg.dhcp_servers)
+        self.explained_by_dhcp = 0  # binding changes not reported because a DHCP ACK explains them
+
+    def _learn_lease(self, pkt: Packet) -> None:
+        dhcp = pkt.dhcp
+        if dhcp is None or dhcp.msg_type != ACK or dhcp.client_mac is None or dhcp.your_ip == UNSPECIFIED_IPV4:
+            return
+        server = dhcp.server_id or pkt.src_ip
+        if server is None:
+            return
+        if not self._dhcp_servers:
+            self._dhcp_servers.add(server)  # trust on first use; later servers are not trusted
+        if server not in self._dhcp_servers:
+            return  # a second (possibly rogue) DHCP server cannot explain anything
+        if len(self._leases) >= MAX_TRACKED_IPS and dhcp.your_ip not in self._leases:
+            return
+        self._leases[dhcp.your_ip] = (dhcp.client_mac, pkt.ts)
+
+    def _explained_by_dhcp(self, ip: str, mac: str, ts: float, binding: Binding) -> bool:
+        lease = self._leases.get(ip)
+        return (
+            self.cfg.trust_dhcp
+            and lease is not None
+            and lease[0] == mac
+            and 0 <= ts - lease[1] <= self.cfg.dhcp_window_seconds
+            and binding.changes == 0  # a fight over the IP is never "just DHCP"
+        )
 
     def on_packet(self, pkt: Packet) -> Iterable[Alert]:
+        if pkt.proto == "udp":
+            if self.cfg.trust_dhcp:
+                self._learn_lease(pkt)
+            return ()
         if pkt.proto != "arp" or pkt.arp_sender_ip is None or pkt.arp_sender_mac is None:
             return ()
         ip, mac, ts = pkt.arp_sender_ip, pkt.arp_sender_mac, pkt.ts
@@ -75,6 +108,12 @@ class ArpSpoofDetector(Detector):
             return ()
         if binding.mac == mac:
             binding.last_seen = ts
+            return ()
+
+        if self._explained_by_dhcp(ip, mac, ts, binding):
+            # The DHCP server gave this IP to this MAC: the new device is the owner now.
+            self.bindings[ip] = Binding(mac=mac, owner=mac, first_seen=ts, last_seen=ts, macs_seen={mac})
+            self.explained_by_dhcp += 1
             return ()
 
         old_mac, old_since = binding.mac, binding.first_seen

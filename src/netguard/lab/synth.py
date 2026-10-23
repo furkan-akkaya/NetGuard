@@ -7,6 +7,7 @@ scenarios exercise the full pipeline: pcap reader -> decoder -> detectors.
 from __future__ import annotations
 
 import socket
+import struct
 from collections.abc import Iterable
 from pathlib import Path
 
@@ -214,3 +215,23 @@ def fragment(frame: bytes, size: int) -> list[bytes]:
         frag.len = 20 + len(chunk)
         out.append(bytes(dpkt.ethernet.Ethernet(src=eth.src, dst=eth.dst, type=eth.type, data=frag)))
     return out
+
+
+def dhcp_ack(server: Host, client_mac: str, ip: str, lease_seconds: int = 86400, xid: int = 0x1234) -> bytes:
+    """A DHCPACK from ``server`` assigning ``ip`` to ``client_mac`` (broadcast, as many servers send it)."""
+    header = struct.pack("!BBBBIHH", 2, 1, 6, 0, xid, 0, 0x8000)
+    header += b"\x00" * 4 + _ip4(ip) + _ip4(server.ip) + b"\x00" * 4
+    header += _mac(client_mac) + b"\x00" * 10 + b"\x00" * 192
+    options = (
+        b"\x63\x82\x53\x63"
+        + bytes([53, 1, 5])
+        + bytes([54, 4])
+        + _ip4(server.ip)
+        + bytes([51, 4])
+        + struct.pack("!I", lease_seconds)
+        + b"\xff"
+    )
+    dgram = dpkt.udp.UDP(sport=67, dport=68, data=header + options)
+    dgram.ulen = len(dgram)
+    ip_pkt = _ipv4(server.ip, "255.255.255.255", dpkt.ip.IP_PROTO_UDP, dgram)
+    return _eth(server.mac, BROADCAST, dpkt.ethernet.ETH_TYPE_IP, ip_pkt)

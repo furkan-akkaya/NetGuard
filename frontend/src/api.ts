@@ -124,8 +124,31 @@ export interface Alert {
   src: string | null;
   dst: string | null;
   summary: string;
+  confidence: Confidence | null;
   technique: Technique | null;
   evidence: Record<string, unknown>;
+}
+
+export interface Confidence {
+  score: number;
+  level: "low" | "medium" | "high";
+  base: number;
+  factors: { reason: string; weight: number }[];
+}
+
+export interface Incident {
+  incident_id: string;
+  actor: string;
+  severity: Severity;
+  confidence: number;
+  first_seen: string;
+  last_seen: string;
+  rules: string[];
+  tactics: string[];
+  targets: string[];
+  alert_ids: string[];
+  alert_count: number;
+  summary: string;
 }
 
 export interface Rule {
@@ -245,6 +268,13 @@ export const api = {
     request<Page<FlowRecord>>(`/analyses/${encodeURIComponent(analysisId)}/flows${qs(q)}`),
   alerts: (q: Query = {}) => request<Page<Alert>>(`/alerts${qs(q)}`),
   alert: (id: number | string) => request<Alert>(`/alerts/${encodeURIComponent(String(id))}`),
+  incidents: (analysisId: string) => request<Incident[]>(`/analyses/${encodeURIComponent(analysisId)}/incidents`),
+  importProfile: (name: string, toml: string) =>
+    request<Profile>(`/profiles/import${qs({ name })}`, {
+      method: "POST",
+      body: toml,
+      headers: { "Content-Type": "application/toml" },
+    }),
   profiles: () => request<Profile[]>("/profiles"),
   createProfile: (p: Pick<Profile, "name" | "description" | "config">) =>
     request<Profile>("/profiles", { method: "POST", ...json(p) }),

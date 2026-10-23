@@ -21,7 +21,10 @@ changes meaning; a rule whose logic changes incompatibly gets a new id.
 
 `netguard rules` prints this list with the state (on/off) from your configuration.
 
-Alert JSON contract: `schema_version` "1.1" (see [ARCHITECTURE.md](../ARCHITECTURE.md#data-model)).
+Every alert also carries an explainable confidence score and alerts are
+grouped into incidents: see [CONFIDENCE.md](../CONFIDENCE.md).
+
+Alert JSON contract: `schema_version` "1.2" (see [ARCHITECTURE.md](../ARCHITECTURE.md#data-model)).
 In live mode a rule can emit an `early` alert when an incident opens and a
 `final` one when it closes, with the same `alert_id`.
 `alert_id` is a deterministic hash of `rule_id`, `src`, `dst` and `first_seen`,

@@ -365,3 +365,48 @@ def test_dashboard_bundle_is_served(tmp_path):
         secret.write_text("do not serve")
         for attempt in ("/../secret.txt", "/%2e%2e/secret.txt", "/assets/../../secret.txt"):
             assert "do not serve" not in client.get(attempt).text
+
+
+# --- Phase 7: profile TOML, incidents, confidence ------------------------------------------
+
+
+def test_profile_export_import_round_trip(server):
+    client, _ = server
+    pid = client.post(
+        f"{API}/profiles",
+        json={
+            "name": "lab tuning",
+            "description": "for the UTM lab",
+            "config": {"portscan": {"min_distinct_ports": 5}},
+        },
+    ).json()["id"]
+    exported = client.get(f"{API}/profiles/{pid}/export.toml")
+    assert exported.status_code == 200
+    assert "min_distinct_ports = 5" in exported.text
+    assert exported.text.startswith("# NetGuard rule profile: lab tuning")
+    imported = client.post(f"{API}/profiles/import", params={"name": "copy"}, content=exported.text.encode())
+    assert imported.status_code == 201
+    assert imported.json()["config"] == {"portscan": {"min_distinct_ports": 5}}
+
+
+def test_profile_import_validates(server):
+    client, _ = server
+    bad_toml = client.post(f"{API}/profiles/import", params={"name": "x"}, content=b"[portscan\n")
+    assert bad_toml.status_code == 422
+    unknown = client.post(f"{API}/profiles/import", params={"name": "x"}, content=b"[portscan]\nnope = 1\n")
+    assert unknown.status_code == 422
+    huge = client.post(f"{API}/profiles/import", params={"name": "x"}, content=b"#" * 70_000)
+    assert huge.status_code == 413
+    assert client.post(f"{API}/profiles/import", params={"name": "<b>"}, content=b"").status_code == 422
+
+
+def test_incidents_and_confidence_in_the_api(server, tmp_path):
+    client, app = server
+    analysis = _analyse(client, app, _upload(client, _pcap_bytes(tmp_path)).json()["id"])
+    incidents = client.get(f"{API}/analyses/{analysis['id']}/incidents").json()
+    assert len(incidents) == 1
+    assert incidents[0]["rules"] == ["NG-SCAN-001", "NG-SCAN-002"]
+    alert = client.get(f"{API}/alerts", params={"analysis_id": analysis["id"]}).json()["items"][0]
+    assert alert["confidence"]["level"] == "high"
+    assert alert["confidence"]["factors"]
+    assert client.get(f"{API}/analyses/nope/incidents").status_code == 404

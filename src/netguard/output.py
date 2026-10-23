@@ -10,6 +10,7 @@ from datetime import UTC, datetime
 from typing import Any, TextIO
 
 from netguard import __version__
+from netguard.correlate import correlate
 from netguard.engine import AnalysisResult
 from netguard.flows import Flow
 from netguard.formats import CaptureInfo
@@ -33,6 +34,8 @@ def format_alert(alert: Alert, color: bool = False) -> str:
         sev = f"{_COLORS[alert.severity]}{sev}{_RESET}"
     target = f"{alert.src or '?'} -> {alert.dst}" if alert.dst else (alert.src or "?")
     technique = f"  {alert.technique.id} {alert.technique.name}" if alert.technique else ""
+    if alert.confidence:
+        technique += f"  confidence {alert.confidence['score']} ({alert.confidence['level']})"
     if alert.stage == "early":
         sev = f"{sev} EARLY"  # provisional: the incident is still open
     dim, reset = (_DIM, _RESET) if color else ("", "")
@@ -74,6 +77,10 @@ def render_text(result: AnalysisResult, source: str, color: bool = False) -> str
         by_sev = {sev: sum(a.severity == sev for a in result.alerts) for sev in Severity}
         counts = ", ".join(f"{n} {sev}" for sev, n in sorted(by_sev.items(), reverse=True) if n)
         out.append(f"Alerts: {len(result.alerts)} ({counts})")
+        incidents = correlate(a.to_dict() for a in result.alerts)
+        if len(incidents) < len(result.alerts):
+            out.append(f"Incidents: {len(incidents)} (alerts grouped by actor and time)")
+            out += [f"  - [{i['severity']}, confidence {i['confidence']}] {i['summary']}" for i in incidents]
         out.append("")
         out += [format_alert(a, color) + "\n" for a in result.alerts]
     return "\n".join(out).rstrip() + "\n"
@@ -87,6 +94,7 @@ def render_json(result: AnalysisResult, source: str, capture: CaptureInfo | None
         "capture": capture.to_dict() if capture else None,
         "stats": result.stats.to_dict(),
         "alerts": [a.to_dict() for a in result.alerts],
+        "incidents": correlate(a.to_dict() for a in result.alerts),
     }
     return json.dumps(doc, indent=2) + "\n"
 

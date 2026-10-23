@@ -128,6 +128,32 @@ export function AlertDetail() {
           <Value value={alert.evidence} />
         </Panel>
       </div>
+      {alert.confidence ? (
+        <Panel title={`Confidence ${alert.confidence.score} / 100 (${alert.confidence.level})`}>
+          <p className="muted">
+            How strongly the evidence points to malicious activity rather than a benign look-alike. It starts at the
+            rule's base value; each factor below raised or lowered it. Never 0 or 100: network evidence is not proof.
+          </p>
+          <table className="kv">
+            <tbody>
+              <tr>
+                <th scope="row" className="num">
+                  {alert.confidence.base}
+                </th>
+                <td>Base value for {alert.rule_id}</td>
+              </tr>
+              {alert.confidence.factors.map((f) => (
+                <tr key={f.reason}>
+                  <th scope="row" className={`num ${f.weight > 0 ? "sev-text-high" : "sev-text-low"}`}>
+                    {f.weight > 0 ? `+${f.weight}` : f.weight}
+                  </th>
+                  <td>{f.reason}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Panel>
+      ) : null}
       {focusIp ? (
         <Panel title={`Flows involving ${focusIp}`}>
           <FlowBrowser analysisId={alert.analysis_id} initialIp={focusIp} />

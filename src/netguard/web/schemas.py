@@ -97,6 +97,7 @@ class AlertOut(BaseModel):
     src: str | None
     dst: str | None
     summary: str
+    confidence: dict[str, Any] | None = None
     technique: Technique | None
     evidence: dict[str, Any]
 

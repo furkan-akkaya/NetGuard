@@ -41,6 +41,8 @@ NETGUARD_API_TOKEN=$(python -c "import secrets; print(secrets.token_urlsafe(32))
 | GET | `/summary` | Overview: counts by status and severity, alerts by rule, recent alerts and analyses |
 | GET | `/rules` | All rules with state and settings in the base configuration |
 | GET / POST | `/profiles` | Rule profiles: named configuration overrides (validated on save) |
+| GET | `/profiles/{id}/export.toml` | A profile as TOML (usable with `netguard analyze -c`) |
+| POST | `/profiles/import?name=…` | Create a profile from a TOML body (≤ 64 KiB, validated) |
 | GET / PUT / DELETE | `/profiles/{id}` | One profile. Deleting it keeps the analyses that used it (their `profile_id` becomes null) |
 | POST | `/captures?filename=…` | Upload a pcap/pcapng as the raw body. 201 created, 200 already stored (same SHA-256) |
 | GET | `/captures` | List captures (`sort`: `created_at`, `size_bytes`, `filename`) |
@@ -51,6 +53,7 @@ NETGUARD_API_TOKEN=$(python -c "import secrets; print(secrets.token_urlsafe(32))
 | POST | `/analyses/{id}/cancel` | Cancel a queued or running analysis (409 if finished) |
 | GET | `/analyses/{id}/flows` | Flows: `proto`, `state`, `ip`, `port`; `sort`: `first_seen`, `duration`, `bytes`, `packets`, `src_ip`, `dst_ip`, `dst_port` |
 | GET | `/analyses/{id}/alerts.ndjson?format=netguard\|ecs` | Export all alerts (native contract or Elastic Common Schema) |
+| GET | `/analyses/{id}/incidents?gap_seconds=900` | Alerts grouped into incidents by actor and time, with ATT&CK tactics |
 | GET | `/analyses/{id}/flows.csv` | Export the stored flows as CSV |
 | GET | `/analyses/{id}/report.html` | Single-file HTML report (no scripts; 409 until the analysis is done) |
 | GET | `/alerts` | Search: `analysis_id`, `rule_id`, `severity`, `min_severity`, `ip` (src or dst), `q` (text), `since`, `until`; `sort`: `first_seen`, `last_seen`, `severity`, `rule_id`, `src`, `dst` |

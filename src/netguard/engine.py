@@ -13,6 +13,7 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field, replace
 
+from netguard.confidence import assess
 from netguard.config import Config
 from netguard.decode import UnsupportedLinkType, decode
 from netguard.detectors import Detector, build_detectors
@@ -56,6 +57,8 @@ class Engine:
         for alert in alerts:
             if alert.reported_at is None and self._now is not None:
                 alert = replace(alert, reported_at=self._now)
+            if alert.confidence is None:
+                alert = replace(alert, confidence=assess(alert.rule_id, alert.evidence))
             self.alerts.append(alert)
             if self._on_alert:
                 self._on_alert(alert)
