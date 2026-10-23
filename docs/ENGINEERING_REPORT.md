@@ -24,7 +24,7 @@ thresholds behind it.
 | Python package (`src/netguard`) | ~8 800 lines, 45 modules |
 | Python tests | ~3 100 lines, 325 tests, 93% branch-aware coverage (CI gate: 90%) |
 | Dashboard (`frontend/src`, React + TypeScript) | ~2 300 lines, 14 tests |
-| Documentation | 11 ADRs, 11 rule pages, 9 guides plus this report, 9 learning notes (Turkish) |
+| Documentation | 11 ADRs, 11 rule pages, 9 guides plus this report, 10 learning notes (Turkish) |
 | Runtime dependencies | analyzer: dpkt; API extra: FastAPI, Uvicorn |
 
 ## 2. Architecture in one paragraph

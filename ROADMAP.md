@@ -40,7 +40,7 @@ ileride onların çıktılarını ek girdi olarak okuyabilir.
 RAM'li Ubuntu sunucu (kurban / dağıtım hedefi). Bulut, ücretli API ve
 mikroservis yok.
 
-## 2. Mevcut durum (2026-10-22)
+## 2. Mevcut durum (2026-10-23)
 
 | Faz | Konu | Durum | Sürüm |
 |---|---|---|---|
@@ -54,10 +54,10 @@ mikroservis yok.
 | 7 | İleri tespit ve tehdit istihbaratı | ✅ | **v0.7.0** |
 | 8 | Test, benchmark, değerlendirme | 🔄 · 👤 lab | v0.9.0 |
 | 9 | Güvenlik sertleştirme ve CI/CD | ✅ | **v0.8.0** |
-| 10 | Dokümantasyon, release, portföy | ⏳ | **v1.0.0** |
+| 10 | Dokümantasyon, release, portföy | 🔄 · 👤 release kararı | **v1.0.0** (önce `1.0.0rc1`) |
 
-**Ölçülmüş durum (v0.8.0):** 11 tespit kuralı, güven puanı ve korelasyon,
-REST API, web dashboard, canlı yakalama; 324 Python testi (3.11–3.14) ve 12
+**Ölçülmüş durum (v0.8.0 + Faz 10):** 11 tespit kuralı, güven puanı ve korelasyon,
+REST API, web dashboard, canlı yakalama; 325 Python testi (3.11–3.14) ve 14
 frontend testi, kapsama %93; ruff, mypy `--strict`, TypeScript strict temiz;
 bilinen açığı olan bağımlılık yok (pip-audit, pnpm audit). Yazılı tehdit
 modeli ([THREAT_MODEL.md](docs/THREAT_MODEL.md)); kurulum temiz ortamda ve
@@ -322,6 +322,12 @@ taslağı.
 hepsi kanıtla karşılanmış; karşılanamayan madde varsa açıkça yazılır ve tam
 uyum iddia edilmez.
 
+**Durum (2026-10-23):** 10.1–10.4 ve 10.6 tamam. Kontrol listesi
+([RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md)): 12 maddeden 8'i
+karşılandı; flow doğrulaması, canlı yakalama ve ölçülmüş sınırlar gerçek lab
+trafiği bekliyor, release artefaktları yalnızca yerelde doğrulandı. Bu yüzden
+v1.0.0 henüz etiketlenmez; önce `v1.0.0rc1` ile release workflow'u doğrulanır.
+
 ---
 
 ## 6. Teknoloji kararları
@@ -361,9 +367,10 @@ Kapsama eşiği %90 (CI'da zorunlu). Gerçek pcap'ler git'e girmez (`.gitignore`
 | İzleme sunucusu ping sweep gibi görünüyor | `monitoring_poller` FP (allowlist; düşük güven) | Allowlist |
 | Yanlış DNS arama son eki DGA gibi görünüyor | `search_suffix_nxdomain` FP (düşük güven) | Allowlist / yapılandırma |
 | Saldırgan IP ve MAC ile iki ayrı aktör | Tarama (IP) ve ARP (MAC) alarmları iki olay | v1.x (IP↔MAC eşleme) |
-| Baseline kuralları ısınma istiyor | 10 dakikadan kısa yakalamalarda hız/hacim alarmı yok | Faz 4 (kalıcı baseline) |
-| Decoy/sahte kaynaklı taramalar | Bir tarama birçok kaynağa bölünüyor | Faz 7 |
-| IP fragment birleştirme yok | Parçalı probe'lar analiz edilmiyor; NG-FRAG-001 atlatmayı raporluyor | Faz 7 (gerekirse) |
+| Baseline kuralları ısınma istiyor | 10 dakikadan kısa yakalamalarda hız/hacim alarmı yok; baseline analizler arasında saklanmıyor | Ertelendi (ADR-0011) |
+| Decoy/sahte kaynaklı taramalar | Bir tarama birçok kaynağa bölünüyor | Açık (korelasyon aktöre göre, hedefe göre değil) |
+| Sahte kaynaklı flood | Kaynak bazlı dedektör tabloları taşıyor, flood içindeki gerçek bir tarama kaçabilir | Faz 10'dan beri çıktıda raporlanıyor |
+| IP fragment birleştirme yok | Parçalı probe'lar analiz edilmiyor; NG-FRAG-001 atlatmayı raporluyor | Lab verisi gerektirirse |
 
 ## 9. Kullanıcı gerektiren işler 👤
 

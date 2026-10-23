@@ -20,12 +20,12 @@ Deferred (ADR-0011): Zeek/Suricata input, ICMP tunnel rule, resolver policy, sea
 
 ## Now: Phase 10, documentation, release and portfolio (Phase 8 lab work waits on the user)
 
-- [ ] **10.1** Code-quality review across modules (consistency, dead code, naming)
-- [ ] **10.2** Engineering evaluation report (what was built, measured, not measured)
-- [ ] **10.3** Accurate screenshots and a short demo from real analyses
-- [ ] **10.4** v1.0 release checklist against the brief's Definition of Done
-- [ ] **10.5** 👤 Tag, run the release workflow, review and publish the draft release; decide on repository visibility
-- [ ] **10.6** LinkedIn/portfolio text draft (technically grounded, no unmeasured claims)
+- [x] **10.1** Code-quality review across modules: detector state losses now reported, dead code and an unused dependency removed
+- [x] **10.2** Engineering evaluation report ([ENGINEERING_REPORT.md](ENGINEERING_REPORT.md)); limitations table and benchmarks brought up to date
+- [x] **10.3** Screenshots and CLI demo from real analyses of the synthetic scenarios ([DEMO.md](DEMO.md)); fixed the traffic chart they exposed
+- [x] **10.4** v1.0 checklist against the Definition of Done ([RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md)): 8/12 met, so no v1.0.0 yet; release steps dry-run locally
+- [ ] **10.5** 👤 Decide: tag `v1.0.0rc1` to verify the release workflow (draft pre-release, stays private); later `v1.0.0` after the lab; repository visibility
+- [x] **10.6** LinkedIn (EN/TR), CV and interview drafts with measured claims only ([PORTFOLIO.md](PORTFOLIO.md))
 
 ## Waiting on the user 👤
 
