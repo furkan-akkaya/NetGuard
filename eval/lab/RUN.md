@@ -94,6 +94,14 @@ python3 ~/ng-kit/kali_rate_burst.py                    # Kali: 13 min baseline, 
 python3 ~/ng-kit/victim_volume_burst.py                # Ubuntu, terminal 2, ONLY when Kali says NOW
 ```
 
+The capture uses a 64 MiB tcpdump buffer (`NG_CAPTURE_BUFFER_KIB`, KiB) and
+the upload is paced at 1 MiB/s (`--rate`, 0.5-4 MiB/s). A run with any kernel
+drop is marked NEEDS REVIEW and does not count: repeat it under a new name
+(`exp14-rate-volume-r02`, ...) and transfer the failed run as well. The lab
+bridge's own control connections from Kali raise Kali's connection baseline
+(about 130 per minute in the first run), which makes the 300-connection burst
+harder to see; note in the record whether the bridge was running.
+
 ## On the Mac afterwards
 
 ```bash

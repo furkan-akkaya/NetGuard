@@ -1,17 +1,18 @@
 """exp14-rate-volume (Ubuntu side): one bounded upload to Kali.
 
-    python3 victim_volume_burst.py      # when kali_rate_burst.py says so
+    python3 victim_volume_burst.py [--rate MIB_PER_S]     # when kali_rate_burst.py says so
 
-Sends 48 MB of zeros once to 10.77.0.10:9099 (the receiver started by
+Sends 48 MiB of zeros once to 10.77.0.10:9099 (the receiver started by
 kali_rate_burst.py), so the victim's outgoing volume jumps far above its own
 13-minute baseline (NG-VOL-001, source 10.77.0.20). Refuses unless it runs on
 10.77.0.20; sends nothing anywhere else.
 
-Paced at 4 MB/s (about 12 s). Unpaced, a virtual link moves 48 MB in well
-under a second and tcpdump drops part of it (rehearsal: 1576 kernel drops,
-11 MB captured), so the capture would not show what was sent. Paced, even an
-upload split across two 60 s intervals puts at least 24 MB in one of them,
-above the rule's 20 MB floor.
+Paced, by default at 1 MiB/s (48 s; --rate 0.5-4). The capture has to keep
+up: unpaced, a virtual link moved 48 MiB in under a second and tcpdump lost
+1576 packets (namespace rehearsal); at 4 MiB/s the first real UTM run lost
+9945 of 59091 packets with tcpdump's default buffer, so that run does not
+count. At 1 MiB/s the upload spans at most two 60 s intervals, and one of
+them still holds at least 24 MiB, above the rule's 20 MB floor.
 """
 
 from __future__ import annotations
@@ -23,10 +24,28 @@ import time
 
 VICTIM, TARGET = "10.77.0.20", ("10.77.0.10", 9099)
 TOTAL, CHUNK = 48 * 1024 * 1024, 64 * 1024
-RATE = 4 * 1024 * 1024  # bytes per second
+MIB = 1024 * 1024
+DEFAULT_RATE_MIB, MIN_RATE_MIB, MAX_RATE_MIB = 1.0, 0.5, 4.0
 
 
-def main() -> int:
+def parse_rate(argv: list[str]) -> float:
+    """Upload rate in MiB/s from ``--rate X``; bounded so the upload stays a short, one-off burst."""
+    if not argv:
+        return DEFAULT_RATE_MIB
+    if len(argv) != 2 or argv[0] != "--rate":
+        raise ValueError("usage: victim_volume_burst.py [--rate MIB_PER_S]")
+    rate = float(argv[1])
+    if not MIN_RATE_MIB <= rate <= MAX_RATE_MIB:
+        raise ValueError(f"--rate must be {MIN_RATE_MIB:g}-{MAX_RATE_MIB:g} MiB/s")
+    return rate
+
+
+def main(argv: list[str]) -> int:
+    try:
+        rate = parse_rate(argv) * MIB
+    except ValueError as exc:
+        print(exc, file=sys.stderr)
+        return 2
     addrs = subprocess.run(["ip", "-o", "-4", "addr", "show"], capture_output=True, text=True, check=False).stdout  # noqa: S607
     if f" {VICTIM}/" not in addrs:
         print(f"this host does not have {VICTIM}: not the lab victim, refusing", file=sys.stderr)
@@ -38,15 +57,16 @@ def main() -> int:
             while sent < TOTAL:
                 s.sendall(block)
                 sent += CHUNK
-                ahead = sent / RATE - (time.monotonic() - started)
+                ahead = sent / rate - (time.monotonic() - started)
                 if ahead > 0:
                     time.sleep(ahead)
     except OSError as exc:
         print(f"upload stopped after {sent} bytes: {exc}", file=sys.stderr)
         return 1
-    print(f"sent {sent} bytes to {TARGET[0]}:{TARGET[1]} in {time.monotonic() - started:.1f}s")
+    elapsed = time.monotonic() - started
+    print(f"sent {sent} bytes to {TARGET[0]}:{TARGET[1]} in {elapsed:.1f}s (paced at {rate / MIB:g} MiB/s)")
     return 0
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(main(sys.argv[1:]))

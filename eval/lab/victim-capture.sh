@@ -3,7 +3,11 @@
 #
 #   bash victim-capture.sh exp01-syn-scan            # stop with Ctrl-C after the attack
 #   bash victim-capture.sh benign-01 3600            # stop automatically after 3600 s
+#   NG_CAPTURE_BUFFER_KIB=131072 bash victim-capture.sh NAME   # larger kernel buffer
 #
+# tcpdump gets a 64 MiB capture buffer (-B, in KiB; 1024-262144). Its default
+# of about 2 MiB lost 9945 of 59091 packets in the first real exp14 run, where
+# the victim uploaded at 4 MiB/s. Any kernel drop is reported as a failed run.
 # Captures only on the interface that holds a 10.77.0.0/24 address (the
 # isolated lab network) and refuses to run otherwise. Writes into
 # ~/ng-captures/: NAME.pcap, NAME.sha256 and NAME.meta.txt (tcpdump version,
@@ -15,6 +19,9 @@ name="${1:-}"
 duration="${2:-}"
 [[ "$name" =~ ^[a-z0-9][a-z0-9-]{0,62}$ ]] || { echo "usage: $0 NAME [SECONDS]  (NAME: a-z, 0-9, -)" >&2; exit 2; }
 [[ -z "$duration" || "$duration" =~ ^[1-9][0-9]*$ ]] || { echo "SECONDS must be a positive integer" >&2; exit 2; }
+buffer_kib="${NG_CAPTURE_BUFFER_KIB:-65536}"
+[[ "$buffer_kib" =~ ^[1-9][0-9]*$ ]] && (( buffer_kib >= 1024 && buffer_kib <= 262144 )) \
+  || { echo "NG_CAPTURE_BUFFER_KIB must be 1024-262144 (KiB)" >&2; exit 2; }
 
 iface=$(ip -o -4 addr show | awk -v p="$LAB_PREFIX" 'index($4, p) == 1 {print $2; exit}')
 [[ -n "$iface" ]] || { echo "no interface with a ${LAB_PREFIX}x address: not on the lab network, refusing" >&2; exit 1; }
@@ -38,6 +45,7 @@ sudo -v || { echo "sudo failed: nothing was captured. Do NOT start the experimen
   echo "host: $(hostname) $(. /etc/os-release && echo "$PRETTY_NAME") $(uname -r) $(uname -m)"
   echo "interface: $iface $(ip -o -4 addr show dev "$iface" | awk '{print $4}')"
   echo "tcpdump: $(tcpdump --version 2>&1 | head -1)"
+  echo "capture_buffer_kib: $buffer_kib"
   echo "start_utc: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 } > "$meta"
 
@@ -45,7 +53,7 @@ sudo -v || { echo "sudo failed: nothing was captured. Do NOT start the experimen
 # ring buffer holds them and Ctrl-C soon after the last packet loses them
 # without counting them as kernel drops (seen in testing: 11 received, 0 written).
 # -U: write every packet to the file at once.
-cmd=(sudo -n tcpdump -i "$iface" -n -s 0 --immediate-mode -U -Z "${USER:-$(id -un)}" -w "$pcap")
+cmd=(sudo -n tcpdump -i "$iface" -n -s 0 -B "$buffer_kib" --immediate-mode -U -Z "${USER:-$(id -un)}" -w "$pcap")
 [[ -z "$duration" ]] || cmd=(sudo -n timeout -s INT "$duration" "${cmd[@]:2}")
 
 # tcpdump's messages go straight to a file (its final packet and drop counts
@@ -91,4 +99,9 @@ fi
 } >> "$meta"
 (cd "$out" && sha256sum "$name.pcap" > "$name.sha256")
 cat "$meta" "$out/$name.sha256"
+drops=$(awk '/dropped by kernel/ {print $1}' "$err" | tail -1)
+if [[ "${drops:-unknown}" != "0" ]]; then
+  echo "result: NEEDS REVIEW (kernel dropped ${drops:-an unknown number of} packets)" >> "$meta"
+  echo "!!! kernel dropped ${drops:-an unknown number of} packets: this run is NOT clean. Transfer it, but do not count it as a result." >&2
+fi
 echo "Done. Transfer $name.pcap, $name.sha256 and $name.meta.txt from $out to the Mac."

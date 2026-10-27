@@ -1,6 +1,8 @@
-"""The lab measurement script eval/lab/live_delay.py."""
+"""Lab scripts in eval/lab: live_delay.py and the exp14 capture/upload limits."""
 
 import json
+import os
+import subprocess
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -12,6 +14,7 @@ from netguard.lab.synth import syn_probe, write_pcap
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "eval" / "lab"))
 import live_delay  # type: ignore[import-not-found]  # eval/lab is not a package
+import victim_volume_burst  # type: ignore[import-not-found]
 
 
 def _iso(ts: float) -> str:
@@ -70,3 +73,23 @@ def test_without_pcap_no_threshold_delay_is_claimed(scan_pcap, tmp_path, capsys)
     assert "threshold-crossing delay not computed" in err
     assert live_delay.main([str(jsonl), "--pcap", str(scan_pcap)]) == 0
     assert "largest delay after the threshold-crossing packet: 0.250s" in capsys.readouterr().err
+
+
+def test_volume_upload_rate_defaults_to_1_mib_and_is_bounded():
+    # 4 MiB/s lost 9945 of 59091 packets in the first real exp14 run.
+    assert victim_volume_burst.parse_rate([]) == 1.0
+    assert victim_volume_burst.parse_rate(["--rate", "0.5"]) == 0.5
+    for bad in (["--rate", "0.1"], ["--rate", "8"], ["--speed", "1"], ["--rate"]):
+        with pytest.raises(ValueError):
+            victim_volume_burst.parse_rate(bad)
+    # At the default rate one 60 s interval still holds at least half the upload.
+    assert victim_volume_burst.TOTAL / 2 > 20_000_000
+
+
+@pytest.mark.parametrize("value", ["10", "999999", "64M", "-1"])
+def test_capture_buffer_is_bounded_before_anything_runs(value, tmp_path):
+    script = Path(__file__).resolve().parents[1] / "eval" / "lab" / "victim-capture.sh"
+    env = dict(os.environ, NG_CAPTURE_BUFFER_KIB=value, HOME=str(tmp_path))
+    result = subprocess.run(["bash", str(script), "exp-test"], env=env, capture_output=True, text=True, check=False)
+    assert result.returncode == 2
+    assert "NG_CAPTURE_BUFFER_KIB must be 1024-262144" in result.stderr
