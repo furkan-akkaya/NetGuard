@@ -1,226 +1,259 @@
 # NetGuard
 
-**Network intrusion detection & traffic analysis with explainable, measured detections.**
+**Ağ trafiğini inceleyen, şüpheli davranışları kanıtlarıyla açıklayan pasif saldırı tespit aracı.**
 
-[![CI](https://github.com/furkan-akkaya/NetGuard/actions/workflows/ci.yml/badge.svg)](https://github.com/furkan-akkaya/NetGuard/actions/workflows/ci.yml)
-![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13%20%7C%203.14-blue)
-![License](https://img.shields.io/badge/license-MIT-green)
+[![CI](https://github.com/furkan-akkaya/NetGuard/actions/workflows/ci.yml/badge.svg?branch=fix%2Faudit-2026-10-27)](https://github.com/furkan-akkaya/NetGuard/actions/workflows/ci.yml)
+![Python](https://img.shields.io/badge/Python-3.11–3.14-blue)
+![License](https://img.shields.io/badge/License-MIT-green)
 
-NetGuard reads network traffic (pcap/pcapng files or a live `tcpdump` stream),
-reconstructs connections (flows with Zeek-compatible connection states),
-detects reconnaissance and layer-2 attacks, and reports each finding as a
-single **explainable alert**. Every alert states what was observed, which
-threshold it crossed, what the attacker likely learned, and which MITRE ATT&CK
-technique it maps to.
+NetGuard, kaydedilmiş **PCAP/PCAPNG dosyalarını** veya bir ağ arayüzündeki **canlı trafiği** analiz eder.
+Paketleri bağlantılara dönüştürür; port taraması, şüpheli DNS kullanımı, ARP eşleşmesi değişiklikleri ve trafik artışlarını araştırır.
+Sonuçları komut satırından, web panelinden veya REST API üzerinden sunar.
 
-> **Status:** release candidate **1.0.0rc1** under review (no tag or GitHub
-> release yet) — packet ingestion, flow engine, eleven detection rules with
-> explainable confidence, alert correlation, a REST API, a web dashboard and
-> live capture, tested on 27 labelled synthetic scenarios and hardened against
-> a written threat model. On an isolated lab, each of the eleven rules fired
-> on real traffic with its declared entity (17 accepted captures, including
-> one hour of benign traffic with no alert; one run per experiment)
-> ([delivery report](docs/DELIVERY_REPORT.md)).
+Bir alarm yalnızca “şüpheli trafik var” demez.
+Kaynak ve hedefi, gözlenen davranışı, aşılan eşiği ve güven puanının gerekçelerini gösterir.
+İlgili alarmları tek bir olay altında toplar.
 
-```text
-$ netguard analyze syn_scan.pcap
+> **Durum: 1.0.0rc1 — sürüm adayı.** Kod ve teslim belgeleri [PR #9](https://github.com/furkan-akkaya/NetGuard/pull/9) üzerinde.
+> 17 kabul edilmiş gerçek lab kaydı ve otomatik testlerle doğrulandı.
+> Henüz tag veya GitHub release yok. Açık sınırlar ve yayın adımları [teslim raporunda](docs/DELIVERY_REPORT.md).
 
-NetGuard 0.8.0 — syn_scan.pcap
-
-Packets: 2,003   Bytes: 108,162   Duration: 1.0s   Flows: 1,000   Decode errors: 0
-Protocols: tcp 2,003
-Flow states: REJ 997, RSTO 3
-Top services (flows): tcp/21 1, tcp/22 1, tcp/23 1, tcp/25 1, tcp/53 1
-Top talkers: 10.0.0.10 (108,162 B), 10.0.0.66 (108,162 B)
-
-Alerts: 1 (1 HIGH)
-
-[HIGH] TCP port scan: 10.0.0.66 -> 10.0.0.10  T1046 Network Service Discovery
-    10.0.0.66 probed 1000 distinct TCP ports on 10.0.0.10 in 1.0s (threshold: 15 ports
-    within 60s). Probes: SYN=1000. Target replies: 3 open, 997 closed, 0 unanswered.
-    Open: 22, 80, 443.
-    2025-10-09 08:53:20.000Z → 2025-10-09 08:53:20.999Z  rule=NG-SCAN-001 detector=portscan
-```
-
-`REJ 997, RSTO 3` is the flow-level view of the same scan: 997 closed ports
-answered the SYN with RST; the 3 open ports answered SYN-ACK and the scanner
-aborted with RST (a half-open scan).
-
-## Features
-
-| Rule | Detects | ATT&CK | How |
-|---|---|---|---|
-| [NG-SCAN-001](docs/rules/NG-SCAN-001.md) | SYN, connect, NULL, FIN, XMAS port scans | [T1046](https://attack.mitre.org/techniques/T1046/) | Distinct ports per (source, target) in a sliding window, one incident per scan; reports open/closed ports; ignores incidents where most ports were open (a client, not a scanner). |
-| [NG-SCAN-002](docs/rules/NG-SCAN-002.md) | Scans by connection outcome, incl. slow scans | [T1046](https://attack.mitre.org/techniques/T1046/) | Threshold Random Walk (sequential hypothesis test) over first-contact successes and failures. No time window. |
-| [NG-SCAN-003](docs/rules/NG-SCAN-003.md) | UDP port scans | [T1046](https://attack.mitre.org/techniques/T1046/) | Distinct UDP ports per (originator, target); open/closed/filtered from UDP replies and ICMP unreachables. |
-| [NG-SWEEP-001](docs/rules/NG-SWEEP-001.md) | ICMP/ARP ping sweeps, horizontal TCP scans | [T1018](https://attack.mitre.org/techniques/T1018/) | Distinct hosts per source in a sliding window; reports which hosts were found alive. |
-| [NG-SYN-001](docs/rules/NG-SYN-001.md) | TCP SYN floods | [T1499.001](https://attack.mitre.org/techniques/T1499/001/) | Many attempts, few completed handshakes per target; source-diversity evidence for spoofing. |
-| [NG-ARP-001](docs/rules/NG-ARP-001.md) | ARP cache poisoning / MITM | [T1557.002](https://attack.mitre.org/techniques/T1557/002/) | IP→MAC binding changes with context: unsolicited replies, flip-flopping, critical IPs, suspect MAC. |
-| [NG-DNS-001](docs/rules/NG-DNS-001.md) | DNS tunnelling / exfiltration | [T1071.004](https://attack.mitre.org/techniques/T1071/004/) | Many long, unique subdomains of one registered domain; entropy and record types as evidence. |
-| [NG-DNS-002](docs/rules/NG-DNS-002.md) | DGA malware | [T1568.002](https://attack.mitre.org/techniques/T1568/002/) | Bursts of NXDOMAIN responses; domain spread tells DGA from a wrong search suffix. |
-| [NG-FRAG-001](docs/rules/NG-FRAG-001.md) | Fragmentation evasion (`nmap -f`) | [T1599](https://attack.mitre.org/techniques/T1599/) | Tiny first fragments, TCP header split at offset 8, sub-MTU fragments (RFC 1858). |
-| [NG-RATE-001](docs/rules/NG-RATE-001.md) | Unusual connection frequency | — | New connections per host vs. the host's own EWMA baseline. |
-| [NG-VOL-001](docs/rules/NG-VOL-001.md) | Abnormal outbound volume | — | Bytes sent per host vs. the host's own EWMA baseline. |
-
-Every alert carries an **explainable confidence** (5–95, with the evidence
-factors that raised or lowered it), and alerts about the same actor are
-**correlated into incidents** with their ATT&CK tactics ([CONFIDENCE.md](docs/CONFIDENCE.md)).
-ARP alerts consult DHCP leases from a trusted server, so a device simply
-re-assigned an IP is not reported as spoofing.
-
-Each rule is documented in the [rule catalog](docs/rules/README.md) (signal,
-thresholds, evidence, known false positives and negatives, tuning);
-`netguard rules` lists them with their state in your configuration.
-
-Traffic analysis:
-
-- **Flows:** bidirectional connections with originator, per-direction packets/bytes/payload, duration, TCP history, Zeek-style `conn_state` (`S0`, `REJ`, `SF`, `RSTO`, …), retransmission and sequence-gap counts. Export with `netguard flows`.
-- **DNS:** queries and responses (name, type, response code) from NetGuard's own bounded parser.
-- **Statistics:** protocol and packet-size distributions, time series, flow states, top services, top flows, top endpoints (sent/received).
-- **Capture formats:** pcap and pcapng, including multi-interface pcapng with different link types; Ethernet, Linux SLL, BSD loopback, raw IP; IPv4/IPv6; TCP, UDP, ICMP, ICMPv6, ARP, DNS (queries and responses), DHCP (leases).
-
-Engineering properties:
-
-- **Explainable.** Every alert carries a plain-language summary and structured evidence, including the thresholds it crossed.
-- **Low noise.** Activity is grouped into incidents: a 65,535-port scan produces one alert, not 65,535.
-- **Measured.** Labelled benign and attack scenarios run in CI. Precision, recall and the known false positives are published in [EVALUATION.md](docs/EVALUATION.md).
-- **Robust.** Every byte is treated as hostile. Malformed frames and capture files are counted or rejected, never fatal, and fuzz-tested. All state has memory bounds, and hitting a bound costs O(1), so a spoofed-source flood cannot exhaust memory or CPU.
-- **Deterministic.** Detectors use capture timestamps instead of the wall clock, so the same pcap always gives the same result.
-- **Minimal.** The analyzer has one runtime dependency ([dpkt](https://github.com/kbandla/dpkt)); capture-file readers and the hot decode path are NetGuard's own, bounded code. The API (FastAPI, SQLite) is an optional extra. NetGuard never needs root: live capture is delegated to `tcpdump`.
-- **Secure defaults.** The API binds to localhost, requires a token for remote access, streams uploads with a hard cap, and analyses every capture in a separate, time- and memory-limited process. The dashboard renders capture data only as text under a strict Content-Security-Policy.
-
-## Quick start
-
-Requires Python ≥ 3.11 and [uv](https://docs.astral.sh/uv/).
-
-```bash
-git clone https://github.com/furkan-akkaya/NetGuard.git && cd NetGuard
-uv sync
-uv run netguard lab generate lab-pcaps/        # write the labelled scenarios as pcaps
-uv run netguard analyze lab-pcaps/arp_spoof_mitm.pcap
-uv run netguard lab evaluate                   # scorecard over all scenarios
-```
-
-### Usage
-
-```bash
-# Offline analysis
-netguard analyze capture.pcapng
-netguard analyze -f json capture.pcap > report.json      # one JSON document
-netguard analyze -c netguard.toml capture.pcap           # custom thresholds / allowlist
-netguard flows capture.pcap > flows.csv                  # connection records (CSV)
-netguard config > netguard.toml                          # the full effective configuration, to edit
-netguard flows -f jsonl capture.pcap | jq 'select(.state=="S0")'
-
-# Live: NetGuard starts tcpdump on one interface and alerts as incidents open and close
-netguard monitor -i eth0 --filter 'not port 22' --duration 3600
-netguard replay capture.pcap --speed 10      # recorded traffic through the live pipeline
-```
-
-### Dashboard and REST API
-
-```bash
-uv sync                                   # or: pip install 'netguard[web]'
-pnpm --dir frontend install && pnpm --dir frontend build   # once: builds the dashboard bundle
-uv run netguard serve --data-dir ./netguard-data            # http://127.0.0.1:8000
-```
-
-The dashboard shows a security overview, traffic statistics and charts,
-protocol, connection-state and endpoint breakdowns, a flow browser, an alert
-feed with filters and full evidence, capture upload with live job status,
-rule profiles for re-analysing with different thresholds, and exports (HTML
-report, alerts as NDJSON or Elastic Common Schema, flows as CSV). Everything
-it shows comes from real analyses; nothing is mocked.
-
-![Analysis of a synthetic multi-stage lab scenario in the dashboard](docs/img/analysis.png)
-
-More screenshots and the exact steps to reproduce them: [docs/DEMO.md](docs/DEMO.md).
-
-The same functions are available through the REST API: [docs/API.md](docs/API.md).
-`netguard analyze -f html capture.pcap > report.html` writes the same
-single-file report from the command line.
-
-`monitor` needs tcpdump to have capture permission; NetGuard itself never runs
-as root. See [docs/LIVE_CAPTURE.md](docs/LIVE_CAPTURE.md) for permissions,
-options and measured detection delays.
-
-`-f jsonl` writes one JSON alert per line as soon as it is emitted: in live
-mode an `early` alert when an incident crosses its threshold and a `final`
-one with the same `alert_id` when it closes. This
-format fits `jq`, Filebeat, Vector or a SIEM. The default thresholds are listed
-in [`netguard.example.toml`](netguard.example.toml).
-
-## Measured results
-
-From `netguard lab evaluate` on 27 labelled synthetic scenarios (15 attacks,
-12 benign look-alikes). Scoring is per entity; see
-[EVALUATION.md](docs/EVALUATION.md) for the method and full table.
-
-| | Result |
-|---|---|
-| Attack scenarios detected | 15 / 15 (the slow scan only by the outcome-based TRW rule, not the window rule) |
-| Benign scenarios without false positives | 9 / 12 (known FPs: monitoring poller, DHCP re-assignment without visible DHCP, wrong DNS search suffix — all three scored *low* confidence) |
-| Throughput | ~97k packets/s incl. start-up with all 11 rules, 36 MB RSS (242k-packet reference pcap, Apple M1, single core) |
-| Worst case | 500k-source spoofed SYN flood: 469 MB peak RSS, bounded by configuration |
-
-All of these numbers come from synthetic traffic that we designed ourselves,
-together with the rules. They show the detection logic works as intended and
-expose the known blind spots. They are not a claim about accuracy on real
-networks. Validation on real captures is part of [Phase 8](ROADMAP.md).
-
-## Architecture
+## Nasıl çalışır?
 
 ```mermaid
-flowchart LR
-    A[pcap / pcapng file<br/>tcpdump -w - stream] --> B[formats<br/>bounded readers]
-    B --> C[decode<br/>fast path / dpkt → Packet]
-    C --> D[engine]
-    D --> E[flow table<br/>conn_state] --> S[statistics]
-    E -- connection events --> F2[outcome rules<br/>TRW, SYN flood, UDP scan, rate]
-    D --> F1[packet rules<br/>window scan, sweep, ARP, DNS, fragments, volume]
-    F1 & F2 --> G[Alert<br/>rule id + summary + evidence + ATT&CK]
-    G --> H[text / JSON / JSONL]
+flowchart TD
+    A[PCAP / PCAPNG dosyası] --> C[Paket okuma ve protokol çözümleme]
+    B[Canlı ağ arayüzü] --> T[tcpdump] --> C
+    C --> D[Bağlantı takibi ve trafik istatistikleri]
+    C --> E[Paket davranış kuralları]
+    D --> F[Bağlantı davranış kuralları]
+    E --> G[Kanıt ve güven puanı içeren alarmlar]
+    F --> G
+    G --> H[İlgili alarmları olaylarda birleştirme]
+    D --> I[Komut satırı / rapor / REST API / web paneli]
+    H --> I
 ```
 
-See [ARCHITECTURE.md](docs/ARCHITECTURE.md) and the [decision records](docs/adr/).
+1. **Trafiği okur.** Dosyadan paket alır veya canlı yakalamayı `tcpdump` üzerinden yürütür.
+2. **Bağlantıları izler.** İki yöndeki paketleri eşleştirir; paket, bayt, süre ve TCP bağlantı durumlarını hesaplar.
+3. **Davranışları değerlendirir.** On bir kural, paketleri ve bağlantı sonuçlarını inceler.
+4. **Alarmı açıklar.** Bulguyu eşikler, kaynak/hedef bilgisi, güven puanı ve uygun olduğunda MITRE ATT&CK eşlemesiyle raporlar.
+5. **İncelemeyi kolaylaştırır.** Aynı aktörle ilişkili alarmları birleştirir; sonuçları filtrelenebilir ve dışa aktarılabilir biçimde sunar.
 
-## Documentation
+**NetGuard pasiftir:** trafiği engellemez, güvenlik duvarı kuralı yazmaz ve kendiliğinden saldırı başlatmaz.
+Yalnızca yakalama noktasının görebildiği trafiği analiz eder.
+Aynı ağda bulunmak, diğer cihazların bütün trafiğini görebileceği anlamına gelmez.
 
-| | |
+## Neleri tespit eder?
+
+| Kural | Aradığı davranış |
 |---|---|
-| [Roadmap](ROADMAP.md) | Current state, phases, MVP scope, exit criteria, test strategy (Turkish) |
-| [Tasks](docs/TASKS.md) | Current task board |
-| [Architecture](docs/ARCHITECTURE.md) | Components, data flow, extension points |
-| [API](docs/API.md) | REST API v1 reference, examples, ECS export |
-| [Live capture](docs/LIVE_CAPTURE.md) | `monitor` and `replay`: permissions, options, alert lifecycle |
-| [Deployment](docs/DEPLOYMENT.md) | Install, systemd service, TLS proxy, upgrades |
-| [Threat model](docs/THREAT_MODEL.md) | Entry points, threats, mitigations, residual risks |
-| [Confidence](docs/CONFIDENCE.md) | How confidence is computed (every factor justified) and how alerts become incidents |
-| [Contributing](CONTRIBUTING.md) | Development setup (Python and dashboard), checks before committing |
-| [ADRs](docs/adr/) | Eleven decisions: Python + dpkt, tcpdump capture, incidents, flows, capture readers, connection events, baselines, backend, dashboard, live capture, Phase 7 scope |
-| [Rule catalog](docs/rules/README.md) | One page per detection rule |
-| [Evaluation](docs/EVALUATION.md) | Method, scorecard, benchmark, limitations |
-| [Engineering report](docs/ENGINEERING_REPORT.md) | What was built, verified and not verified; defects found by measuring |
-| [Demo](docs/DEMO.md) | Screenshots and CLI output from real runs, with reproduction steps |
-| [Lab setup](docs/LAB_SETUP.md) | Building a safe UTM/Kali/Ubuntu lab to validate detections |
-| [Capture evaluation](docs/CAPTURE_EVALUATION.md) | Scoring checksum-pinned real captures, comparing flows with Zeek |
-| [Learning notes](docs/learning/) | Technical deep-dives (Turkish) |
+| [NG-SCAN-001](docs/rules/NG-SCAN-001.md) | SYN, connect, NULL, FIN ve XMAS port taramaları |
+| [NG-SCAN-002](docs/rules/NG-SCAN-002.md) | Başarılı ve başarısız bağlantılara göre taramalar; yavaş taramalar dahil |
+| [NG-SCAN-003](docs/rules/NG-SCAN-003.md) | UDP port taramaları |
+| [NG-SWEEP-001](docs/rules/NG-SWEEP-001.md) | ICMP/ARP ile cihaz arama ve yatay TCP taramaları |
+| [NG-SYN-001](docs/rules/NG-SYN-001.md) | Çok sayıda SYN girişimi ve az tamamlanan el sıkışma |
+| [NG-ARP-001](docs/rules/NG-ARP-001.md) | Şüpheli IP–MAC eşleşmesi değişiklikleri |
+| [NG-DNS-001](docs/rules/NG-DNS-001.md) | DNS tünellemeyle uyumlu uzun ve benzersiz alt alan adı sorguları |
+| [NG-DNS-002](docs/rules/NG-DNS-002.md) | DGA benzeri etkinliğe işaret edebilen NXDOMAIN yanıt artışları |
+| [NG-FRAG-001](docs/rules/NG-FRAG-001.md) | Küçük veya başlığı bölen şüpheli IP parçaları |
+| [NG-RATE-001](docs/rules/NG-RATE-001.md) | Cihazın kendi geçmişine göre yeni bağlantı sayısındaki artış |
+| [NG-VOL-001](docs/rules/NG-VOL-001.md) | Cihazın kendi geçmişine göre gönderilen bayt miktarındaki artış |
 
-## Development
+Bu davranışlar tek başına saldırı kanıtı değildir.
+Örneğin NXDOMAIN yanıtları yanlış DNS ayarlarından, uzun DNS adları meşru telemetriden kaynaklanabilir.
+[Kural kataloğu](docs/rules/README.md), her kuralın eşiklerini ve bilinen yanlış alarm nedenlerini açıklar.
+Güven puanı istatistiksel saldırı olasılığı değildir; [belgelenmiş kanıt faktörlerinden](docs/CONFIDENCE.md) hesaplanır.
+
+## Hızlı başlangıç
+
+Python **3.11–3.14**, Linux veya macOS ve `uv` gerekir.
+İlk deneme için ağ erişimi veya yönetici yetkisi gerekmez; örnek trafik dosyaları yerel olarak üretilir.
+Bağımlılıkların ilk kurulumu internet erişimi gerektirir.
+
+Henüz yayınlanmış sürüm bulunmadığından, aşağıdaki komutlar sürüm adayının bulunduğu dalı kullanır:
 
 ```bash
-uv sync
-uv sync --all-extras         # include the web extra for the API tests
-uv run pytest --cov          # tests + coverage
-uv run ruff check . && uv run ruff format --check .
-uv run mypy                  # strict type checking
+git clone --branch fix/audit-2026-10-27 https://github.com/furkan-akkaya/NetGuard.git
+cd NetGuard
+uv sync --locked
+
+# Etiketlenmiş örnek trafik dosyalarını üret.
+uv run netguard lab generate lab-pcaps/
+
+# Birden fazla şüpheli davranış içeren örneği analiz et.
+uv run netguard analyze lab-pcaps/compromised_workstation.pcap
+
+# Bütün sentetik senaryoların değerlendirme tablosunu göster.
+uv run netguard lab evaluate
 ```
 
-## Responsible use
+Depo özelse, klonlamak için GitHub erişiminiz gerekir.
+Üretilen dosyalar sentetiktir; gerçek lab kayıtları depoya dahil edilmez.
 
-NetGuard is a defensive tool. Generate attack traffic only in a lab you own or
-where you have explicit written authorization. See [SECURITY.md](SECURITY.md).
+### Örnek sonuç
 
-## License
+Yukarıdaki `compromised_workstation` senaryosunun `1.0.0rc1` çıktısından kısa bölüm:
 
-[MIT](LICENSE) © Furkan Akkaya
+```text
+Packets: 582   Bytes: 39,748   Duration: 70.2s   Flows: 321   Decode errors: 0
+
+Alerts: 4 (3 HIGH, 1 MEDIUM)
+Incidents: 1 (alerts grouped by actor and time)
+```
+
+Bu örnekte `10.0.0.20`, DNS tünellemeyle uyumlu sorgular gönderir, bir sunucunun portlarını tarar ve parçalanmış paketler üretir.
+NetGuard dört alarmı aynı kaynakla ilişkili tek olayda toplar.
+Tam çıktı ve ekran görüntüleri için [demo belgesine](docs/DEMO.md) bakın.
+
+## Web paneli
+
+Kaynak koddan paneli derlemek için ayrıca **Node.js ≥ 22** ve projenin belirttiği **pnpm 11.25.0** gerekir.
+`uv sync`, geliştirme ortamında web bağımlılıklarını da kurar.
+
+```bash
+pnpm --dir frontend install --frozen-lockfile
+pnpm --dir frontend build
+uv run netguard serve --data-dir ./netguard-data
+```
+
+Tarayıcıda **http://127.0.0.1:8000** adresini açın.
+**Captures** bölümüne bir PCAP yükleyin; analizin ardından bağlantıları, trafik istatistiklerini ve alarm kanıtlarını inceleyin.
+
+![Sentetik çok aşamalı senaryonun NetGuard web panelindeki analizi](docs/img/analysis.png)
+
+Panel; analiz geçmişi, trafik grafikleri, bağlantı listesi, alarm filtreleri ve kural profilleri sunar.
+HTML raporu, CSV bağlantı listesi ve JSONL/ECS alarm çıktıları dışa aktarılabilir.
+Ekran görüntüsü sentetik senaryonun gerçek analizinden alınmıştır; sürüm bilgisi [demo belgesindedir](docs/DEMO.md).
+
+`serve`, dosya analizlerini ve paneli sunar.
+Canlı ağ yakalamak için ayrı `monitor` komutunu çalıştırın.
+API uç noktaları ve örnekleri [API belgesinde](docs/API.md) bulunur.
+
+## Günlük kullanım
+
+### Dosya analizi ve raporlar
+
+```bash
+uv run netguard analyze capture.pcapng
+uv run netguard analyze -f json capture.pcap > report.json
+uv run netguard analyze -f html capture.pcap > report.html
+uv run netguard flows capture.pcap > flows.csv
+uv run netguard rules
+```
+
+Eşikleri ve izin listesini özelleştirmek için yapılandırmayı çıkarıp düzenleyin:
+
+```bash
+uv run netguard config > netguard.toml
+uv run netguard analyze -c netguard.toml capture.pcap
+```
+
+Ayar örneği: [`netguard.example.toml`](netguard.example.toml).
+
+### Canlı trafik
+
+`tcpdump` kurulu olmalıdır.
+`eth0` yerine izlenecek arayüzün adını yazın; yalnızca yetkili olduğunuz ağlarda yakalama yapın.
+
+```bash
+sudo -v
+uv run netguard monitor -i eth0 --sudo --duration 60 --write session.pcap
+```
+
+NetGuard normal kullanıcıyla çalışır; `--sudo`, yalnızca yakalama işlemi için `tcpdump` başlatır.
+`--write` kaydı dosyaya da yazar.
+İzin seçenekleri, yakalama filtreleri ve kayıt sınırları [canlı yakalama belgesindedir](docs/LIVE_CAPTURE.md).
+
+Kaydedilmiş trafiği canlı analiz hattından geçirmek veya alarm olaylarını JSONL almak için:
+
+```bash
+uv run netguard replay capture.pcap --speed 10
+uv run netguard monitor -i eth0 --sudo --duration 60 -f jsonl > alerts.jsonl
+```
+
+Canlı modda bir olay için erken uyarı ve son alarm üretilebilir.
+Aynı `alert_id` ile gelen bu iki aşamayı ayrı saldırılar gibi saymayın.
+
+## Doğrulama ve test sonuçları
+
+| Kontrol | Ölçülen sonuç | Kapsam |
+|---|---|---|
+| Otomatik Python testleri | 425 test | Linux/macOS, Python 3.11–3.14 CI matrisi |
+| Web paneli | 14 test ve başarılı üretim derlemesi | Arayüz testleri |
+| Sentetik saldırılar | 15/15 senaryo tespit edildi | Projeyle birlikte tasarlanan etiketli senaryolar |
+| Sentetik normal trafik | 12 senaryonun 9’unda yanlış alarm yok | Üç bilinen yanlış alarm düşük güven puanıyla raporlandı |
+| Gerçek lab deneyleri | 17 kabul edilmiş kayıt; on bir kuralın tamamında beklenen tespit | Yalıtılmış Kali/Ubuntu UTM labı |
+| Bir saatlik normal trafik | 3640,1 saniye; sıfır alarm; yaklaşık 34 MiB tepe bellek | Düşük yoğunluklu SSH/ping trafiği |
+| Canlı erken uyarı | Eşik geçişinden sonra 0,683 ve 0,757 saniye | Tek SYN taraması deneyi |
+| Yayın paketi provası | Kurulum, kaynak arşivi, panel, SBOM ve SHA256 kontrolleri geçti | Tag veya release oluşturmayan CI provası |
+
+Gerçek labda kabul edilen kayıtlarda bildirilen çekirdek paket kaybı sıfırdır.
+Paket kaybeden iki ilk deneme kabul edilmedi; sonuçları ve tekrarları belgelerde korunur.
+Bağlantılar Zeek 8.2.2 ile karşılaştırıldı; zaman aşımı ayarları ve parçalanmış trafik farkı açıkça kaydedildi.
+
+Bu sonuçlar gerçek ağlar için genel doğruluk, yanlış alarm oranı veya gecikme garantisi oluşturmaz.
+Her saldırı deneyi tek koşudur; bir saatlik normal trafik de sınırlı bir trafik karışımıdır.
+Yöntem, kaynak sürümleri ve ayrıntılar: [değerlendirme](docs/EVALUATION.md), [teslim raporu](docs/DELIVERY_REPORT.md).
+
+## Sınırlar ve güvenlik
+
+- **IP parçaları birleştirilmez.** Şüpheli parçalama raporlanır; parçaların içindeki trafik diğer kurallarla bütünüyle analiz edilemez.
+- **Şifreli uygulama içeriği çözülmez.** NetGuard görünen paket ve bağlantı bilgileri üzerinden çalışır.
+- **Görünürlük ve kayıp sonucu etkiler.** Tek yönlü veya eksik yakalama bağlantı durumlarını ve alarmları değiştirebilir.
+- **Canlı yük doğrulaması sınırlıdır.** Bir saatten uzun veya yoğun canlı trafik koşusu henüz yapılmadı.
+- **Trafik artışı kuralları başlangıç verisine bağlıdır.** İlk eksik zaman aralığının öğrenmeye etkisi açık tasarım kararıdır; görev 8.17.
+- **Alarm bir inceleme başlangıcıdır.** Meşru tarayıcıları, DNS davranışlarını ve cihaz değişikliklerini kendi ağınıza göre değerlendirin.
+
+API varsayılan olarak localhost’a bağlanır.
+Uzak erişim için token, uygun Host/Origin ayarları ve TLS reverse proxy kullanın.
+PCAP dosyaları hassas içerik barındırabilir; paylaşmadan önce inceleyin.
+Kurulum ve sunucu işletimi [dağıtım belgesinde](docs/DEPLOYMENT.md), güvenlik yaklaşımı [tehdit modelinde](docs/THREAT_MODEL.md) açıklanır.
+
+## Teknik yapı
+
+Analiz çekirdeği Python ile yazılmıştır; temel çalışma bağımlılığı `dpkt` paketidir.
+Web bileşeni FastAPI/Uvicorn, SQLite ve React/TypeScript kullanır.
+Canlı yakalama `tcpdump` üzerinden yürür.
+
+Dosya okuyucuları ve analiz durumu için kaynak sınırları uygulanır.
+API analizleri ayrı işçi süreçlerinde süre ve bellek sınırlarıyla çalışır.
+Çevrimdışı kurallar kayıt zamanlarını kullanır; aynı dosya ve yapılandırma aynı analiz sonucunu üretir.
+Bileşenler ve tasarım gerekçeleri için [mimari](docs/ARCHITECTURE.md) ve [karar kayıtlarını](docs/adr/) inceleyin.
+
+## Geliştirme
+
+```bash
+uv sync --locked
+uv run pytest --cov
+uv run ruff check .
+uv run ruff format --check .
+uv run mypy
+pnpm --dir frontend test
+pnpm --dir frontend build
+```
+
+Katkı kuralları ve ortam kurulumu: [CONTRIBUTING.md](CONTRIBUTING.md).
+Güvenlik açığı bildirimleri: [SECURITY.md](SECURITY.md).
+
+## Belgeler
+
+| Belge | İçerik |
+|---|---|
+| [Teslim raporu](docs/DELIVERY_REPORT.md) | Doğrulanan işler, kanıtlar ve açık sınırlar |
+| [Yayın kontrol listesi](docs/RELEASE_CHECKLIST.md) | Sürüm adayından yayına kalan adımlar |
+| [Yol haritası](ROADMAP.md) / [görevler](docs/TASKS.md) | Proje kapsamı ve mevcut durum |
+| [Mimari](docs/ARCHITECTURE.md) | Bileşenler ve veri akışı |
+| [Kural kataloğu](docs/rules/README.md) | Her kuralın davranışı, eşikleri ve sınırları |
+| [Güven puanı](docs/CONFIDENCE.md) | Alarm gerekçeleri ve olay birleştirme |
+| [API](docs/API.md) | Uç noktalar ve çıktı biçimleri |
+| [Canlı yakalama](docs/LIVE_CAPTURE.md) | İzinler, komutlar ve alarm aşamaları |
+| [Kurulum ve dağıtım](docs/DEPLOYMENT.md) | Paket kurulumu, systemd, TLS ve yükseltme |
+| [Demo](docs/DEMO.md) | Ekran görüntüleri ve tekrar üretme adımları |
+| [Değerlendirme](docs/EVALUATION.md) | Test yöntemi, sonuçlar ve ölçüm sınırları |
+| [Lab kurulumu](docs/LAB_SETUP.md) / [kayıt değerlendirme](docs/CAPTURE_EVALUATION.md) | Gerçek trafik deneylerini doğrulama |
+| [Tehdit modeli](docs/THREAT_MODEL.md) | Güvenlik önlemleri ve kalan riskler |
+
+## Lisans
+
+[MIT](LICENSE) — Furkan Akkaya.
