@@ -24,10 +24,22 @@ jobs:
           node-version: 24
           cache: pnpm
           cache-dependency-path: frontend/pnpm-lock.yaml
-      - name: Tag matches the package version
+      - name: Tag matches all three version fields
+        run: python3 -I scripts/release_checks.py versions "$GITHUB_REF_NAME"
+      # The tagged commit may differ from the last green PR: check it again.
+      - name: Lint, types and tests of the tagged source
         run: |
-          version=$(grep -m1 '^version = ' pyproject.toml | cut -d'"' -f2)
-          test "v$version" = "$GITHUB_REF_NAME" || { echo "tag $GITHUB_REF_NAME != version $version"; exit 1; }
+          uv sync --locked
+          uv run ruff check .
+          uv run ruff format --check .
+          uv run mypy
+          uv run pytest --cov
+      - name: Known vulnerabilities and licenses of the locked runtime dependencies
+        run: |
+          uv export --frozen --no-dev --all-extras --no-emit-project --format requirements-txt -o runtime.txt
+          uvx pip-audit --requirement runtime.txt --disable-pip
+          uvx --with-requirements runtime.txt pip-licenses --format=csv --from=mixed --ignore-packages pip-licenses prettytable wcwidth > licenses.csv
+          ! grep -E -i 'GPL|General Public License|Affero|SSPL|EUPL' licenses.csv
       - name: Build the dashboard
         run: |
           pnpm --dir frontend install --frozen-lockfile
@@ -35,17 +47,33 @@ jobs:
           pnpm --dir frontend build
       - name: Build sdist and wheel
         run: uv build
-      - name: Smoke test the wheel in a clean environment
+      - name: Source archive holds only tracked files and can rebuild everything
         run: |
+          python3 -I scripts/release_checks.py sdist dist/*.tar.gz
+          mkdir /tmp/sdist && tar xzf dist/*.tar.gz -C /tmp/sdist --strip-components=1
+          rm -rf /tmp/sdist/src/netguard/web/static
+          pnpm --dir /tmp/sdist/frontend install --frozen-lockfile
+          pnpm --dir /tmp/sdist/frontend build
+          test -f /tmp/sdist/src/netguard/web/static/index.html
+          (cd /tmp/sdist && uv sync --locked && uv run pytest -q)
+      - name: Smoke test the wheel with the locked dependencies
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          # The tested dependency set, shipped with the release and used for the SBOM.
+          uv export --frozen --no-dev --all-extras --no-emit-project --no-hashes --format requirements-txt \
+            -o "dist/netguard-$version-requirements.txt"
           python3 -m venv /tmp/clean
-          /tmp/clean/bin/pip install --quiet "$(ls dist/*.whl)[web]"
+          /tmp/clean/bin/pip install --quiet -c "dist/netguard-$version-requirements.txt" "$(ls dist/*.whl)[web]"
+          /tmp/clean/bin/python -I scripts/release_checks.py installed "dist/netguard-$version-requirements.txt"
           /tmp/clean/bin/netguard --version
           /tmp/clean/bin/netguard lab evaluate > /dev/null
           /tmp/clean/bin/python -c "import netguard, pathlib; assert (pathlib.Path(netguard.__file__).parent / 'web/static/index.html').exists()"
           /tmp/clean/bin/netguard serve --data-dir /tmp/ng --port 8765 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true; wait "$server_pid" 2>/dev/null || true' EXIT
           for i in $(seq 1 30); do curl -sf http://127.0.0.1:8765/api/v1/health && break; sleep 1; done
           curl -sf http://127.0.0.1:8765/ | grep -q '<div id="root">'
-      - name: SBOM (CycloneDX) and checksums
+      - name: SBOM (CycloneDX, from the same lock) and checksums
         run: |
           uv export --frozen --no-dev --all-extras --format cyclonedx1.5 -o dist/netguard-sbom.cdx.json
           (cd dist && sha256sum * > SHA256SUMS)
