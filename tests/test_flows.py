@@ -72,14 +72,34 @@ CLOSE_CASES = {
     "rst_o_then_fin_r": ("RSTO", [("o", RST), ("r", FIN | ACK)]),
     "fin_rst_one_segment": ("RSTO", [("o", FIN | RST | ACK)]),
     "fin_r_then_fin_rst_o": ("RSTO", [("r", FIN | ACK), ("o", FIN | RST | ACK)]),
+    # Both sides reset: Zeek checks the responder first, and with no payload
+    # at all it calls the connection rejected.
+    "rst_o_then_rst_r": ("REJ", [("o", RST), ("r", RST)]),
+    "rst_r_then_rst_o": ("REJ", [("r", RST), ("o", RST)]),
+    "fin_o_rst_o_then_rst_r": ("REJ", [("o", FIN | ACK), ("o", RST), ("r", RST)]),
+    "data_then_rst_o_and_r": ("RSTR", [("o", PSH | ACK, 2), ("o", RST), ("r", RST)]),
+    "resp_data_then_rst_r_and_o": ("RSTR", [("r", PSH | ACK, 6), ("r", RST), ("o", RST)]),
 }
 
 
 @pytest.mark.parametrize(("state", "sequence"), CLOSE_CASES.values(), ids=CLOSE_CASES)
 def test_fin_and_rst_order_matches_zeek(state, sequence):
     steps = _HANDSHAKE + sequence
-    pkts = [(_o if d == "o" else _r)(i * 0.01, flags) for i, (d, flags) in enumerate(steps)]
+    pkts = [
+        (_o if step[0] == "o" else _r)(i * 0.01, step[1], payload=step[2] if len(step) > 2 else 0)
+        for i, step in enumerate(steps)
+    ]
     assert _one_flow(pkts).state == state
+
+
+def test_rej_label_after_handshake_is_not_a_rejected_attempt():
+    # The REJ *label* of an established connection that both sides reset
+    # without payload must not reach the detectors as a rejection: TRW and the
+    # SYN-flood rule use the connection events, where this connection was
+    # answered and established, never rejected.
+    pkts = [_o(0, SYN), _r(0.01, SYN | ACK), _o(0.02, ACK), _o(0.03, RST), _r(0.04, RST)]
+    assert _events(pkts) == ["attempt", "answered", "established", None, None]
+    assert _one_flow(pkts).state == "REJ"
 
 
 def test_rst_after_fin_exchange_is_a_normal_close():

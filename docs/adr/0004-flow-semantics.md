@@ -55,9 +55,11 @@ precedence:
    is still `SF`. An RST from an endpoint that had not sent FIN, or FIN and
    RST in one segment, is an abort as before. Checked case by case against
    Zeek 8.2.2 (`tests/test_flows.py::test_fin_and_rst_order_matches_zeek`).
-   Known difference left: when **both** endpoints reset, NetGuard reports
-   `RSTO`, while Zeek checks the responder first and reports `RSTR`, or `REJ`
-   when neither side sent payload.
+   When **both** endpoints reset, the responder is checked first, as in
+   Zeek's `conn_state`: `RSTR`, or `REJ` when neither side sent payload. That
+   `REJ` is only a label: the detectors use connection events (`attempt`,
+   `answered`, `rejected`, `established`), where such a connection was
+   answered and established, never rejected.
 
 UDP/ICMP flows are `SF` if the responder sent anything, otherwise `S0`.
 

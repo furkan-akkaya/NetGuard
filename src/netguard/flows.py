@@ -138,10 +138,14 @@ class Flow:
         if not orig_syn:
             return "OTH"
         oe, re = self._orig_end, self._resp_end
+        # Zeek's conn_state checks the responder's reset first; when both
+        # sides reset and neither sent payload, it calls the attempt rejected.
+        if re >= _RESET:
+            if oe >= _RESET and not (self.orig_payload_bytes or self.resp_payload_bytes):
+                return "REJ"
+            return "RSTR"
         if oe >= _RESET:
             return "RSTO"
-        if re >= _RESET:
-            return "RSTR"
         if oe == _FINNED and re == _FINNED:
             return "SF"
         if oe == _FINNED:
