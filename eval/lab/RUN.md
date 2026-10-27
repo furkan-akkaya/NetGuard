@@ -99,7 +99,7 @@ python3 ~/ng-kit/victim_volume_burst.py                # Ubuntu, terminal 2, ONL
 ```bash
 python3 eval/lab/ingest.py /path/to/transfer-dir
 uv run netguard lab evaluate --manifest eval/captures.toml
-uv run python eval/lab/live_delay.py /path/to/live-early-01.jsonl
+uv run python eval/lab/live_delay.py /path/to/live-early-01.jsonl --pcap /path/to/live-early-01.pcap
 uv run python eval/lab/live_offline_equal.py /path/to/live-early-01.pcap /path/to/live-early-01.jsonl
 uv run python eval/lab/real_regression.py captures --zeek
 ```
