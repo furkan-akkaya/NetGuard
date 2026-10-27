@@ -34,19 +34,29 @@ fixes.
 
 ## Recommended path
 
-1. **Release candidate (verifies item 12 without claiming v1.0).** Set the
-   version to `1.0.0rc1`, add a `## [1.0.0rc1]` changelog section, tag
-   `v1.0.0rc1`. The workflow builds, smoke-tests and creates a **draft
-   pre-release**; download its wheel and check `SHA256SUMS`. Nothing becomes
-   public: a draft release is visible only to people with write access to
-   the repository, which is private.
-2. **Phase 8 lab (items 2, 7, 8).** Capture the attacks and ≥ 1 h of benign
-   traffic in the UTM lab ([LAB_SETUP.md](LAB_SETUP.md)), run live capture on
-   the lab interface, compare flow states with Zeek, add a "Real captures"
-   section to EVALUATION.md with whatever the numbers turn out to be, and
-   re-check the confidence factors.
-3. **v1.0.0.** Fix what the lab shows, update the version and changelog, tag
-   `v1.0.0`, verify the draft release, publish it.
+Done already: the version is `1.0.0rc1` with its changelog section, and the
+release dry run builds and checks the artefacts on every pull-request push.
+The Phase 8 lab is done for this candidate: seventeen accepted real captures
+(every rule detected at least once with its declared entity, one hour of
+benign traffic, three live runs, flows compared with Zeek), pinned by
+`eval/lab/real_regression.py --zeek` ([EVALUATION.md § 6](EVALUATION.md)).
+
+Still open, in order:
+
+1. **Release candidate (item 12).** Merge #8 then #9, tag `v1.0.0rc1`. The
+   workflow builds, smoke-tests and creates a **draft pre-release**; download
+   its wheel and check `SHA256SUMS`. A draft release is visible only to people
+   with write access to the private repository. The tag-triggered workflow
+   has never run yet.
+2. **Before v1.0.0 (items 2, 7, 8), as far as wanted:** decide task 8.17 (the
+   baselines learn from a partial first interval); re-check the confidence
+   factors on the real captures; a live run longer than 1 h and one under
+   load (only low-rate traffic on one lab host pair so far); repeated runs if
+   rates (precision/recall, false positives) are to be claimed, since each
+   experiment ran once. Fragment reassembly stays out of scope unless decided
+   otherwise: fragmented probes are reported by NG-FRAG-001, not analysed.
+3. **v1.0.0.** Update the version and changelog, tag `v1.0.0`, verify the
+   draft release, publish it.
 4. **Visibility.** Making the repository public is a separate decision for
    the user. Before it: check that `git log -p` contains no captures, tokens
    or personal data (CI and `.gitignore` keep captures out; the history has

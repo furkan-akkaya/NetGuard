@@ -64,7 +64,8 @@ of commit `a845dea`, everything from exp02 on a lab kit of `8a7f181`; the
 analysis above is the current code's. Captures from exp05 on also hold the lab
 bridge's own HTTP control connections on TCP 8766 and (from exp06) 8767 (no
 alerts), including an access token in clear text: they are not shareable as
-they are, and the token should be rotated after the lab work.
+they are. The four bridge servers were stopped after the lab work, so nothing
+accepts that token any more; the token files on the guests were not deleted.
 
 Lab kit override, for exp14 only: on the Ubuntu VM `victim_volume_burst.py`
 was replaced by the version of commit `8b43717` (paced at 4 MB/s; SHA-256
@@ -98,7 +99,9 @@ that variant (`a993fcfc…` and `d39c2bd8…`).
 
 ## Remaining steps for the owner
 
-1. Shut down the lab bridges (invalidates the token that is in the captures).
+1. Optional clean-up: delete the bridge token files on the two guests (the
+   bridge servers are already stopped).
 2. Review and merge pull request #8, then #9.
-3. Decide on the tag `v1.0.0rc1` (private draft pre-release) and, after the
-   lab results, on `v1.0.0` and on repository visibility.
+3. Decide on the tag `v1.0.0rc1` (private draft pre-release).
+4. Decide task 8.17, then on `v1.0.0` and repository visibility
+   ([RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md), recommended path).
