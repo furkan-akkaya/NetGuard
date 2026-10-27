@@ -13,11 +13,13 @@ single **explainable alert**. Every alert states what was observed, which
 threshold it crossed, what the attacker likely learned, and which MITRE ATT&CK
 technique it maps to.
 
-> **Status:** v0.8.0 — packet ingestion, flow engine, eleven detection rules
-> with explainable confidence, alert correlation, a REST API, a web dashboard
-> and live capture, tested on 27 labelled synthetic scenarios and hardened
-> against a written threat model. Validation on real lab captures is next
-> (see the [roadmap](ROADMAP.md)).
+> **Status:** release candidate **1.0.0rc1** under review (no tag or GitHub
+> release yet) — packet ingestion, flow engine, eleven detection rules with
+> explainable confidence, alert correlation, a REST API, a web dashboard and
+> live capture, tested on 27 labelled synthetic scenarios and hardened against
+> a written threat model. First real lab captures are measured (one scan type,
+> one hour of benign traffic); the remaining lab experiments are prepared
+> ([delivery report](docs/DELIVERY_REPORT.md)).
 
 ```text
 $ netguard analyze syn_scan.pcap

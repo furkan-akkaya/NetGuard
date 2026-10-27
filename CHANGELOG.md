@@ -4,7 +4,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning: [S
 
 ## [Unreleased]
 
-Phase 10: code-quality review, evaluation report and release preparation.
+## [1.0.0rc1] - 2026-10-27
+
+Release **candidate**, not v1.0.0: the Definition of Done is not fully met
+(docs/RELEASE_CHECKLIST.md). It collects Phase 10 (code-quality review,
+evaluation report, release preparation), the fixes from the external audit
+of 27 October 2026 and the first real lab measurements. Every number below
+comes from a run that was performed; what was not measured is said so.
+
+Install: verify `SHA256SUMS`, then
+`pip install -c netguard-1.0.0rc1-requirements.txt "netguard-1.0.0rc1-py3-none-any.whl[web]"`
+(docs/DEPLOYMENT.md, which also covers live capture permissions, upgrading
+and uninstalling). Known limits: docs/EVALUATION.md § 5 and § 6.
 
 ### Added
 - Analysis statistics report every detector's counters (`stats.detectors`). When a detector dropped state because its table was full (`evicted_*`, `untracked_*`), the text output, the HTML report and the dashboard show a warning. Before, these losses were counted internally but never shown, although the docs said they were.
@@ -39,11 +50,21 @@ Phase 10: code-quality review, evaluation report and release preparation.
 - Release workflow: re-checks the tagged source (lint, types, tests with the 90% gate, dependency audit, licenses) and all three version fields; installs the wheel with the locked dependencies, checks the installed set against the lock the SBOM is made from, and ships that requirements file; the sdist now contains tests, docs, benchmarks, deploy files and the dashboard sources, may contain only git-tracked files, and must rebuild the dashboard and pass the tests; the smoke-test server is stopped.
 
 ### Fixed
+- Flow state when both endpoints reset: NetGuard reported `RSTO`; Zeek checks the responder first and reports `RSTR`, or `REJ` when neither side sent payload. NetGuard now does the same. Only the state label changes: TRW and the SYN-flood rule use connection events, where such a connection was answered and established, never rejected (pinned by a test). Pre-handshake states (S0, REJ, RSTOS0, SH, SHR, RSTRH, OTH) and the 23 FIN/RST orderings tried were checked against Zeek 8.2.2 one pcap each: all equal.
 - Flow state: an RST sent after both sides had sent FIN made a normally closed connection `RSTO`/`RSTR`; Zeek reports `SF`. FIN and RST order now follows Zeek's endpoint rules (ADR-0004), checked against Zeek 8.2.2 for 14 orderings, with a regression test reduced from the real lab connection. On the benign lab capture every NetGuard flow now matches Zeek.
+- `monitor --sudo` dropped tcpdump's privileges to `SUDO_USER` before the account NetGuard runs as. Started with `sudo -u lab` from root, that named root and the capture was refused. It now drops to the effective user (`SUDO_USER` only when NetGuard itself is root). Found in the lab-kit rehearsal.
+- `eval/lab/victim-live-rss.sh` ended silently when NetGuard failed to start (an empty `grep` under `set -e -o pipefail`); it now always prints its RESULT / NEEDS REVIEW verdict. `kali_rate_burst.py` printed its "NOW" prompt before listening, so an immediate upload could be refused; `kali_arp_binding.py` wrote its record to root's home under `sudo`. Both fixed; all three found in the rehearsal.
 - The time series could exceed its bucket limit with sparse timestamps; downsampling now repeats until the limit holds, keeping the totals.
 - The dashboard's traffic chart drew a line across empty time buckets, so a gap followed by a burst looked like a gradual ramp. It is now a step chart that drops to zero where no traffic was seen. Its axis labels no longer grow with the chart's width.
 
+### Lab tooling
+- `eval/lab/real_regression.py` with `real-regression.toml`: re-analyses the real lab captures (kept out of git) and fails when packets, flows, flow states or final alerts differ from the pinned values; `--zeek` also requires the Zeek comparison to be equal.
+- Bounded runners for the rules the two-VM lab could not exercise, with ground truth written before any run: an ARP binding change for an unused address (exp11), DNS NXDOMAIN and tunnel-like lookups against a minimal lab-only responder on Kali (exp12, exp13), and 13 minutes of baseline followed by a connection and a volume burst (exp14). `live-early-01` and `eval/lab/live_delay.py` measure the live early-warning delay. Rehearsed in network namespaces; not lab results.
+- `scripts/build_lab_kit.py`: builds the offline kit for the VMs (single-file `netguard-lab.pyz` with the locked dpkt, the scripts, `RUN.md`, `BUILD.json` naming the commit, `SHA256SUMS`).
+
 ### Documentation
+- docs/DEPLOYMENT.md: verifying release artefacts (checksums, locked install, SBOM), live capture with `--sudo` or a removable capability, and uninstalling.
+- docs/DELIVERY_REPORT.md: what this candidate contains, the evidence for each claim and the steps that remain.
 - docs/ENGINEERING_REPORT.md: what was built, the decisions behind it, the defects found by measuring, what was verified and what was not.
 - docs/EVALUATION.md: the limitations table is brought up to date (Phase 6–7 fixes, flood state losses); current throughput and flood measurements.
 - Learning note 10 (Turkish): reporting what is counted, honest charts, the Definition of Done and release candidates.

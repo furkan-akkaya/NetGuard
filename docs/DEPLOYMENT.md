@@ -4,19 +4,36 @@
 
 NetGuard needs Python ≥ 3.11 (tested on 3.11–3.14, Linux and macOS).
 
+### From release artefacts (recommended)
+
+A release (and every `release-dryrun.yml` run) ships, for version `V`
+(currently `1.0.0rc1`):
+
+| File | What it is |
+|---|---|
+| `netguard-V-py3-none-any.whl` | the package, dashboard included |
+| `netguard-V.tar.gz` | the source archive (tests, docs, dashboard sources) |
+| `netguard-V-requirements.txt` | the exact dependency versions it was tested with |
+| `netguard-sbom.cdx.json` | CycloneDX SBOM of those same versions |
+| `SHA256SUMS` | checksums of all of the above |
+
+Verify, then install exactly the tested set into a fresh virtual environment:
+
 ```bash
-# From a release wheel (the dashboard is included):
-python3 -m venv ~/netguard && ~/netguard/bin/pip install "netguard-0.8.0-py3-none-any.whl[web]"
-# Analyzer only (one dependency: dpkt):
-~/netguard/bin/pip install netguard-0.8.0-py3-none-any.whl
+sha256sum -c SHA256SUMS                       # macOS: shasum -a 256 -c SHA256SUMS
+python3 -m venv ~/netguard
+~/netguard/bin/pip install -c netguard-V-requirements.txt "netguard-V-py3-none-any.whl[web]"
+~/netguard/bin/netguard --version
 ```
 
-From the next release on, each release also ships
-`netguard-<version>-requirements.txt`: the locked dependency versions the
-release was tested with and that its SBOM lists. To install exactly that set:
-`pip install -c netguard-<version>-requirements.txt "netguard-<version>-py3-none-any.whl[web]"`.
 Without `-c`, pip picks the newest compatible versions, which were not tested
-with that release.
+with that release. For the analyzer alone (one dependency, dpkt), leave out
+`[web]`. To check that the SBOM matches what you installed:
+
+```bash
+python3 -c "import json; print(sorted((c['name'], c['version']) for c in json.load(open('netguard-sbom.cdx.json'))['components']))"
+~/netguard/bin/pip list --format=freeze
+```
 
 From source: `uv sync`, then `pnpm --dir frontend install && pnpm --dir frontend build`
 to build the dashboard (see CONTRIBUTING.md).
@@ -34,7 +51,7 @@ cleanly on Linux), and live capture on loopback as an unprivileged user with
 ```bash
 sudo useradd --system --shell /usr/sbin/nologin netguard
 sudo python3 -m venv /opt/netguard/venv
-sudo /opt/netguard/venv/bin/pip install "netguard-0.8.0-py3-none-any.whl[web]"
+sudo /opt/netguard/venv/bin/pip install -c netguard-V-requirements.txt "netguard-V-py3-none-any.whl[web]"
 sudo install -m 0644 deploy/netguard.service /etc/systemd/system/netguard.service
 sudo install -d -m 0750 /etc/netguard
 python3 -c "import secrets; print('NETGUARD_API_TOKEN=' + secrets.token_urlsafe(32))" | sudo tee /etc/netguard/env >/dev/null
@@ -66,12 +83,44 @@ proxy in front (`deploy/Caddyfile`), keep NetGuard on 127.0.0.1, and:
 
 ## Live capture on the server
 
-The service above does not capture. For `netguard monitor`, grant tcpdump the
-capture capability once (`sudo setcap cap_net_raw,cap_net_admin=eip "$(command -v tcpdump)"`)
-and run it as a normal user; see [LIVE_CAPTURE.md](LIVE_CAPTURE.md).
+The service above does not capture. `netguard monitor` itself never needs
+root: it reads packets from tcpdump. Two ways to give tcpdump the right, as a
+normal user (see [LIVE_CAPTURE.md](LIVE_CAPTURE.md)):
+
+- `netguard monitor --sudo -i IFACE` starts tcpdump through `sudo -n`; run
+  `sudo -v` first. Nothing changes on the system. This is how the lab runs
+  were made.
+- Or grant tcpdump the capture capability once:
+  `sudo setcap cap_net_raw,cap_net_admin=eip "$(command -v tcpdump)"`. This
+  lets every user on the host capture; remove it with
+  `sudo setcap -r "$(command -v tcpdump)"`.
 
 ## Upgrading
 
 Stop the service, install the new wheel into the same virtual environment,
 start it. The database schema migrates automatically on start; a database
 from a newer NetGuard is refused rather than modified.
+
+## Uninstalling
+
+NetGuard installs nothing outside its virtual environment and the paths you
+gave it. Remove what applies:
+
+```bash
+# Personal install
+rm -rf ~/netguard                               # the virtual environment
+rm -rf ./netguard-data                          # default `netguard serve --data-dir`, relative to where it ran
+
+# Server install (systemd)
+sudo systemctl disable --now netguard
+sudo rm /etc/systemd/system/netguard.service && sudo systemctl daemon-reload
+sudo rm -rf /opt/netguard /etc/netguard
+sudo rm -rf /var/lib/netguard                   # stored captures, analyses and alerts: back up first if needed
+sudo userdel netguard
+
+# Only if you granted tcpdump the capability
+sudo setcap -r "$(command -v tcpdump)"
+```
+
+Remove the Caddy site block if you added one. Captures written with
+`monitor --write` stay wherever you wrote them.

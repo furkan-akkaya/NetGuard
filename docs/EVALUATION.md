@@ -442,7 +442,7 @@ split is a design parameter, not an error: NetGuard uses one UDP idle timeout
 (60 s, Zeek's `udp_inactivity_timeout`) for every UDP flow and has no shorter
 DNS-specific session timeout. The two SYN-scan captures still match Zeek
 exactly after the fix (1001/1001 and 1000/1000), and their alerts are
-unchanged. The flow-state fix changes no alert in any of the three captures;
+unchanged. A later change made the state of connections that **both** sides reset follow Zeek too (task 8.15); none of the three captures has such a connection, and `eval/lab/real_regression.py --zeek` pins all three results (packets, flows, states, final alerts, Zeek equality). The flow-state fix changes no alert in any of the three captures;
 the live run itself was not repeated with the fixed build.
 
 Zeek also logged one `bad_TCP_checksum` packet (in the first SSH session);
