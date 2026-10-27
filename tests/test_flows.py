@@ -6,7 +6,7 @@ from netguard.engine import Engine, analyze_frames
 from netguard.flows import Flow, FlowTable, seq_after
 from netguard.lab.scenarios import ATTACKER, SERVER, WORKSTATION
 from netguard.lab.synth import syn_probe, tcp_handshake
-from netguard.models import ACK, FIN, PSH, RST, SYN, Packet
+from netguard.models import ACK, FIN, PSH, RST, SYN, URG, Packet
 
 from .helpers import arp, tcp, udp
 
@@ -90,6 +90,66 @@ def test_fin_and_rst_order_matches_zeek(state, sequence):
         for i, step in enumerate(steps)
     ]
     assert _one_flow(pkts).state == state
+
+
+# Connections with no SYN at all (NULL/FIN/Xmas probes, midstream pickup):
+# Zeek still applies its endpoint states, where an endpoint that sent neither
+# FIN nor RST is inactive. Each case checked against Zeek 8.2.2, one pcap each,
+# state and history equal. NetGuard used to call all of them OTH.
+NO_SYN_CASES = {
+    "null_rst_r": ("RSTRH", [("o", 0), ("r", RST | ACK)]),
+    "fin_rst_r": ("RSTR", [("o", FIN), ("r", RST | ACK)]),
+    "xmas_rst_r": ("RSTR", [("o", FIN | PSH | URG), ("r", RST | ACK)]),
+    "ack_rst_r": ("RSTRH", [("o", ACK), ("r", RST)]),
+    "data_o_rst_r": ("RSTRH", [("o", PSH | ACK, 2), ("r", RST | ACK)]),
+    "fin_unanswered": ("SH", [("o", FIN)]),
+    "null_unanswered": ("OTH", [("o", 0)]),
+    "rst_o_only": ("OTH", [("o", RST)]),
+    "fin_o_rst_o": ("OTH", [("o", FIN | ACK), ("o", RST)]),
+    "rst_o_then_fin_r": ("RSTO", [("o", RST), ("r", FIN | ACK)]),
+    "fin_o_fin_r": ("SF", [("o", FIN | ACK), ("r", FIN | ACK)]),
+    "ack_o_then_fin_r": ("SHR", [("o", ACK), ("r", FIN | ACK)]),
+    "data_both_then_fin_r": ("SHR", [("o", PSH | ACK, 2), ("r", PSH | ACK, 2), ("r", FIN | ACK)]),
+    "fin_o_then_data_r": ("SH", [("o", FIN | ACK), ("r", PSH | ACK, 2)]),
+    "rst_o_rst_r": ("REJ", [("o", RST), ("r", RST)]),
+    "data_o_rst_o_rst_r": ("RSTR", [("o", PSH | ACK, 2), ("o", RST), ("r", RST)]),
+    "fin_o_rst_r": ("RSTR", [("o", FIN | ACK), ("r", ACK), ("r", RST)]),
+}
+
+
+@pytest.mark.parametrize(("state", "sequence"), NO_SYN_CASES.values(), ids=NO_SYN_CASES)
+def test_connections_without_syn_match_zeek(state, sequence):
+    pkts = [
+        (_o if step[0] == "o" else _r)(i * 0.01, step[1], payload=step[2] if len(step) > 2 else 0)
+        for i, step in enumerate(sequence)
+    ]
+    assert _one_flow(pkts).state == state
+
+
+@pytest.mark.parametrize(
+    ("probe", "closed", "open_"),
+    [(0, "RSTRH", "OTH"), (FIN, "RSTR", "SH"), (FIN | PSH | URG, "RSTR", "SH")],
+    ids=["null", "fin", "xmas"],
+)
+def test_real_stealth_scan_probes_match_zeek(probe, closed, open_):
+    # Reduced from the real lab captures exp05 (NULL), exp04 (FIN) and exp03
+    # (Xmas): a closed port answers RST|ACK with seq 0, the open SSH port stays
+    # silent. Zeek 8.2.2 (checksums on): 999 x RSTRH/RSTR and 2 x OTH/SH per
+    # capture; NetGuard reported OTH for all of them.
+    seq = 259075004
+    rst = tcp(0.000114, S, C, 55731, RST | ACK, sport=1, seq=0)
+    closed_flow = _one_flow([tcp(0.0, C, S, 1, probe, sport=55731, seq=seq), rst])
+    open_flow = _one_flow([tcp(0.0, C, S, 22, probe, sport=55731, seq=seq)])
+    assert (closed_flow.state, open_flow.state) == (closed, open_)
+
+
+def test_probes_without_syn_never_reach_trw_as_attempts():
+    # The new labels (SH for an unanswered FIN probe, RSTR/RSTRH for a reset
+    # one) do not change detection: TRW counts only first contacts opened by a
+    # SYN (the "attempt" event), and none of these flows has one.
+    for probe in (0, FIN, FIN | PSH | URG):
+        assert _events([_o(0.0, probe), _r(0.01, RST | ACK)]) == [None, None]
+        assert _events([_o(0.0, probe)]) == [None]
 
 
 def test_rej_label_after_handshake_is_not_a_rejected_attempt():

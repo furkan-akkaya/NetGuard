@@ -135,9 +135,23 @@ class Flow:
             if r & FIN:
                 return "SHR"
             return "OTH"
-        if not orig_syn:
-            return "OTH"
         oe, re = self._orig_end, self._resp_end
+        if not orig_syn:
+            # No SYN either way (NULL/FIN/XMAS probes, midstream pickup). Zeek
+            # still applies its endpoint states: without FIN or RST an endpoint
+            # is "inactive" (INACTIVE/PARTIAL), so a probe answered by RST is
+            # RSTRH (NULL) or RSTR (FIN/XMAS), an unanswered FIN probe SH.
+            if re >= _RESET:
+                if oe >= _RESET and not (self.orig_payload_bytes or self.resp_payload_bytes):
+                    return "REJ"
+                return "RSTRH" if oe == _OPEN else "RSTR"
+            if oe >= _RESET:
+                return "OTH" if re == _OPEN else "RSTO"
+            if oe == _FINNED:
+                return "SF" if re == _FINNED else "SH"
+            if re == _FINNED:
+                return "SHR" if oe == _OPEN else "S3"
+            return "OTH"
         # Zeek's conn_state checks the responder's reset first; when both
         # sides reset and neither sent payload, it calls the attempt rejected.
         if re >= _RESET:
