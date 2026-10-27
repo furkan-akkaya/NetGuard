@@ -27,11 +27,13 @@ Deferred (ADR-0011): Zeek/Suricata input, ICMP tunnel rule, resolver policy, sea
 - [ ] **10.5** 👤 Decide: tag `v1.0.0rc1` to verify the release workflow (draft pre-release, stays private); later `v1.0.0` after the lab; repository visibility
 - [x] **10.6** LinkedIn (EN/TR), CV and interview drafts with measured claims only ([PORTFOLIO.md](PORTFOLIO.md))
 - [x] **10.7** Fixes from the external audit (27 Oct 2026): concurrent upload quota, full Origin check (`--allowed-origin`), bounded live alert history, time-series bound, release gates (tagged-source checks, locked install = SBOM, sdist coverage)
-- [x] **8.5** Lab tooling without the lab: `lab evaluate --manifest`, `lab compare-flows` (Zeek), acceptance criteria fixed in advance ([LAB_SETUP.md § 6](LAB_SETUP.md))
+- [x] **8.5** Lab tooling without the lab: `lab evaluate --manifest`, `lab compare-flows` (Zeek), acceptance criteria fixed in advance ([LAB_SETUP.md § 8](LAB_SETUP.md))
 
 ## Waiting on the user 👤
 
-- [ ] **8.3** Build the UTM lab: Kali (attacker) + Ubuntu VM (victim) on an isolated host-only network ([LAB_SETUP.md](LAB_SETUP.md)); confirm SSH access to the Ubuntu VM. The physical Ubuntu server stays out of attack traffic
+- [x] **8.3** UTM lab network (reported by the user, 27 Oct 2026): Kali 10.77.0.10 ↔ Ubuntu VM 10.77.0.20 on one named Host Network (UTM 5.0.8), ping 3/3; no route to the Mac or internet. The physical server stays out of attack traffic
+- [x] **8.6** Lab scripts ([eval/lab/](../eval/lab/)): victim capture, experiment 01 (SYN scan), ingest into the manifest; ground truth for exp01 and benign-01 written before any run; scripts exercised in a container (not a lab result)
+- [ ] **8.7** 👤 Run the one-line tool check on the Ubuntu VM ([LAB_SETUP.md § 4](LAB_SETUP.md)) and set up a transfer channel that meets § 3; then run experiment 01 (§ 5)
 - [ ] **9.5** Run `deploy/netguard.service` under systemd on the Ubuntu server ([DEPLOYMENT.md](DEPLOYMENT.md))
 - [ ] **6.5** Live capture on a real interface (loopback already verified in an Ubuntu container): `netguard monitor -i <iface> --write live.pcap` during lab attacks; compare with `netguard analyze live.pcap`; note kernel drops ([LIVE_CAPTURE.md](LIVE_CAPTURE.md))
 - [ ] **8.4** Capture attack traffic (`nmap -sS/-sT/-sX/-sN/-sF/-sU/-sn`, `-T1`, `masscan`, `arp-scan`, `bettercap arp.spoof`) and ≥ 1 h of benign traffic into `captures/` (git-ignored)

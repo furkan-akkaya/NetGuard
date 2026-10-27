@@ -300,4 +300,4 @@ matches every TCP/UDP flow (endpoints, direction, state) against Zeek's
 `conn.log` ([CAPTURE_EVALUATION.md](CAPTURE_EVALUATION.md)). Both are tested
 on generated fixtures and hand-written Zeek rows only, which proves the code,
 not NetGuard's accuracy. The experiments and their acceptance criteria,
-fixed before any result exists, are in [LAB_SETUP.md § 6](LAB_SETUP.md).
+fixed before any result exists, are in [LAB_SETUP.md § 8](LAB_SETUP.md).

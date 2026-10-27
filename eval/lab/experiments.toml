@@ -1,0 +1,29 @@
+# Ground truth for the UTM lab experiments, written BEFORE any of them is run
+# (docs/LAB_SETUP.md § 6). Lab network: Kali 10.77.0.10 -> Ubuntu VM 10.77.0.20,
+# an isolated UTM named Host Network with no route to the Mac, home network or
+# internet. eval/lab/ingest.py combines these labels with the transferred
+# captures' hashes and tool versions into eval/captures.toml (git-ignored).
+#
+# Change a label only for a documented reason (e.g. the experiment itself
+# changed), never because NetGuard's output differed: a miss is a result.
+schema_version = 1
+
+[[experiments]]
+name = "exp01-syn-scan"
+kind = "attack"
+script = "kali-exp01-syn-scan.sh"
+note = "nmap SYN scan of 1000 ports, victim without firewall: closed ports answer RST"
+expected = [
+  # NG-SCAN-001: 1000 distinct ports on one target within 60 s (threshold 15).
+  { detector = "portscan", entity = "10.77.0.10->10.77.0.20" },
+  # NG-SCAN-002: first-contact attempts mostly rejected (>= 5 failures).
+  { detector = "trw", entity = "10.77.0.10" },
+]
+
+# Not run yet; added here so its labels exist before its capture does.
+[[experiments]]
+name = "benign-01"
+kind = "benign"
+script = "(manual: 1 h of ordinary use of the victim, no scanning)"
+note = "benign baseline on the lab network; nothing may be expected"
+expected = []
