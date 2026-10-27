@@ -4,7 +4,7 @@
 
 **A passive network intrusion detection tool that explains suspicious traffic with evidence.**
 
-[![CI](https://github.com/furkan-akkaya/NetGuard/actions/workflows/ci.yml/badge.svg?branch=fix%2Faudit-2026-10-27)](https://github.com/furkan-akkaya/NetGuard/actions/workflows/ci.yml)
+[![CI](https://github.com/furkan-akkaya/NetGuard/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/furkan-akkaya/NetGuard/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/Python-3.11–3.14-blue)
 ![License](https://img.shields.io/badge/License-MIT-green)
 
@@ -15,7 +15,7 @@ Results are available through the command line, a web dashboard and a REST API.
 Each alert identifies the source and target, describes the observed behaviour, shows the crossed threshold and explains its confidence score.
 Related alerts are grouped into incidents.
 
-> **Status: 1.0.0rc1 — release candidate.** Code and delivery documents are in [PR #9](https://github.com/furkan-akkaya/NetGuard/pull/9).
+> **Status: 1.0.0rc1 — release candidate.** Development and validation history is recorded in [PR #9](https://github.com/furkan-akkaya/NetGuard/pull/9).
 > Validated against 17 accepted real lab captures and automated tests.
 > No tag or GitHub release exists yet. See the [delivery report](docs/DELIVERY_REPORT.md) for open limitations and release steps.
 
@@ -72,10 +72,10 @@ Requires Python **3.11–3.14**, Linux or macOS, and `uv`.
 The example generates traffic files locally; analysing them needs no capture privileges or network access.
 Installing dependencies for the first time requires internet access.
 
-There is no published release yet, so these commands use the release candidate branch:
+There is no published release yet. Install the current source from `main`:
 
 ```bash
-git clone --branch fix/audit-2026-10-27 https://github.com/furkan-akkaya/NetGuard.git
+git clone --branch main https://github.com/furkan-akkaya/NetGuard.git
 cd NetGuard
 uv sync --locked
 

@@ -4,7 +4,7 @@
 
 **Ağ trafiğini inceleyen, şüpheli davranışları kanıtlarıyla açıklayan pasif saldırı tespit aracı.**
 
-[![CI](https://github.com/furkan-akkaya/NetGuard/actions/workflows/ci.yml/badge.svg?branch=fix%2Faudit-2026-10-27)](https://github.com/furkan-akkaya/NetGuard/actions/workflows/ci.yml)
+[![CI](https://github.com/furkan-akkaya/NetGuard/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/furkan-akkaya/NetGuard/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/Python-3.11–3.14-blue)
 ![License](https://img.shields.io/badge/License-MIT-green)
 
@@ -16,7 +16,7 @@ Bir alarm yalnızca “şüpheli trafik var” demez.
 Kaynak ve hedefi, gözlenen davranışı, aşılan eşiği ve güven puanının gerekçelerini gösterir.
 İlgili alarmları tek bir olay altında toplar.
 
-> **Durum: 1.0.0rc1 — sürüm adayı.** Kod ve teslim belgeleri [PR #9](https://github.com/furkan-akkaya/NetGuard/pull/9) üzerinde.
+> **Durum: 1.0.0rc1 — sürüm adayı.** Geliştirme ve doğrulama geçmişi [PR #9](https://github.com/furkan-akkaya/NetGuard/pull/9) içinde kayıtlı.
 > 17 kabul edilmiş gerçek lab kaydı ve otomatik testlerle doğrulandı.
 > Henüz tag veya GitHub release yok. Açık sınırlar ve yayın adımları [teslim raporunda](docs/DELIVERY_REPORT.md).
 
@@ -73,10 +73,10 @@ Python **3.11–3.14**, Linux veya macOS ve `uv` gerekir.
 İlk deneme için ağ erişimi veya yönetici yetkisi gerekmez; örnek trafik dosyaları yerel olarak üretilir.
 Bağımlılıkların ilk kurulumu internet erişimi gerektirir.
 
-Henüz yayınlanmış sürüm bulunmadığından, aşağıdaki komutlar sürüm adayının bulunduğu dalı kullanır:
+Henüz yayınlanmış sürüm yok. Aşağıdaki komutlar güncel kaynak kodu `main` dalından kurar:
 
 ```bash
-git clone --branch fix/audit-2026-10-27 https://github.com/furkan-akkaya/NetGuard.git
+git clone --branch main https://github.com/furkan-akkaya/NetGuard.git
 cd NetGuard
 uv sync --locked
 
