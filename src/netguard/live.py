@@ -75,6 +75,21 @@ def validate_spec(spec: CaptureSpec) -> None:
         raise SourceError("snaplen must be between 64 and 262144")
 
 
+def _drop_user() -> str:
+    """The account tcpdump -Z drops to: the user NetGuard runs as. SUDO_USER is
+    only the answer when NetGuard itself runs as root under sudo; under
+    `sudo -u lab` it names the invoking account (often root), not this one."""
+    euid = os.geteuid()
+    if euid == 0:
+        return os.environ.get("SUDO_USER", "")
+    import pwd
+
+    try:
+        return pwd.getpwuid(euid).pw_name
+    except KeyError:  # a uid with no passwd entry (some containers)
+        return os.environ.get("USER", "")
+
+
 def tcpdump_command(spec: CaptureSpec, tcpdump: str = "tcpdump") -> list[str]:
     """The argument vector (never a shell string): -U flushes per packet, -n avoids DNS lookups."""
     validate_spec(spec)
@@ -82,7 +97,7 @@ def tcpdump_command(spec: CaptureSpec, tcpdump: str = "tcpdump") -> list[str]:
     if spec.max_packets:
         cmd += ["-c", str(spec.max_packets)]
     if spec.use_sudo:
-        user = os.environ.get("SUDO_USER") or os.environ.get("USER") or ""
+        user = _drop_user()
         if not user or user == "root":
             raise SourceError("--sudo needs a non-root user to drop to (tcpdump -Z)")
         cmd = ["sudo", "-n", *cmd, "-Z", user]
