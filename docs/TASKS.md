@@ -23,7 +23,7 @@ Deferred (ADR-0011): Zeek/Suricata input, ICMP tunnel rule, resolver policy, sea
 - [x] **10.1** Code-quality review across modules: detector state losses now reported, dead code and an unused dependency removed
 - [x] **10.2** Engineering evaluation report ([ENGINEERING_REPORT.md](ENGINEERING_REPORT.md)); limitations table and benchmarks brought up to date
 - [x] **10.3** Screenshots and CLI demo from real analyses of the synthetic scenarios ([DEMO.md](DEMO.md)); fixed the traffic chart they exposed
-- [x] **10.4** v1.0 checklist against the Definition of Done ([RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md)): 8/12 met, so no v1.0.0 yet; release steps dry-run locally
+- [x] **10.4** v1.0 checklist against the Definition of Done ([RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md)): 8/12 met, so no v1.0.0 yet; release steps rehearsed locally and, on pull requests, by `release-dryrun.yml`
 - [ ] **10.5** 👤 Decide: tag `v1.0.0rc1` to verify the release workflow (draft pre-release, stays private); later `v1.0.0` after the lab; repository visibility
 - [x] **10.6** LinkedIn (EN/TR), CV and interview drafts with measured claims only ([PORTFOLIO.md](PORTFOLIO.md))
 - [x] **10.7** Fixes from the external audit (27 Oct 2026): concurrent upload quota, full Origin check (`--allowed-origin`), bounded live alert history, time-series bound, release gates (tagged-source checks, locked install = SBOM, sdist coverage)
@@ -37,7 +37,9 @@ Deferred (ADR-0011): Zeek/Suricata input, ICMP tunnel rule, resolver policy, sea
 - [x] **8.8** Transfer channel in use (UTM VirtFS share); experiment 01 captured and transferred
 - [x] **8.9** First real capture measured (exp01 SYN scan, hash-verified): NG-SCAN-001 + NG-SCAN-002 with declared entities, 0 FP; flow states == real Zeek 8.2.2 conn.log (1001/1001); replay == offline final alerts. One capture, not tool-wide precision/recall. See [EVALUATION.md § 6](../docs/EVALUATION.md)
 - [x] **8.10** Runners for the remaining experiments (`eval/lab/kali-run.sh`), benign + RSS live runner (`victim-live-rss.sh`), live-vs-offline and Zeek helpers; container-tested
-- [ ] **8.11** 👤 1 h benign baseline + RSS, and a live-interface SYN measurement with kernel-drop accounting (user running; a 90 s live SYN run already done, pcap/jsonl transferring)
+- [x] **8.11a** Live-interface SYN measurement (live-syn-01, 90 s, 0 kernel drops reported): live final alerts == offline except `reported_at`; flow states == Zeek 8.2.2 (1000/1000)
+- [ ] **8.11b** 👤 1 h benign baseline + RSS (benign-01): started on the VMs, no result yet
+- [ ] **8.11c** Live delay with early warnings on: not measured yet (only an estimate from the synthetic benchmark)
 - [ ] **8.12** 👤 Remaining attack experiments (connect/XMAS/FIN/NULL/slow/UDP/sweep/frag/SYN-burst) via `kali-run.sh`; then precision/recall over all lab attacks
 - [ ] **8.13** Open (needs lab changes): NG-ARP-001 (a third address to impersonate), NG-DNS-001/002 (a resolver on the victim), NG-RATE-001/NG-VOL-001 (>=10 min baseline then a change)
 - [ ] **9.5** Run `deploy/netguard.service` under systemd on the Ubuntu server ([DEPLOYMENT.md](DEPLOYMENT.md))

@@ -1,14 +1,33 @@
 name: Release dry run
 
-# Runs the release gates WITHOUT a tag and WITHOUT creating a release, on
-# demand. It proves the release path works and lets you inspect the artefacts
-# (wheel, sdist, SBOM, checksums, locked requirements) before deciding to tag.
+# Runs the release gates WITHOUT a tag and WITHOUT creating a release. It proves
+# the release path works and lets you download the artefacts (wheel, sdist,
+# SBOM, checksums, locked requirements) from the run before deciding to tag.
 # It never publishes anything: no release, no tag, read-only token.
+#
+# Triggers: every pull request that touches what a release is built from, and
+# by hand (workflow_dispatch). GitHub only offers the manual trigger once this
+# file is on the default branch; until then the pull_request trigger is the
+# way to run it.
 on:
+  pull_request:
+    paths:
+      - "pyproject.toml"
+      - "uv.lock"
+      - "src/**"
+      - "frontend/**"
+      - "scripts/**"
+      - "tests/**"
+      - ".github/workflows/release.yml"
+      - ".github/workflows/release-dryrun.yml"
   workflow_dispatch:
 
 permissions:
   contents: read
+
+concurrency:
+  group: release-dryrun-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   dry-run:

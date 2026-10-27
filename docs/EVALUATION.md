@@ -291,11 +291,13 @@ negatives in more detail.
 
 ## 6. Real captures
 
-**One real attack capture measured so far (27 Oct 2026).** This is a start,
-not a verdict: a single SYN scan on an isolated two-VM UTM lab (Kali
-10.77.0.10 -> Ubuntu 10.77.0.20). No benign baseline, no live-interface
-measurement, and no other attack type has been measured yet, so the other
-acceptance criteria in [LAB_SETUP.md § 8](LAB_SETUP.md) stay open.
+**Two real SYN-scan captures measured so far (27 Oct 2026)**, one analysed
+offline (exp01) and one captured live by `netguard monitor` on the victim's
+lab interface (live-syn-01). This is a start, not a verdict: the same attack
+type twice, on an isolated two-VM UTM lab (Kali 10.77.0.10 -> Ubuntu
+10.77.0.20). No benign baseline result and no other attack type exist yet, so
+the other acceptance criteria in [LAB_SETUP.md § 8](LAB_SETUP.md) stay open.
+The 1-hour benign run (benign-01) has been started; it has no result yet.
 
 Provenance and integrity: the capture bytes are hash-verified
 (SHA-256 `376d4b6c…bbbd93a9`, matched on the capture host and the Mac). This
@@ -338,9 +340,37 @@ semantic compatibility.
 Replaying the capture through the live pipeline (`netguard replay --speed 0`)
 produced the **same two final alerts** as offline analysis
 (`eval/lab/live_offline_equal.py`, equal). This exercises the live code path
-but is **not** a live-interface measurement: a real `netguard monitor` run on
-the VM interface, with kernel-drop accounting and the 1 h benign baseline, is
-still open.
+but is not a live-interface measurement; that is the next section.
+
+### live-syn-01 — live capture on the victim's interface
+
+The same scan (`nmap -sS`, 1000 ports, `--max-rate 100`) captured live by
+`netguard monitor --sudo --duration 90 --no-early-warning` on the Ubuntu VM
+(NetGuard as a normal user, tcpdump via sudo; built from commit `a845dea`),
+which also wrote the pcap. Capture SHA-256 `65533b5b…3ff3ffce`, live JSONL
+SHA-256 `f1f7493a…605d98cb`, both verified on the Mac.
+
+| Measure | Result |
+|---|---|
+| Run (monitor summary on the VM, operator report) | 90.3 s; kernel captured 2005, received by filter 2005, **dropped 0**; 144 330 bytes written |
+| Capture (re-analysed on the Mac) | 2005 frames (2001 TCP, 4 ARP), 0 decode errors; REJ 999, RSTO 1 |
+| Live final alerts | NG-SCAN-001 and NG-SCAN-002 |
+| **Live vs offline** | the same two final alerts; every field identical except `reported_at` (`live_offline_equal.py` equal) |
+| **Flow states vs Zeek 8.2.2** | **1000 of 1000** flows matched on endpoints, direction and state, zero differences |
+
+Reporting delay: with early warnings switched off, an alert is reported only
+when its incident closes. Live, NG-SCAN-001 was reported 11.0 s and
+NG-SCAN-002 50.2 s after the last scan packet (21.0 s and 60.2 s after the
+first); offline, both are closed at the last packet because the file ends
+there. So the 60.2 s maximum is the incidents' closing time, not processing
+lag. The delay **with** early warnings has not been measured live; the
+synthetic replay benchmark (§ 2, detection delay) suggests 1-2 s for a scan
+like this, but that is an estimate until a live run confirms it.
+
+Zeek logged a warning that the trace contains only TCP control packets
+(expected for a SYN scan without payloads). One live run of one attack type
+shows the live path, kernel-drop accounting and live/offline agreement work
+on real traffic; it is not a resource or long-run measurement (benign-01).
 
 The tooling behind these: `netguard lab evaluate --manifest`, `compare-flows`,
 and the lab scripts in `eval/lab/` ([CAPTURE_EVALUATION.md](CAPTURE_EVALUATION.md),
