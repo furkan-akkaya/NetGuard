@@ -118,12 +118,12 @@ These are stated here so that nothing above is read as covering them:
 
 | Item | Why not yet | Who |
 |---|---|---|
-| Real-network detection quality (Phase 8) | Needs captures from the user's UTM lab (Kali → Ubuntu); no real capture has been analysed for the scorecard | User captures, then re-evaluation |
-| Live capture on a real interface | This Mac's capture device needs administrator rights, which were not used; verified on loopback in a container | User |
+| Real-network detection quality (Phase 8) | Three real lab captures so far (two SYN scans, one hour of low-rate benign traffic; EVALUATION.md § 6): too few attack types for precision/recall, and the benign hour is not a false-positive rate for real networks | User captures, then re-evaluation |
+| Live capture on a real interface | Two runs on the lab VM's interface (90 s scan, 1 h benign) with a build of `a845dea`: 0 kernel drops, live = offline final alerts. Not under load, not longer than 1 h | User |
 | systemd unit on a real host | `systemd-analyze` passes (exposure 1.6); never run under systemd | User's Ubuntu server |
-| Release workflow | Runs on a `v*` tag; no tag pushed yet | Release step (10.5) |
+| Release workflow | Its gates ran without a tag in `release-dryrun.yml`; the tag-triggered workflow itself has not run (no tag pushed) | Release step (10.5) |
 | Browsers other than Chrome | Dashboard checked in Chrome only | Open |
-| Long-running live sessions (days) | Memory is bounded by design and by test; not soak-tested | Open |
+| Long-running live sessions (days) | Memory is bounded by design and by test; the longest live run is 1 h of low-rate traffic (peak 34.0 MiB RSS); not soak-tested | Open |
 
 ## 7. Limitations
 

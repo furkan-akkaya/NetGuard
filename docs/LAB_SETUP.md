@@ -146,10 +146,53 @@ Each gets a script and its ground truth in `experiments.toml` before it runs.
 | ARP / ping sweep | `sudo nmap -sn 10.77.0.0/24` | NG-SWEEP-001 (`hostsweep`, ≥ 15 hosts in 60 s) |
 | Fragmented scan | `sudo nmap -sS -f -Pn -p 1-100 10.77.0.20` | NG-FRAG-001; the probes inside the fragments are not analysed (no reassembly) |
 | ARP spoofing | Needs a third address on the lab network to impersonate; designed when the network allows it | NG-ARP-001 |
-| Benign baseline | ≥ 1 h of ordinary use of the victim, no scanning: `bash victim-capture.sh benign-01 3600` | no alerts is the goal; every alert is reported |
+| Benign baseline | Done as benign-01 (live, `victim-live-rss.sh benign-01 3640` + `kali-benign.sh 3600`): 0 alerts; see [EVALUATION.md § 6](EVALUATION.md) | no alerts is the goal; every alert is reported |
 
 SYN floods (`hping3 --flood`) wait until the capture and drop counts of the
-simpler experiments are understood.
+simpler experiments are understood; `exp10-syn-burst` is a bounded burst
+instead.
+
+### Run order for the remaining experiments
+
+Done: exp01 (offline), live-syn-01, benign-01. The remaining ones, most
+informative first. Each run is two terminals: **Ubuntu first**, Kali only
+after Ubuntu prints `>>> Capture is running`. Then stop Ubuntu with `Ctrl-C`
+about 15 s after Kali finishes (or let the duration end), and transfer
+`~/ng-captures/NAME.*` (Ubuntu) and `~/ng-experiments/NAME.*` (Kali).
+
+| # | Experiment | Why now | Expected (ground truth in `experiments.toml`) |
+|---|---|---|---|
+| 1 | `exp02-connect-scan` | Full handshakes: many short SF/REJ flows for the Zeek comparison | NG-SCAN-001, NG-SCAN-002 |
+| 2 | `exp07-udp-scan` | First UDP request/reply traffic compared with Zeek (checklist item 2) | NG-SCAN-003 |
+| 3 | `exp03-xmas-scan`, `exp04-fin-scan`, `exp05-null-scan` | Non-SYN scans: TRW must stay silent | NG-SCAN-001 only |
+| 4 | `exp08-ping-sweep` | Host discovery | NG-SWEEP-001 |
+| 5 | `exp09-frag-scan` | Fragment evasion | NG-FRAG-001 |
+| 6 | `exp06-slow-scan` | About 12 min; the window rule is expected to miss it | NG-SCAN-002 only |
+| 7 | `exp10-syn-burst` | Last: 1500 SYNs at ~100/s, needs `hping3` | NG-SYN-001 |
+| 8 | `live-syn-02` (live, early warnings on) | Live delay with early warnings (task 8.11c) | as exp01 |
+
+`kali-run.sh` must be in the transfer share first (the share holds only the
+exp01 wrapper). Ubuntu, for experiments 1-7 (replace NAME):
+
+```bash
+bash /mnt/ng-transfer/scripts/victim-capture.sh NAME          # Ctrl-C ~15 s after Kali finishes
+```
+
+Kali:
+
+```bash
+bash /mnt/ng-transfer/kali-run.sh NAME                        # type capture-running when asked
+```
+
+For 8, the live runner on Ubuntu (`NETGUARD` set as in § 7) and the SYN scan
+on Kali. `kali-run.sh` names its record after the experiment, so keep the
+exp01 record first:
+
+```bash
+bash /mnt/ng-transfer/victim-live-rss.sh live-syn-02 120     # Ubuntu
+mv ~/ng-experiments/exp01-syn-scan.attack.txt ~/ng-experiments/exp01-syn-scan.first.attack.txt   # Kali, once
+bash /mnt/ng-transfer/kali-run.sh exp01-syn-scan              # Kali
+```
 
 ## 7. Live capture on the victim (after the offline experiments)
 

@@ -285,19 +285,19 @@ negatives in more detail.
 | No IP fragment reassembly | Probes inside fragments (`nmap -f`) are not analysed; NG-FRAG-001 reports the evasion itself. IPv6 fragments and DHCPv6 not inspected | Open; reassembly only if lab data shows the need |
 | Flow orientation without a SYN | Mid-stream flows keep the first sender as originator | Open; documented (ADR-0004) |
 | Retransmission vs. reordering | Late out-of-order segments are counted as retransmissions | Inherent to passive observation (ADR-0004) |
-| Live alert latency | Early warnings arrive 1–2 s after a threshold is crossed; rules with intervals add their interval (§2, detection delay) | By design (ADR-0010) |
+| Live alert latency | In the synthetic replay benchmark, early warnings arrive 1–2 s after a threshold is crossed; rules with intervals add their interval (§2, detection delay). Not yet measured live (§6) | By design (ADR-0010) |
 | Throughput | ~100k packets/s offline on an M1; not a line-rate sensor (§3) | By design: home/lab networks, low-traffic servers, forensics |
 | Confidence scores | Factors and scenarios come from the same author; separation is a consistency check, not accuracy | Must be re-checked on real lab captures (Phase 8) |
 
 ## 6. Real captures
 
-**Two real SYN-scan captures measured so far (27 Oct 2026)**, one analysed
-offline (exp01) and one captured live by `netguard monitor` on the victim's
-lab interface (live-syn-01). This is a start, not a verdict: the same attack
-type twice, on an isolated two-VM UTM lab (Kali 10.77.0.10 -> Ubuntu
-10.77.0.20). No benign baseline result and no other attack type exist yet, so
-the other acceptance criteria in [LAB_SETUP.md § 8](LAB_SETUP.md) stay open.
-The 1-hour benign run (benign-01) has been started; it has no result yet.
+**Three real captures measured so far (27 Oct 2026)**: two SYN scans, one
+analysed offline (exp01) and one captured live by `netguard monitor` on the
+victim's lab interface (live-syn-01), and one hour of live benign traffic
+(benign-01). This is a start, not a verdict: one attack type and one benign
+traffic mix, on an isolated two-VM UTM lab (Kali 10.77.0.10 -> Ubuntu
+10.77.0.20). No other attack type has been captured yet, so the attack
+criteria in [LAB_SETUP.md § 8](LAB_SETUP.md) stay open.
 
 Provenance and integrity: the capture bytes are hash-verified
 (SHA-256 `376d4b6c…bbbd93a9`, matched on the capture host and the Mac). This
@@ -370,7 +370,85 @@ like this, but that is an estimate until a live run confirms it.
 Zeek logged a warning that the trace contains only TCP control packets
 (expected for a SYN scan without payloads). One live run of one attack type
 shows the live path, kernel-drop accounting and live/offline agreement work
-on real traffic; it is not a resource or long-run measurement (benign-01).
+on real traffic; it is not a resource or long-run measurement (that is
+benign-01, below).
+
+### benign-01 — one hour of live benign traffic
+
+`netguard monitor --sudo --duration 3640` on the Ubuntu VM's lab interface
+(`eval/lab/victim-live-rss.sh`, NetGuard as a normal user, default
+configuration, early warnings on) while `eval/lab/kali-benign.sh 3600` on Kali
+sent paced client traffic: one cycle every 4-9 s of a ping and a TCP connect
+to SSH port 22 that reads the server banner. NetGuard was the `netguard-lab.pyz`
+build of commit `a845dea`; the two runner scripts are byte-identical to the
+ones in `eval/lab/` (SHA-256 `31118e1b…` and `fee45b8a…`). This is a run of
+that build, not of later commits. The five result files (pcap, live JSONL,
+monitor output, RSS samples, metadata) were transferred and their SHA-256
+values checked on the Mac against the list written on the VM; pcap
+`f3c6a7f9…f0e7b849`.
+
+| Measure | Result |
+|---|---|
+| Run | monitor: duration reached after 3640.1 s; runner's monotonic clock 3641 s; monitor exit status 0 |
+| Kernel counters (from the monitor's summary line) | captured 4245, received by filter 4245, **dropped 0**; pcap not truncated, 421 579 bytes |
+| Capture (re-analysed on the Mac) | 4245 packets over 3608.7 s (first to last packet), 0 decode errors; TCP 3415, ICMP 750, UDP 80; 398 flows (376 SSH, 1 ICMP echo flow, 20 multicast UDP, 1 rejected TCP/80) |
+| **Final alerts** | **live 0, offline 0** (`live_offline_equal.py` equal; the live JSONL is empty, so not even an early warning); offline re-analysis used the current source, whose `src/` is unchanged since `a845dea`; no incidents; no detector reported lost state (all `evicted_*` / `untracked_*` zero) |
+| Analyser memory | 724 RSS samples, one every 5 s; first 34 488 KiB, last 30 104 KiB, highest 34 812 KiB (34.0 MiB) |
+
+What the traffic was, from the capture rather than the script: 376 SSH
+connections from Kali, 375 of which carry only the server's 42-byte banner
+(the client sends nothing) and one, starting before the generator, a full SSH
+exchange with payload in both directions; 375 ICMP echo request/reply pairs;
+one connection attempt to TCP/80, refused (the generator's one-time check for
+a web server; the victim runs none, so no HTTP followed). The UDP flows are
+all multicast that nobody answers: SSDP (UDP/1900) and mDNS (UDP/5353) from
+192.168.128.1 and an IPv6 link-local address, and the victim's own mDNS. So
+the lab interface is not traffic-free, and part of the "benign" traffic is
+the host's own discovery noise.
+
+Memory: the series rises from 34 488 to 34 812 KiB in the first two minutes,
+holds there until about 9.5 minutes into the run, then falls and stays
+between 28 808 and 32 564 KiB for the rest of the run. The peak is the highest
+5-second sample; VmHWM agreed with it, then later read 34 608 KiB. The kernel
+updates that figure lazily, so it can fall, and a short peak between two
+samples could be missed.
+
+Flow states vs **Zeek 8.2.2** (`conn.log` of the same pcap, network disabled,
+checksum validation on): **396 of 397** TCP/UDP flows match on endpoints,
+direction and state. The comparison does **not** come out equal, and
+`compare-flows` reports two differences:
+
+- **mDNS flow split (explained, a timeout setting).** Zeek splits the mDNS
+  traffic from 192.168.128.1 and from an IPv6 link-local address into five
+  connections each, NetGuard into four: two packet bursts 46.7 s apart are one
+  flow for NetGuard (UDP idle timeout 60 s) and two for Zeek, which applies
+  `dns_session_timeout` (10 s) to traffic its DNS analyser handles. With
+  `dns_session_timeout=60sec` Zeek also produces four, and only the next
+  difference remains.
+- **One SSH connection classed differently (NetGuard's state rule).** In
+  10.77.0.10:40076 -> 10.77.0.20:22 both sides sent FIN, then the client sent
+  two RSTs. Zeek reports SF (closed normally; history `ShAFadfR`), NetGuard
+  RSTO, because its state function checks RST before a FIN exchange. This is
+  a real semantic difference from Zeek, not a capture artefact; it is listed
+  as an open task (8.14). It does not change any alert here.
+
+Zeek also logged one `bad_TCP_checksum` packet (in the first SSH session);
+running Zeek with `-C` (checksums ignored) gives the same comparison.
+
+What this shows, and what it does not:
+
+- On this one hour of low-rate SSH-banner and ping traffic with multicast
+  background, NetGuard raised no alert live or offline, lost no packets in
+  the kernel, and peaked at 34.0 MiB. The LAB_SETUP criteria "benign noise"
+  (≤ 1 final alert per hour) and "resources" (RSS below 500 MB, no state-loss
+  warnings) are met **for this scenario**.
+- It is not a false-positive rate for real networks: one host pair, 1.2
+  packets/s on average, almost no payload, no web, DNS, file transfer or
+  user activity. It says nothing about memory under high traffic or over days
+  (the synthetic worst cases are in § 3).
+- UDP was compared with Zeek only as one-way multicast; there was no UDP
+  request/response traffic. SSH payload was compared only as far as flow
+  states go.
 
 The tooling behind these: `netguard lab evaluate --manifest`, `compare-flows`,
 and the lab scripts in `eval/lab/` ([CAPTURE_EVALUATION.md](CAPTURE_EVALUATION.md),

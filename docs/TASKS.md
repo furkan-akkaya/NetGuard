@@ -38,12 +38,13 @@ Deferred (ADR-0011): Zeek/Suricata input, ICMP tunnel rule, resolver policy, sea
 - [x] **8.9** First real capture measured (exp01 SYN scan, hash-verified): NG-SCAN-001 + NG-SCAN-002 with declared entities, 0 FP; flow states == real Zeek 8.2.2 conn.log (1001/1001); replay == offline final alerts. One capture, not tool-wide precision/recall. See [EVALUATION.md § 6](../docs/EVALUATION.md)
 - [x] **8.10** Runners for the remaining experiments (`eval/lab/kali-run.sh`), benign + RSS live runner (`victim-live-rss.sh`), live-vs-offline and Zeek helpers; container-tested
 - [x] **8.11a** Live-interface SYN measurement (live-syn-01, 90 s, 0 kernel drops reported): live final alerts == offline except `reported_at`; flow states == Zeek 8.2.2 (1000/1000)
-- [ ] **8.11b** 👤 1 h benign baseline + RSS (benign-01): started on the VMs, no result yet
+- [x] **8.11b** 1 h benign baseline + RSS (benign-01, build of `a845dea`): 3640 s, 4245 packets, 0 kernel drops; live 0 = offline 0 final alerts; peak RSS 34.0 MiB; flow states vs Zeek 8.2.2 396/397, differences explained. One low-rate SSH-banner/ping mix, not a production FP rate ([EVALUATION.md § 6](EVALUATION.md))
 - [ ] **8.11c** Live delay with early warnings on: not measured yet (only an estimate from the synthetic benchmark)
 - [ ] **8.12** 👤 Remaining attack experiments (connect/XMAS/FIN/NULL/slow/UDP/sweep/frag/SYN-burst) via `kali-run.sh`; then precision/recall over all lab attacks
+- [ ] **8.14** Flow state: FIN in both directions followed by RST is RSTO in NetGuard, SF in Zeek (seen once in benign-01). Decide whether to follow Zeek, with a test
 - [ ] **8.13** Open (needs lab changes): NG-ARP-001 (a third address to impersonate), NG-DNS-001/002 (a resolver on the victim), NG-RATE-001/NG-VOL-001 (>=10 min baseline then a change)
 - [ ] **9.5** Run `deploy/netguard.service` under systemd on the Ubuntu server ([DEPLOYMENT.md](DEPLOYMENT.md))
-- [ ] **6.5** Live capture on a real interface (loopback already verified in an Ubuntu container): `netguard monitor -i <iface> --write live.pcap` during lab attacks; compare with `netguard analyze live.pcap`; note kernel drops ([LIVE_CAPTURE.md](LIVE_CAPTURE.md))
+- [x] **6.5** Live capture on a real interface: done on the lab VM in live-syn-01 and benign-01 (`monitor --sudo --write`, compared with offline analysis, kernel drops recorded); see 8.11a/b
 - [ ] **8.4** Capture attack traffic (`nmap -sS/-sT/-sX/-sN/-sF/-sU/-sn`, `-T1`, `masscan`, `arp-scan`, `bettercap arp.spoof`) and ≥ 1 h of benign traffic into `captures/` (git-ignored)
 - [ ] **2.11** On those captures: `netguard flows` state distribution for `nmap -sS`, compared with Zeek `conn.log`
 - [ ] On lab captures: `nmap -sS -T1`, `nmap -sU`, `nmap -f`, `hping3 -S --flood` (isolated lab only) to validate NG-SCAN-002/003, NG-FRAG-001, NG-SYN-001
