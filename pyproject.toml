@@ -96,7 +96,7 @@ skip_covered = true
 # node_modules can never end up in it.
 source-include = [
     "CHANGELOG.md", "ROADMAP.md", "CONTRIBUTING.md", "SECURITY.md", "netguard.example.toml", "uv.lock",
-    "docs/**", "tests/**", "benchmarks/**", "deploy/**",
+    "docs/**", "tests/**", "benchmarks/**", "deploy/**", "eval/captures.example.toml",
     "frontend/src/**", "frontend/public/**", "frontend/index.html", "frontend/package.json",
     "frontend/pnpm-lock.yaml", "frontend/tsconfig.json", "frontend/vite.config.ts",
 ]
