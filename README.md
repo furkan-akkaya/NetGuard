@@ -200,6 +200,7 @@ See [ARCHITECTURE.md](docs/ARCHITECTURE.md) and the [decision records](docs/adr/
 | [Engineering report](docs/ENGINEERING_REPORT.md) | What was built, verified and not verified; defects found by measuring |
 | [Demo](docs/DEMO.md) | Screenshots and CLI output from real runs, with reproduction steps |
 | [Lab setup](docs/LAB_SETUP.md) | Building a safe UTM/Kali/Ubuntu lab to validate detections |
+| [Capture evaluation](docs/CAPTURE_EVALUATION.md) | Scoring checksum-pinned real captures, comparing flows with Zeek |
 | [Learning notes](docs/learning/) | Technical deep-dives (Turkish) |
 
 ## Development

@@ -69,6 +69,11 @@ something was measured or attacked:
 | Screenshots of real analyses (Phase 10) | The traffic chart interpolated across empty time buckets, drawing a ramp where there was a gap | Step chart that drops to zero |
 | Code review against the threat model (Phase 10) | Detector state dropped under a flood was counted but never shown, although the docs said it was | Counters in the output, warnings in CLI, report and dashboard |
 | Dependency review (Phase 10) | `python-multipart` was installed with the API but never used (uploads are raw streamed bodies) | Removed: one dependency less to patch |
+| External audit (27 Oct 2026), concurrency test | Two concurrent uploads both passed the quota check (800 bytes stored under a 500-byte quota) | Per-chunk quota reservations |
+| External audit, HTTP-level test | Origin check ignored the port: another local port could change data | Scheme, host and port compared; `--allowed-origin` for proxies |
+| External audit, accelerated 25 h capture clock | Live sessions kept every alert event in memory | Bounded history; every event still streamed, drops counted |
+| External audit, sparse timestamps | Time series held more buckets than its limit | Downsample until the limit holds |
+| External audit, clean install vs lock | The tested wheel ran Starlette 1.10.0 while lock and SBOM said 1.9.0 | Release installs with the lock as constraints and verifies the installed set |
 
 ## 5. Verification
 

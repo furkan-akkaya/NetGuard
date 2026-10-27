@@ -11,6 +11,13 @@ python3 -m venv ~/netguard && ~/netguard/bin/pip install "netguard-0.8.0-py3-non
 ~/netguard/bin/pip install netguard-0.8.0-py3-none-any.whl
 ```
 
+From the next release on, each release also ships
+`netguard-<version>-requirements.txt`: the locked dependency versions the
+release was tested with and that its SBOM lists. To install exactly that set:
+`pip install -c netguard-<version>-requirements.txt "netguard-<version>-py3-none-any.whl[web]"`.
+Without `-c`, pip picks the newest compatible versions, which were not tested
+with that release.
+
 From source: `uv sync`, then `pnpm --dir frontend install && pnpm --dir frontend build`
 to build the dashboard (see CONTRIBUTING.md).
 
@@ -50,6 +57,11 @@ proxy in front (`deploy/Caddyfile`), keep NetGuard on 127.0.0.1, and:
 - set `NETGUARD_API_TOKEN` (the dashboard asks for it under Settings);
 - pass the public name with `--allowed-host netguard.lab.example`: other Host
   names are refused (DNS-rebinding defence);
+- pass the browser origin with `--allowed-origin https://netguard.lab.example`:
+  state-changing requests must come from the server's exact origin (scheme,
+  host and port) or an allowed one. Behind TLS the browser says `https://…`
+  while NetGuard sees plain http, so without this flag uploads and profile
+  changes from the dashboard get 403;
 - keep the proxy's upload limit at or above `--max-upload-mb`.
 
 ## Live capture on the server

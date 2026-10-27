@@ -10,10 +10,24 @@ Phase 10: code-quality review, evaluation report and release preparation.
 - Analysis statistics report every detector's counters (`stats.detectors`). When a detector dropped state because its table was full (`evicted_*`, `untracked_*`), the text output, the HTML report and the dashboard show a warning. Before, these losses were counted internally but never shown, although the docs said they were.
 - NG-ARP-001 counts new IPs it could not track because the binding table was full (`untracked_ips`).
 
+### Security
+- Concurrent uploads could exceed the storage quota (two 400-byte uploads against a 500-byte quota were both stored). Uploads now reserve quota per chunk; reservations are released when the capture is stored or the upload fails, is rejected or disconnects.
+- The Origin check compared host names only: `http://localhost:9999` could change data on `http://localhost`, including a body-less POST that starts an analysis. Scheme, host and port must now match; `null` and malformed origins are refused. **Behind a TLS proxy, add `--allowed-origin https://<name>`**, or dashboard writes get 403.
+
+### Added
+- `netguard lab evaluate --manifest`: score checksum-pinned captures against ground truth declared in advance (tool, tool version, command, provenance, configuration hash); lab, public and synthetic scores are kept apart; integrity failures exit 2 without a score. Adapted from an earlier unmerged patch after review.
+- `netguard lab compare-flows`: compare every TCP/UDP flow (endpoints, direction, state) with a Zeek JSON `conn.log`.
+- `--allowed-origin` for `netguard serve`.
+- Statistics: `alerts.events_total`, `alerts.final_total`, `alerts.history_dropped`.
+- docs/CAPTURE_EVALUATION.md; lab acceptance criteria in LAB_SETUP.md, fixed before any lab result.
+
 ### Changed
+- Live sessions keep the latest 10 000 alert events in memory; every event is still printed, and the summary says when older ones were dropped. Offline analyses keep every alert.
 - Release workflow: a version with letters (`1.0.0rc1`) becomes a draft *pre-release*.
+- Release workflow: re-checks the tagged source (lint, types, tests with the 90% gate, dependency audit, licenses) and all three version fields; installs the wheel with the locked dependencies, checks the installed set against the lock the SBOM is made from, and ships that requirements file; the sdist now contains tests, docs, benchmarks, deploy files and the dashboard sources, may contain only git-tracked files, and must rebuild the dashboard and pass the tests; the smoke-test server is stopped.
 
 ### Fixed
+- The time series could exceed its bucket limit with sparse timestamps; downsampling now repeats until the limit holds, keeping the totals.
 - The dashboard's traffic chart drew a line across empty time buckets, so a gap followed by a burst looked like a gradual ramp. It is now a step chart that drops to zero where no traffic was seen. Its axis labels no longer grow with the chart's width.
 
 ### Documentation

@@ -328,6 +328,15 @@ karşılandı; flow doğrulaması, canlı yakalama ve ölçülmüş sınırlar g
 trafiği bekliyor, release artefaktları yalnızca yerelde doğrulandı. Bu yüzden
 v1.0.0 henüz etiketlenmez; önce `v1.0.0rc1` ile release workflow'u doğrulanır.
 
+**Dış denetim (2026-10-27):** bağımsız bir inceleme, testlerin kaçırdığı dört
+kusuru yeniden üretti: eşzamanlı yüklemelerde kota aşımı, portu karşılaştırmayan
+Origin kontrolü, canlı oturumda sınırsız alarm geçmişi ve sınırı aşabilen zaman
+serisi. Release sürecinde de üç eksik buldu: etiketlenen kaynak yeniden test
+edilmiyordu, kurulan bağımlılıklar SBOM ile eşleşmiyordu ve sdist eksikti.
+Hepsi `fix/audit-2026-10-27` dalında regresyon testleriyle düzeltildi. Aynı dalda
+gerçek yakalama değerlendirmesi için manifesto ve Zeek karşılaştırma araçları ile
+lab kabul ölçütleri de hazırlandı. Lab sonuçları hâlâ yok.
+
 ---
 
 ## 6. Teknoloji kararları

@@ -291,5 +291,13 @@ negatives in more detail.
 
 ## 6. Real captures
 
-*Not yet measured.* This section will hold the results of roadmap Phase 8
-(UTM lab: Kali → Ubuntu, [LAB_SETUP.md](LAB_SETUP.md)) and of public datasets.
+*Not yet measured.* No real capture has been analysed for this document.
+
+The tooling is ready: `netguard lab evaluate --manifest` scores
+checksum-pinned captures against ground truth declared before the run and
+keeps lab, public and synthetic scores apart; `netguard lab compare-flows`
+matches every TCP/UDP flow (endpoints, direction, state) against Zeek's
+`conn.log` ([CAPTURE_EVALUATION.md](CAPTURE_EVALUATION.md)). Both are tested
+on generated fixtures and hand-written Zeek rows only, which proves the code,
+not NetGuard's accuracy. The experiments and their acceptance criteria,
+fixed before any result exists, are in [LAB_SETUP.md § 6](LAB_SETUP.md).

@@ -10,7 +10,7 @@ Status: ✅ met · 🟡 partly met (what is missing is named) · ❌ not met yet
 | # | Definition of Done | Status | Evidence | Missing |
 |---|---|---|---|---|
 | 1 | Documented core features genuinely work | ✅ | 325 Python and 14 dashboard tests in CI; every CLI command, API route and dashboard page exercised against real analyses ([DEMO.md](DEMO.md)) | — |
-| 2 | Packet and flow processing are verified | 🟡 | Reader and decoder tests, differential fuzzing against dpkt, flow-state tests, 27 scenarios through the full pipeline | Flow states not yet compared with Zeek `conn.log` on real captures (task 2.11, Phase 8) |
+| 2 | Packet and flow processing are verified | 🟡 | Reader and decoder tests, differential fuzzing against dpkt, flow-state tests, 27 scenarios through the full pipeline | `lab compare-flows` exists and is tested on fixtures; not yet run against Zeek on a real capture (task 2.11, Phase 8) |
 | 3 | Detection rules have reproducible tests | ✅ | Unit tests per rule; attack and benign look-alike scenarios with pinned TP/FP/FN (`tests/test_scenarios.py`); `netguard lab evaluate` | — |
 | 4 | Alerts include meaningful supporting evidence | ✅ | Summary, structured evidence with thresholds, confidence factors, ATT&CK mapping; contract pinned by `test_alert_contract_v1` | — |
 | 5 | Backend, frontend and reporting are integrated | ✅ | One package: API serves the dashboard; HTML report, NDJSON/ECS and CSV exports from the API and the dashboard | — |
@@ -18,16 +18,19 @@ Status: ✅ met · 🟡 partly met (what is missing is named) · ❌ not met yet
 | 7 | Live capture works in supported authorized environments, limitations documented | 🟡 | `monitor`/`replay` tested; live capture verified on loopback as an unprivileged user (Ubuntu container, `setcap`); [LIVE_CAPTURE.md](LIVE_CAPTURE.md) | Not yet run on a real network interface (task 6.5, user's lab) |
 | 8 | Performance and detection limitations are measured | 🟡 | Throughput, memory, flood behaviour, detection delay, synthetic scorecard ([EVALUATION.md](EVALUATION.md)); limitations table with status | Detection quality on real traffic not measured (Phase 8 lab captures) |
 | 9 | Automated tests and quality checks pass | ✅ | CI: lint, strict typing, tests on 2 OS × 4 Python versions, coverage gate, dashboard build and tests, dependency audit, license gate | Re-check on the final release commit |
-| 10 | Security-sensitive defaults are reviewed | ✅ | [THREAT_MODEL.md](THREAT_MODEL.md) with 7 fixes; localhost bind, token for remote access, Host/Origin checks, upload and storage limits, umask 077, no root | — |
+| 10 | Security-sensitive defaults are reviewed | ✅ | [THREAT_MODEL.md](THREAT_MODEL.md): 7 Phase 9 fixes, plus 4 defects found by the external audit of 27 Oct 2026 (concurrent quota, Origin port, live alert history, time-series bound), each fixed with a regression test | The audit showed the Phase 9 review missed cases: review again on the release commit |
 | 11 | Documentation reflects the actual implementation | ✅ | Phase 10 review corrected stale content (limitations table, drop counters, protocol list); [ENGINEERING_REPORT.md](ENGINEERING_REPORT.md) | Re-read once more on the release commit |
-| 12 | GitHub release artifacts are verified | ❌ | Release workflow written and linted; the same steps run locally on this branch: sdist and wheel built, wheel installed in a clean venv, `lab evaluate`, server health and dashboard checked, SBOM generated (15 components) | Never run on GitHub: needs a tag (task 10.5) |
+| 12 | GitHub release artifacts are verified | ❌ | Release workflow re-checks the tagged source (lint, types, tests, coverage, audit, licenses), the three version fields, installs the wheel with the locked dependencies and verifies them against the lock the SBOM comes from, rejects untracked files in the sdist, and rebuilds the dashboard and runs the tests from the sdist. These steps were run locally from a clean `git archive` | Never run on GitHub: needs a tag (task 10.5) |
 
 ## Verdict
 
 **NetGuard does not meet the Definition of Done yet**, so it should not be
-tagged v1.0.0. Three items depend on the user's lab (2, 7, 8) and one on a
-release run (12). Everything that can be done without the lab and without a
-publishing decision is done.
+tagged v1.0.0. Three items depend on the lab (2, 7, 8) and one on a release
+run (12). "8 of 12" is a count of checklist rows, not a completion
+percentage: the open items need the most field work, and the 27 October
+audit found defects in items already marked as met (now fixed). Work that
+needs neither the lab nor a publishing decision is done as of that audit's
+fixes.
 
 ## Recommended path
 

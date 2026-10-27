@@ -82,10 +82,47 @@ sudo tcpdump -i enp0s1 -U -w - 'not port 22' | uv run netguard analyze -f jsonl 
 
 Filtering out your own SSH session (`not port 22`) keeps the analysis clean.
 
-## 6. Recording results
+## 6. Recording results: manifest, Zeek, acceptance criteria
 
-For each experiment, record the tool version and the exact command, the
-packet count, the alerts (`-f json`), and whether the outcome matched the
-expectation. Then add a row to `EVALUATION.md § Real captures`. Do **not**
-commit captures that contain anything personal. Lab-only pcaps can be shared
-once you have checked them.
+Write the expected result of every experiment **before** running NetGuard on
+it, in `eval/captures.toml` (copy `eval/captures.example.toml`; the file is
+git-ignored). For each capture: its SHA-256 after tcpdump has stopped, the
+tool, `tool_version` and exact command, `provenance = "lab"`, `kind`, and the
+expected `(detector, entity)` pairs. Then:
+
+```bash
+netguard lab evaluate --manifest eval/captures.toml --format json > eval/reports/lab.json
+zeek -r captures/syn_scan.pcap LogAscii::use_json=T        # in an empty directory, on the same file
+netguard lab compare-flows captures/syn_scan.pcap conn.log > eval/reports/syn_scan.zeek.json
+```
+
+Details and the meaning of every number: [CAPTURE_EVALUATION.md](CAPTURE_EVALUATION.md).
+
+### Acceptance criteria (fixed before any lab result exists)
+
+| Check | Pass when | Recorded as |
+|---|---|---|
+| Attack detection | Every planned attack experiment detected by ≥ 1 expected rule; entity-level recall ≥ 0.8 over all lab attacks | TP/FN per experiment, recall |
+| Benign noise | ≥ 1 h of benign traffic with the default configuration: ≤ 1 final alert per hour; every alert explained | FP/hour, the alerts |
+| Live = offline | `monitor --write` final alerts equal `analyze` of the written file, when tcpdump reports 0 kernel drops | diff of the two JSON outputs, drop counts |
+| Flow states | `compare-flows` equal, or every mismatch explained in writing (timeouts, offload artefacts) | comparison JSON |
+| Resources | 1 h live session: RSS stays below 500 MB, no state-loss warnings on benign traffic | `ps` samples, the summary line |
+| Confidence | Each confidence factor separates true from false alerts on lab data, else it is removed | per-factor table |
+
+A failed criterion is a result, not something to tune away silently: record
+it in `EVALUATION.md § Real captures` with the fix or the limitation.
+
+### Which machine does what
+
+- **UTM host-only network (Kali → Ubuntu VM):** all scans, floods, ARP
+  spoofing and the live-capture experiments. Nothing else.
+- **The physical Ubuntu server on the home network:** never a target, and no
+  capture on its home interface during attacks. It runs other services, which
+  must not be changed. It can host NetGuard for offline analysis of copied
+  lab captures, and a systemd test only with a separate unit and data
+  directory, after the owner agrees.
+- **The Mac:** runs NetGuard offline and Zeek (or Zeek in a container) on
+  copied captures.
+
+Do **not** commit captures, manifests with private addresses, or reports
+until they have been reviewed.

@@ -26,10 +26,12 @@ Deferred (ADR-0011): Zeek/Suricata input, ICMP tunnel rule, resolver policy, sea
 - [x] **10.4** v1.0 checklist against the Definition of Done ([RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md)): 8/12 met, so no v1.0.0 yet; release steps dry-run locally
 - [ ] **10.5** 👤 Decide: tag `v1.0.0rc1` to verify the release workflow (draft pre-release, stays private); later `v1.0.0` after the lab; repository visibility
 - [x] **10.6** LinkedIn (EN/TR), CV and interview drafts with measured claims only ([PORTFOLIO.md](PORTFOLIO.md))
+- [x] **10.7** Fixes from the external audit (27 Oct 2026): concurrent upload quota, full Origin check (`--allowed-origin`), bounded live alert history, time-series bound, release gates (tagged-source checks, locked install = SBOM, sdist coverage)
+- [x] **8.5** Lab tooling without the lab: `lab evaluate --manifest`, `lab compare-flows` (Zeek), acceptance criteria fixed in advance ([LAB_SETUP.md § 6](LAB_SETUP.md))
 
 ## Waiting on the user 👤
 
-- [ ] **8.3** Build the UTM lab: Kali (attacker) + Ubuntu (victim) on an isolated host-only network ([LAB_SETUP.md](LAB_SETUP.md))
+- [ ] **8.3** Build the UTM lab: Kali (attacker) + Ubuntu VM (victim) on an isolated host-only network ([LAB_SETUP.md](LAB_SETUP.md)); confirm SSH access to the Ubuntu VM. The physical Ubuntu server stays out of attack traffic
 - [ ] **9.5** Run `deploy/netguard.service` under systemd on the Ubuntu server ([DEPLOYMENT.md](DEPLOYMENT.md))
 - [ ] **6.5** Live capture on a real interface (loopback already verified in an Ubuntu container): `netguard monitor -i <iface> --write live.pcap` during lab attacks; compare with `netguard analyze live.pcap`; note kernel drops ([LIVE_CAPTURE.md](LIVE_CAPTURE.md))
 - [ ] **8.4** Capture attack traffic (`nmap -sS/-sT/-sX/-sN/-sF/-sU/-sn`, `-T1`, `masscan`, `arp-scan`, `bettercap arp.spoof`) and ≥ 1 h of benign traffic into `captures/` (git-ignored)
