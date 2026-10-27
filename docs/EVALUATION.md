@@ -299,9 +299,9 @@ last section). All on an isolated two-VM UTM lab (Kali 10.77.0.10 -> Ubuntu
 10.77.0.20). Each experiment is one run of one tool configuration: the
 results say the declared rule fired with the declared entity on that capture,
 not what precision or recall NetGuard has in general. Later the same day the
-slow scan (exp06), the ARP and DNS experiments (exp11-exp13) and the live
-early-warning run (live-early-01) followed (last sections). The baseline
-experiment (exp14) is not measured yet.
+slow scan (exp06), the ARP and DNS experiments (exp11-exp13), the live
+early-warning run (live-early-01) and the baseline experiment (exp14, accepted
+on its second run) followed (last sections).
 
 Provenance and integrity: the capture bytes are hash-verified
 (SHA-256 `376d4b6c…bbbd93a9`, matched on the capture host and the Mac). This
@@ -613,4 +613,50 @@ defaults to 1 MiB/s (`--rate`, 0.5-4 MiB/s). The retry
 (`exp14-rate-volume-r02`) runs on the VM with the owner's local variant of
 the two helpers (same rate and buffer, different bytes from the repository
 versions: SHA-256 `cddb1d41…` and `32f29430…` versus `a993fcfc…` and
-`d39c2bd8…`) on top of the `8a7f181` core. Its result is not in yet.
+`d39c2bd8…`) on top of the `8a7f181` core. Its result follows.
+
+### exp14 r02 — baseline, connection burst and upload (accepted)
+
+The retry ran a new 13-minute baseline (capture 16:34:18-16:49:08 UTC, Kali
+16:34:21-16:48:50, burst from 16:47:25): 300 of 300 SSH connections answered,
+50331648 bytes sent and received at 1 MiB/s (48.0 s). The capture is clean:
+**59720 packets captured, 59720 received, 0 dropped by the kernel**, 0 decode
+errors. Zeek 8.2.2 (defaults, checksums on): 2331/2331 flows equal.
+
+Provenance: the capture's own manifest (`exp14-rate-volume-r02.sha256`)
+verified on the Mac; the Kali record and the Ubuntu upload log are r02's (times
+above, 48.0 s upload). The helpers write under the fixed name
+`exp14-rate-volume`, so the Ubuntu role manifest copied next to them
+(`ubuntu-exp14-rate-volume.*`) belongs to the failed run 01 (16:13 start, its
+pcap `e7e84331…`) and is not evidence for r02.
+
+**Raw capture, default rules (the result):** exactly the two declared
+detections and no other alert.
+
+| Rule | Entity | Peak | Baseline (13 intervals) | Threshold |
+|---|---|---|---|---|
+| NG-RATE-001 | 10.77.0.10 | 431 connections in one interval | 127.55 ± 15.03 | 318.9 |
+| NG-VOL-001 | 10.77.0.20 | 52.7 MB in one interval | 74 267 bytes | 20 MB floor |
+
+Kali's baseline again includes the bridge's control connections (about 120
+per interval). This time the 300-connection burst fell into one interval
+(431 > 318.9); in run 01 it was split across two (177 and 388 against 392.2).
+So the raw result holds for this run, and the margin depends on how the burst
+lines up with the 60 s intervals while the bridge is running.
+
+**Additional analysis, declared before the burst** (plan written 16:44:46
+UTC, SHA-256 `dbf6d8b7…`): the same capture without the lab control plane,
+predicate "drop TCP packets with source or destination port 8766 or 8767",
+same default rules. 19516 packets removed, 40204 kept (independently
+re-derived on the Mac with the same counts and identical packet contents; the
+owner's derived file is a nanosecond pcap, SHA-256 `14d53aec…`, a
+microsecond re-derivation hashes differently). Result: the same two
+detections, NG-RATE-001 with 303 connections against a baseline of
+8.68 ± 0.56 (threshold 21.7). This shows what the rule sees without the
+artificial control traffic; it does not replace the raw result above.
+
+Run 01 (failed, kernel drops) stays excluded, as does the first exp02 run
+(438 kernel drops). The accepted real captures are the seventeen pinned in
+`real-regression.toml`; together they give each of the eleven rules at least
+one real detection with its declared entity. That is one run per experiment
+on one lab host pair, not a precision or recall figure.

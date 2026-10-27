@@ -192,3 +192,18 @@ flows = 1225
 final_rules = ["NG-SCAN-001", "NG-SCAN-002"]
 states = { REJ = 999, RSTO = 1, SF = 225 }
 zeek_args = []
+
+# exp14 retry (run 01 failed on 9945 kernel drops and is not pinned). Kit
+# 8a7f181 with the owner's local helper variant on Ubuntu (1 MiB/s upload,
+# 64 MiB tcpdump buffer). Raw capture, default rules; the bridge's control
+# connections are included (pinned as captured, not filtered).
+
+[[capture]]
+name = "exp14-rate-volume-r02"
+sha256 = "0808fe99ac005bf7"
+packets = 59720
+decode_errors = 0
+flows = 2332
+final_rules = ["NG-RATE-001", "NG-VOL-001"]
+states = { S0 = 1, SF = 2331 }
+zeek_args = []

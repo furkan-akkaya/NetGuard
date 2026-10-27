@@ -17,9 +17,9 @@ technique it maps to.
 > release yet) — packet ingestion, flow engine, eleven detection rules with
 > explainable confidence, alert correlation, a REST API, a web dashboard and
 > live capture, tested on 27 labelled synthetic scenarios and hardened against
-> a written threat model. Real lab captures are measured (scans, a SYN flood,
-> ARP, DNS, live early warnings, one hour of benign traffic); the baseline
-> experiment is still open
+> a written threat model. On an isolated lab, each of the eleven rules fired
+> on real traffic with its declared entity (17 accepted captures, including
+> one hour of benign traffic with no alert; one run per experiment)
 > ([delivery report](docs/DELIVERY_REPORT.md)).
 
 ```text

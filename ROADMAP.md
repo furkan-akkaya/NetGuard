@@ -78,8 +78,10 @@ Zeek ile eşit. Fragment taramasındaki fark tasarım sınırıdır (IP fragment
 birleştirme yok). Sonra yavaş tarama, ARP, DNS ve canlı erken uyarı da
 ölçüldü: her biri yalnız beklenen alarmı verdi; canlıda erken uyarı eşiği
 geçiren paketten 0,68-0,76 s sonra raporlandı (tek koşu). Baseline deneyi
-(exp14) henüz ölçülmedi: ilk koşu 9945 kernel kaybıyla başarısız sayıldı,
-tekrar koşusunun sonucu bekleniyor ([eval/lab/RUN.md](eval/lab/RUN.md)).
+(exp14) ilk koşuda 9945 kernel kaybıyla başarısız sayıldı; tekrar koşusu
+(r02) 0 kayıpla NG-RATE-001 ve NG-VOL-001'i verdi. 11 kuralın her biri artık
+en az bir gerçek lab yakalamasında beklenen varlıkla tetiklendi (17 kabul
+edilen yakalama, deney başına tek koşu; doğruluk oranı değildir).
 
 ## 3. Fazlar arası bağımlılık
 

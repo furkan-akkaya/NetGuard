@@ -54,9 +54,10 @@ Real traffic (isolated UTM lab, details in [EVALUATION.md § 6](EVALUATION.md)):
 | benign-01, 1 h low-rate SSH/ping traffic, live | 0 alerts live and offline, 0 kernel drops, peak RSS 34.0 MiB; flows equal to Zeek with its DNS timeout at 60 s |
 | exp02-exp05, exp07-exp10 (connect, Xmas, FIN, NULL, UDP scans, ping sweep, fragmented scan, SYN burst), offline | each raised exactly its declared detections, no other alert, 0 kernel drops; flows equal to Zeek except exp09 (no fragment reassembly, a documented limit); NULL/FIN/Xmas found a flow-state bug, fixed |
 | exp06 slow scan (`-T1`), exp11 ARP binding change, exp12 DNS NXDOMAIN, exp13 DNS tunnel-like names, offline | each exactly its declared detection (NG-SCAN-002, NG-ARP-001, NG-DNS-002, NG-DNS-001), no other alert, 0 kernel drops; flows equal to Zeek (exp13 with Zeek's attempt timeout set to NetGuard's 30 s) |
+| exp14 r02, 13 min baseline then 300 connections and a 48 MiB upload, offline | NG-RATE-001 (10.77.0.10) and NG-VOL-001 (10.77.0.20), no other alert, 0 kernel drops; Zeek 2331/2331. Same two alerts on the declared control-traffic-free derivative (19516 packets removed). Run 01 failed (9945 kernel drops) and is not counted |
 | live-early-01, SYN scan, live with early warnings | early warnings 0.683 s (NG-SCAN-001) and 0.757 s (NG-SCAN-002) after the threshold-crossing packet; final alerts equal offline except `reported_at`; 0 kernel drops; Zeek 1225/1225 |
 
-All sixteen are pinned by `eval/lab/real_regression.py --zeek` (packets,
+All seventeen are pinned by `eval/lab/real_regression.py --zeek` (packets,
 flows, flow states, final alerts, Zeek equality or the pinned exp09
 difference); it passed on this branch. live-syn-01 and benign-01 used a build
 of commit `a845dea`, everything from exp02 on a lab kit of `8a7f181`; the
@@ -76,17 +77,18 @@ repository. That configuration (4 MiB/s, tcpdump's default buffer) is the
 not counted (EVALUATION.md § 6). For the retry the owner replaced the upload
 helper and `victim-capture.sh` on the VM with a local variant (1 MiB/s, 64 MiB
 tcpdump buffer; SHA-256 `cddb1d41…` and `32f29430…`, recorded in
-`retry-update-proof.json`). The repository's helpers now default to the same
-rate and buffer but are not byte-identical to that variant (`a993fcfc…` and
-`d39c2bd8…`).
+`retry-update-proof.json`); r02 ran with it and is accepted. The repository's
+helpers now default to the same rate and buffer but are not byte-identical to
+that variant (`a993fcfc…` and `d39c2bd8…`).
 
 ## Not verified, or not met
 
 - Precision/recall on real traffic: one run per experiment, so no rate.
-- The baseline experiment (exp14: NG-RATE-001, NG-VOL-001) is not measured:
-  run 01 failed on kernel drops, the retry's result is not in. Task 8.17
-  (partial first baseline interval) is open
-  ([eval/lab/RUN.md](../eval/lab/RUN.md)).
+- exp14's raw connection-rate detection depends on how the burst lines up
+  with the 60 s intervals while the lab bridge adds ~120 connections per
+  interval (r02: one interval, detected; run 01: split, missed, but that run
+  is excluded for kernel drops). Task 8.17 (partial first baseline interval)
+  is an open design decision.
 - Live early-warning delay: one run of one scan type, not a guarantee.
 - False-positive rate on real networks: the benign hour is one narrow traffic
   mix, not a rate.
@@ -96,7 +98,7 @@ rate and buffer but are not byte-identical to that variant (`a993fcfc…` and
 
 ## Remaining steps for the owner
 
-1. Finish exp14 and transfer it; rotate the lab bridge's token afterwards.
+1. Shut down the lab bridges (invalidates the token that is in the captures).
 2. Review and merge pull request #8, then #9.
 3. Decide on the tag `v1.0.0rc1` (private draft pre-release) and, after the
    lab results, on `v1.0.0` and on repository visibility.
