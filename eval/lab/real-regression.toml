@@ -132,3 +132,63 @@ flows = 1523
 final_rules = ["NG-SYN-001"]
 states = { REJ = 1500, S0 = 2, SF = 21 }
 zeek_args = []
+
+# Run by the lab bridge on 27 Oct 2026 (kit of 8a7f181). The bridge's control
+# connections use TCP 8766 and 8767 between the VMs and are in these captures.
+# live-early-01 is the live early-warning run (eval/lab/live_delay.py --pcap).
+# exp13: the capture ran about 14 min while the queries took 40 s (the bridge
+# was being changed); after the queries it holds only control traffic (10863
+# packets on 8766/8767) and 12 multicast packets (mDNS, IPv6). Its Zeek
+# difference is a timeout parameter: Zeek splits an unanswered SYN attempt
+# after tcp_attempt_delay (5 s), NetGuard keeps SYN retransmissions in one flow
+# for its 30 s handshake timeout; with tcp_attempt_delay=30sec it is equal.
+
+[[capture]]
+name = "exp06-slow-scan"
+sha256 = "ef05fabd6069ed66"
+packets = 3985
+decode_errors = 0
+flows = 435
+final_rules = ["NG-SCAN-002"]
+states = { REJ = 53, RSTO = 1, S0 = 4, SF = 377 }
+zeek_args = []
+
+[[capture]]
+name = "exp11-arp-binding"
+sha256 = "0e841fc89c1603ca"
+packets = 645
+decode_errors = 0
+flows = 62
+final_rules = ["NG-ARP-001"]
+states = { SF = 62 }
+zeek_args = []
+
+[[capture]]
+name = "exp12-dns-nxdomain"
+sha256 = "68642e5a79cc3232"
+packets = 857
+decode_errors = 0
+flows = 79
+final_rules = ["NG-DNS-002"]
+states = { S0 = 2, S2 = 1, SF = 76 }
+zeek_args = []
+
+[[capture]]
+name = "exp13-dns-tunnel"
+sha256 = "dff0f36391efd8ff"
+packets = 11517
+decode_errors = 0
+flows = 1146
+final_rules = ["NG-DNS-001"]
+states = { RSTR = 6, S0 = 30, S2 = 4, SF = 1105, SH = 1 }
+zeek_args = ["tcp_attempt_delay=30sec"]
+
+[[capture]]
+name = "live-early-01"
+sha256 = "a58b0a0e6178fdac"
+packets = 4263
+decode_errors = 0
+flows = 1225
+final_rules = ["NG-SCAN-001", "NG-SCAN-002"]
+states = { REJ = 999, RSTO = 1, SF = 225 }
+zeek_args = []

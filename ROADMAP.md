@@ -57,7 +57,7 @@ mikroservis yok.
 | 10 | Dokümantasyon, release, portföy | 🔄 aday hazır · 👤 inceleme, merge ve etiket kararı | **1.0.0rc1** aday; v1.0.0 lab'den sonra |
 
 **Ölçülmüş durum (1.0.0rc1 adayı):** 11 tespit kuralı, güven puanı ve korelasyon,
-REST API, web dashboard, canlı yakalama; 418 Python testi (3.11–3.14) ve 14
+REST API, web dashboard, canlı yakalama; 420 Python testi (3.11–3.14) ve 14
 frontend testi, kapsama %93; ruff, mypy `--strict`, TypeScript strict temiz;
 bilinen açığı olan bağımlılık yok (pip-audit, pnpm audit). Yazılı tehdit
 modeli ([THREAT_MODEL.md](docs/THREAT_MODEL.md)); kurulum temiz ortamda ve
@@ -75,8 +75,10 @@ ping taraması, fragment taraması, SYN burst): her biri yalnız beklenen alarm�
 verdi. NULL/FIN/Xmas yakalamaları bir flow durumu hatası buldu (SYN'siz
 bağlantılar hep `OTH`'du; Zeek `RSTRH`/`RSTR`/`SH` diyor), düzeltildi ve
 Zeek ile eşit. Fragment taramasındaki fark tasarım sınırıdır (IP fragment
-birleştirme yok). Yavaş tarama, ARP, DNS, baseline ve canlı erken uyarı
-deneyleri henüz ölçülmedi ([eval/lab/RUN.md](eval/lab/RUN.md)).
+birleştirme yok). Sonra yavaş tarama, ARP, DNS ve canlı erken uyarı da
+ölçüldü: her biri yalnız beklenen alarmı verdi; canlıda erken uyarı eşiği
+geçiren paketten 0,68-0,76 s sonra raporlandı (tek koşu). Baseline deneyi
+(exp14) henüz ölçülmedi ([eval/lab/RUN.md](eval/lab/RUN.md)).
 
 ## 3. Fazlar arası bağımlılık
 

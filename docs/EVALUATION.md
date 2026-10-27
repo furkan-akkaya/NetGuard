@@ -285,7 +285,7 @@ negatives in more detail.
 | No IP fragment reassembly | Probes inside fragments (`nmap -f`) are not analysed; NG-FRAG-001 reports the evasion itself. On the real exp09 capture the 100 probed connections appear reversed (starting at the victim's reply) and as `OTH`, where Zeek reassembles and reports `REJ`/`RSTO` (§ 6). IPv6 fragments and DHCPv6 not inspected | Open; reassembly only if lab data shows the need |
 | Flow orientation without a SYN | Mid-stream flows keep the first sender as originator (as Zeek does); their states follow Zeek's endpoint rules (checked on real NULL/FIN/Xmas scans, § 6) | Open; documented (ADR-0004) |
 | Retransmission vs. reordering | Late out-of-order segments are counted as retransmissions | Inherent to passive observation (ADR-0004) |
-| Live alert latency | In the synthetic replay benchmark, early warnings arrive 1–2 s after a threshold is crossed; rules with intervals add their interval (§2, detection delay). Not yet measured live (§6) | By design (ADR-0010) |
+| Live alert latency | In the synthetic replay benchmark, early warnings arrive 1–2 s after a threshold is crossed; rules with intervals add their interval (§2, detection delay). Live, one run: 0.68-0.76 s after the threshold-crossing packet for the two scan rules (§6, live-early-01) | By design (ADR-0010) |
 | Throughput | ~100k packets/s offline on an M1; not a line-rate sensor (§3) | By design: home/lab networks, low-traffic servers, forensics |
 | Confidence scores | Factors and scenarios come from the same author; separation is a consistency check, not accuracy | Must be re-checked on real lab captures (Phase 8) |
 
@@ -298,8 +298,10 @@ victim's lab interface (live-syn-01), one hour of live benign traffic
 last section). All on an isolated two-VM UTM lab (Kali 10.77.0.10 -> Ubuntu
 10.77.0.20). Each experiment is one run of one tool configuration: the
 results say the declared rule fired with the declared entity on that capture,
-not what precision or recall NetGuard has in general. The slow scan (exp06),
-ARP, DNS, baseline and live early-warning experiments are not measured yet.
+not what precision or recall NetGuard has in general. Later the same day the
+slow scan (exp06), the ARP and DNS experiments (exp11-exp13) and the live
+early-warning run (live-early-01) followed (last sections). The baseline
+experiment (exp14) is not measured yet.
 
 Provenance and integrity: the capture bytes are hash-verified
 (SHA-256 `376d4b6c…bbbd93a9`, matched on the capture host and the Mac). This
@@ -475,9 +477,10 @@ Run on 27 Oct 2026 by a fixed-action bridge on the two lab VMs, with the lab
 kit built from commit `8a7f181` (`BUILD.json`; the kit's `SHA256SUMS` verified
 on the Mac). Every capture's files were hash-checked on the Mac against the
 manifest written on the capture host. The bridge itself talks over the lab
-network: Kali polls an HTTP endpoint on 10.77.0.20:8766 for jobs and uploads
-results there. Those control connections are **in the captures** of exp05,
-exp07-exp10 (21-24 `SF` flows each, TCP port 8766), which raised no alert. They carry an access
+network: HTTP between the VMs on TCP 8766 (jobs and uploads, on
+10.77.0.20) and, from exp06 on, TCP 8767 as well. Those control connections
+are **in the captures** of exp05 onwards (21-24 `SF` flows each in exp05,
+exp07-exp10; far more in the later, longer captures), and raised no alert. They carry an access
 token in clear text, so these captures are not shareable as they are (they
 stay out of git like every capture), and the token should be rotated.
 
@@ -521,3 +524,59 @@ fix changes no alert, and the offline re-analysis with the fixed code is what
 the table reports. `eval/lab/real_regression.py --zeek` pins all eleven
 captures.
 
+
+### exp06, exp11-exp13 — slow scan, ARP and DNS
+
+Same bridge and kit (`8a7f181`), same checks (hash manifests verified on the
+Mac, ground truth from `experiments.toml`, Zeek 8.2.2 with checksums on).
+From exp06 on the bridge also uses TCP 8767, so these captures hold control
+connections on 8766 and 8767; they raised no alert.
+
+| Capture | Tool | Packets / kernel drops | Final alerts | Flows vs Zeek 8.2.2 |
+|---|---|---|---|---|
+| exp06-slow-scan | `nmap -sS -T1 -p 1-50 --max-retries 1` (825.95 s) | 3985 / 0 | NG-SCAN-002 (declared: TRW only; the window rule is not expected at this rate) | 435/435 equal |
+| exp11-arp-binding | `kali_arp_binding.py`: gratuitous ARP for the unused 10.77.0.99, 3 frames from one MAC, then 3 from another | 645 / 0 | NG-ARP-001, 10.77.0.99 | 62/62 equal (TCP/UDP; ARP is not in `conn.log`) |
+| exp12-dns-nxdomain | `victim_dns_queries.py nxdomain`: 40 queries, 40 NXDOMAIN replies | 857 / 0 | NG-DNS-002, 10.77.0.20 | 79/79 equal |
+| exp13-dns-tunnel | `victim_dns_queries.py tunnel`: 80 queries with 32-character labels, 40 s | 11517 / 0 | NG-DNS-001, 10.77.0.20 | equal with `tcp_attempt_delay=30sec` (below) |
+
+Each raised exactly its declared detection and no other alert. exp13's
+capture ran about 14 minutes although the queries took 40 s: the bridge's
+control script was being changed meanwhile. The packets after the queries are
+control traffic on 8766/8767 (10863) and 12 multicast packets; they raised no
+alert. With Zeek's defaults exp13 differs by 55 flows, all unanswered SYN
+attempts to the control port 8766: Zeek closes an attempt after
+`tcp_attempt_delay` (5 s) and logs the retransmitted SYNs as new connections,
+NetGuard keeps SYN retransmissions in one flow for its 30 s handshake
+timeout. With `tcp_attempt_delay=30sec` the comparison is equal. This is a
+timeout parameter, like the DNS session timeout in benign-01, not an error.
+
+### live-early-01 — live early-warning delay
+
+Live run on the victim's interface (`victim-live-rss.sh live-early-01 120`,
+`monitor --sudo`, early warnings on, `8a7f181` build) while Kali ran
+`nmap -sS -Pn -n -p 1-1000 --scan-delay 10ms --max-retries 1`. 123 s
+(monotonic), 4263 packets, 0 kernel drops, peak RSS 36292 KiB (VmHWM).
+2 early warnings and 2 final alerts (NG-SCAN-001, NG-SCAN-002, declared
+entities); the final alerts equal the offline analysis of the written pcap in
+every field except `reported_at` (`live_offline_equal.py`); flows equal to
+Zeek (1225/1225).
+
+| Early warning | Reported after the threshold-crossing packet | Newest evidence age at report | After the incident's first packet |
+|---|---|---|---|
+| NG-SCAN-001 | 0.683 s | 0.011 s | 5.135 s |
+| NG-SCAN-002 (TRW) | 0.757 s | 0.011 s | 5.135 s |
+
+How these were measured: `live_delay.py --pcap` replays the written capture
+through the same detectors, ticking after every packet, and takes the packet
+after which each early warning opened. For NG-SCAN-001 that is the 15th
+distinct destination port from 10.77.0.10 to 10.77.0.20, counting the two
+control ports 8766 and 8767 the detector also counts (without them the 15th
+scan port came 21 ms later); for TRW it is the decision time in the alert's
+own evidence (`decided_at_seconds` after `first_seen`). Both agree with an
+independent calculation from the pcap. The 0.011 s column is only how old the
+newest packet of the incident was when the report went out: the incident keeps
+growing between the threshold crossing and the next one-second tick, so it is
+not a threshold delay. The incident's first packet is a control connection
+that started 4.3 s before the scan, so the last column is not time since the
+scan began either. One run, one scan type, one host pair: it shows the live
+path reports within the one-second tick on this lab, not a latency guarantee.
