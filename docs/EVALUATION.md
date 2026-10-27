@@ -540,11 +540,13 @@ connections on 8766 and 8767; they raised no alert.
 | exp13-dns-tunnel | `victim_dns_queries.py tunnel`: 80 queries with 32-character labels, 40 s | 11517 / 0 | NG-DNS-001, 10.77.0.20 | equal with `tcp_attempt_delay=30sec` (below) |
 
 Each raised exactly its declared detection and no other alert. exp13's
-capture ran about 14 minutes although the queries took 40 s: the bridge's
-control script was being changed meanwhile. The packets after the queries are
-control traffic on 8766/8767 (10863) and 12 multicast packets; they raised no
-alert. With Zeek's defaults exp13 differs by 55 flows, all unanswered SYN
-attempts to the control port 8766: Zeek closes an attempt after
+capture ran about 14 minutes although the queries took 40 s: the bridge was
+paused meanwhile to update a helper, and the capture kept running. The packets
+after the queries are control traffic on 8766/8767 (10863) and 12 multicast
+packets; they raised no alert. With Zeek's defaults exp13 has 1146 NetGuard
+and 1201 Zeek flows: all 55 extra Zeek flows belong to 28 control connections
+to port 8766 whose SYNs went unanswered while the bridge was paused; the DNS
+flows (port 53) match exactly. Zeek closes an attempt after
 `tcp_attempt_delay` (5 s) and logs the retransmitted SYNs as new connections,
 NetGuard keeps SYN retransmissions in one flow for its 30 s handshake
 timeout. With `tcp_attempt_delay=30sec` the comparison is equal. This is a
@@ -580,3 +582,35 @@ not a threshold delay. The incident's first packet is a control connection
 that started 4.3 s before the scan, so the last column is not time since the
 scan began either. One run, one scan type, one host pair: it shows the live
 path reports within the one-second tick on this lab, not a latency guarantee.
+
+### exp14 run 01 — failed, not counted
+
+The first real run of the baseline experiment (`exp14-rate-volume`, 27 Oct
+2026, kit `8a7f181` with the `8b43717` upload helper at 4 MiB/s) completed its
+steps: 13 minutes of baseline, 300 of 300 SSH connections answered, the 48 MiB
+upload in 12 s. But tcpdump reported **9945 of 59091 packets dropped by the
+kernel** (49146 captured). A capture that lost a sixth of the traffic cannot
+show what the rules would have seen, so this run is **failed and not counted**,
+whatever NetGuard reports on it. The files are kept apart from the results
+(hash-verified on the Mac).
+
+For the record, and not as a result: on the incomplete capture NetGuard raised
+NG-VOL-001 for 10.77.0.20 but not NG-RATE-001 for 10.77.0.10. All 300 burst
+SYNs are in the capture, so the missing alert is not explained by the drops.
+The connection-rate baseline explains it: the lab bridge's control
+connections from Kali (about 130 per minute to 8766/8767) gave Kali a baseline
+near 139 connections per interval, the 30 s burst fell into two intervals
+(177 and 388), and the threshold was 392.2 (mean + 6 × deviation). The
+deviation was inflated because the baseline's first interval was a partial
+one at the start of the capture (23 connections), which the EWMA learns from
+like a full interval. Whether to change that is an open design question
+(task 8.17); it was not changed after seeing this result.
+
+Changes made because of the failure, before the retry is analysed: the
+capture helper now gives tcpdump a 64 MiB buffer (`NG_CAPTURE_BUFFER_KIB`,
+bounded) and marks any kernel drop as NEEDS REVIEW; the upload helper
+defaults to 1 MiB/s (`--rate`, 0.5-4 MiB/s). The retry
+(`exp14-rate-volume-r02`) runs on the VM with the owner's local variant of
+the two helpers (same rate and buffer, different bytes from the repository
+versions: SHA-256 `cddb1d41…` and `32f29430…` versus `a993fcfc…` and
+`d39c2bd8…`) on top of the `8a7f181` core. Its result is not in yet.

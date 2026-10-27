@@ -137,7 +137,7 @@ zeek_args = []
 # connections use TCP 8766 and 8767 between the VMs and are in these captures.
 # live-early-01 is the live early-warning run (eval/lab/live_delay.py --pcap).
 # exp13: the capture ran about 14 min while the queries took 40 s (the bridge
-# was being changed); after the queries it holds only control traffic (10863
+# paused to update a helper); after the queries it holds only control traffic (10863
 # packets on 8766/8767) and 12 multicast packets (mDNS, IPv6). Its Zeek
 # difference is a timeout parameter: Zeek splits an unanswered SYN attempt
 # after tcp_attempt_delay (5 s), NetGuard keeps SYN retransmissions in one flow

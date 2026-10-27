@@ -37,7 +37,7 @@ commit cannot contain its own CI result):
 
 | Check | Result |
 |---|---|
-| Python tests (macOS, Python 3.11) | 420 passed, coverage 93.27 % (gate 90 %) |
+| Python tests (macOS, Python 3.11) | 425 passed, coverage 93.27 % (gate 90 %) |
 | Lint, format, strict types | ruff clean, mypy `--strict` clean (76 source files) |
 | Dashboard | 14 tests passed, production build OK |
 | Dependencies | pip-audit and pnpm audit: no known vulnerabilities; license gate (no GPL/AGPL/SSPL/EUPL) passed |
@@ -71,13 +71,22 @@ was replaced by the version of commit `8b43717` (paced at 4 MB/s; SHA-256
 kit stays `8a7f181`. The kit's own `SHA256SUMS` therefore no longer describes
 that one file on the VM; the replacement and both hashes are recorded in the
 lab transfer (`volume-update-proof.json`) and were checked against the
-repository.
+repository. That configuration (4 MiB/s, tcpdump's default buffer) is the
+**failed exp14 run 01**: 9945 of 59091 packets dropped by the kernel, so it is
+not counted (EVALUATION.md § 6). For the retry the owner replaced the upload
+helper and `victim-capture.sh` on the VM with a local variant (1 MiB/s, 64 MiB
+tcpdump buffer; SHA-256 `cddb1d41…` and `32f29430…`, recorded in
+`retry-update-proof.json`). The repository's helpers now default to the same
+rate and buffer but are not byte-identical to that variant (`a993fcfc…` and
+`d39c2bd8…`).
 
 ## Not verified, or not met
 
 - Precision/recall on real traffic: one run per experiment, so no rate.
-- The baseline experiment (exp14: NG-RATE-001, NG-VOL-001) is not measured
-  yet ([eval/lab/RUN.md](../eval/lab/RUN.md)).
+- The baseline experiment (exp14: NG-RATE-001, NG-VOL-001) is not measured:
+  run 01 failed on kernel drops, the retry's result is not in. Task 8.17
+  (partial first baseline interval) is open
+  ([eval/lab/RUN.md](../eval/lab/RUN.md)).
 - Live early-warning delay: one run of one scan type, not a guarantee.
 - False-positive rate on real networks: the benign hour is one narrow traffic
   mix, not a rate.
