@@ -42,6 +42,7 @@ from netguard.store import SCHEMA_VERSION, Store, StoreError
 from netguard.store import Page as StorePage
 from netguard.web import schemas
 from netguard.web.guard import RequestGuard
+from netguard.web.quota import StorageQuota
 from netguard.web.settings import ServerSettings
 
 log = logging.getLogger("netguard.web")
@@ -96,6 +97,7 @@ def create_app(settings: ServerSettings) -> FastAPI:
     settings.validate()
     store = Store(settings.db_path)
     runner = JobRunner(store, settings.captures_dir, settings.jobs)
+    quota = StorageQuota(settings.max_storage_bytes, store.storage_used)
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
@@ -132,9 +134,11 @@ def create_app(settings: ServerSettings) -> FastAPI:
         RequestGuard,
         allowed_hosts=[settings.host, *settings.allowed_hosts],
         streamed_paths=[f"{API}/captures"],  # the upload streams with its own size cap
+        allowed_origins=settings.allowed_origins,
     )
     app.state.store = store
     app.state.runner = runner
+    app.state.quota = quota
     app.state.settings = settings
 
     @app.middleware("http")
@@ -298,24 +302,30 @@ def create_app(settings: ServerSettings) -> FastAPI:
         # preflight (which this API never answers), so they also guard against CSRF.
         if request.headers.get("content-type", "").split(";")[0].strip() not in UPLOAD_TYPES:
             raise HTTPException(status_code=415, detail="send the capture as application/octet-stream")
-        limit = min(settings.max_upload_bytes, settings.max_storage_bytes - store.storage_used())
-        if limit <= 0:
+        free = quota.available()
+        if free <= 0:
             raise HTTPException(status_code=507, detail="storage quota reached: delete captures first")
+        limit = min(settings.max_upload_bytes, free)
         declared = request.headers.get("content-length")
         if declared is not None and declared.isdigit() and int(declared) > limit:
             raise HTTPException(status_code=413, detail=f"capture larger than the {limit} byte limit")
         tmp = settings.captures_dir / f".upload-{uuid.uuid4().hex}"
         digest = hashlib.sha256()
         size = 0
+        reserved = 0  # bytes of the quota held by this upload until its row is stored
         head = b""
         try:
             with os.fdopen(os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "wb") as fh:
                 async for chunk in request.stream():
                     size += len(chunk)
-                    if size > limit:
+                    if size > settings.max_upload_bytes:
                         raise HTTPException(
-                            status_code=413, detail=f"capture larger than the {limit} byte limit (upload size or quota)"
+                            status_code=413, detail=f"capture larger than the {settings.max_upload_bytes} byte limit"
                         )
+                    # Reserve before writing: concurrent uploads share the free space.
+                    if not quota.reserve(len(chunk)):
+                        raise HTTPException(status_code=413, detail="capture larger than the remaining storage quota")
+                    reserved += len(chunk)
                     if len(head) < 4:
                         head += chunk[: 4 - len(head)]
                     digest.update(chunk)
@@ -335,6 +345,9 @@ def create_app(settings: ServerSettings) -> FastAPI:
                 response.status_code = 200
             return _capture(row)
         finally:
+            # After add_capture the bytes count as stored; on any failure,
+            # rejection or disconnect they were never stored.
+            quota.release(reserved)
             tmp.unlink(missing_ok=True)
 
     @app.get(f"{API}/captures", response_model=schemas.Page[schemas.Capture], dependencies=auth, tags=["captures"])

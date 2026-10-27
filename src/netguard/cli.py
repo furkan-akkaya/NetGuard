@@ -106,6 +106,13 @@ def build_parser() -> argparse.ArgumentParser:
         default=[],
         help="extra host name clients may use (e.g. behind a reverse proxy); repeatable",
     )
+    sv.add_argument(
+        "--allowed-origin",
+        action="append",
+        default=[],
+        help="browser origin allowed to change data besides the server's own, e.g. https://netguard.lab "
+        "behind a TLS proxy; repeatable",
+    )
     sv.add_argument("--job-timeout", type=float, default=600.0, help="seconds per analysis")
     sv.add_argument("--job-memory-mb", type=int, default=1024, help="worker memory limit (enforced on Linux)")
     sv.add_argument("--max-stored-flows", type=int, default=500_000, help="flow rows kept per analysis")
@@ -323,6 +330,7 @@ def cmd_serve(args: argparse.Namespace) -> int:
         token=os.environ.get(TOKEN_ENV) or None,
         allow_remote_without_token=args.insecure_no_auth,
         allowed_hosts=args.allowed_host,
+        allowed_origins=args.allowed_origin,
         max_upload_bytes=args.max_upload_mb * 1024 * 1024,
         max_storage_bytes=int(args.max_storage_gb * 1024**3),
         analysis_config=load_config(args.config),
