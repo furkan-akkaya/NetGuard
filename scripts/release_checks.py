@@ -21,6 +21,7 @@ from __future__ import annotations
 import importlib.metadata
 import json
 import re
+import shutil
 import subprocess
 import sys
 import tarfile
@@ -50,7 +51,10 @@ def check_versions(tag: str) -> list[str]:
 
 
 def check_sdist(archive: Path) -> list[str]:
-    tracked = set(subprocess.run(["git", "ls-files"], cwd=ROOT, capture_output=True, text=True, check=True).stdout.split())
+    git = shutil.which("git") or "git"
+    # Fixed argv, no shell, no input from the archive.
+    listing = subprocess.run([git, "ls-files", "-z"], cwd=ROOT, capture_output=True, check=True).stdout  # noqa: S603
+    tracked = set(listing.decode().split("\0")) - {""}
     with tarfile.open(archive) as tar:
         names = [m.name.split("/", 1)[1] for m in tar.getmembers() if m.isfile() and "/" in m.name]
     errors = [
@@ -58,7 +62,9 @@ def check_sdist(archive: Path) -> list[str]:
         for name in names
         if name not in tracked and name not in BUILD_FILES and not name.startswith(GENERATED)
     ]
-    errors += [f"missing from the source archive: {req}" for req in REQUIRED if not any(n.startswith(req) for n in names)]
+    errors += [
+        f"missing from the source archive: {req}" for req in REQUIRED if not any(n.startswith(req) for n in names)
+    ]
     return errors
 
 
