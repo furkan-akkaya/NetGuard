@@ -19,7 +19,7 @@ name="${1:-}"
 duration="${2:-3600}"
 [[ "$name" =~ ^[a-z0-9][a-z0-9-]{0,62}$ ]] || { echo "usage: $0 NAME [SECONDS]" >&2; exit 2; }
 [[ "$duration" =~ ^[1-9][0-9]*$ ]] || { echo "SECONDS must be a positive integer" >&2; exit 2; }
-[[ "${USER:-$(id -un)}" != "root" ]] || { echo "run as your normal user, not root (--sudo drops privileges with -Z)" >&2; exit 2; }
+[[ "$(id -un)" != "root" ]] || { echo "run as your normal user, not root (--sudo drops privileges with -Z)" >&2; exit 2; }
 
 # NetGuard runner: $NETGUARD, else the lab .pyz on the share, else netguard in PATH.
 if [[ -n "${NETGUARD:-}" ]]; then read -r -a ng <<< "$NETGUARD"
@@ -105,9 +105,11 @@ PY
 pcap_bytes=$(stat -c %s "$pcap" 2>/dev/null || echo 0)
 
 # The CLI prints these with spaces, not underscores ("kernel dropped by kernel: N").
-drops=$(grep -oE 'kernel dropped by kernel: [0-9]+' "$mon" 2>/dev/null | grep -oE '[0-9]+$' | tail -1)
-kcap=$(grep -oE 'kernel captured: [0-9]+' "$mon" 2>/dev/null | grep -oE '[0-9]+$' | tail -1)
-krecv=$(grep -oE 'kernel received by filter: [0-9]+' "$mon" 2>/dev/null | grep -oE '[0-9]+$' | tail -1)
+# `|| true`: a failed run has no summary, and under `set -e -o pipefail` an
+# empty grep would end the script here, before the verdict below.
+drops=$(grep -oE 'kernel dropped by kernel: [0-9]+' "$mon" 2>/dev/null | grep -oE '[0-9]+$' | tail -1 || true)
+kcap=$(grep -oE 'kernel captured: [0-9]+' "$mon" 2>/dev/null | grep -oE '[0-9]+$' | tail -1 || true)
+krecv=$(grep -oE 'kernel received by filter: [0-9]+' "$mon" 2>/dev/null | grep -oE '[0-9]+$' | tail -1 || true)
 truncated=no; grep -q 'write truncated' "$mon" 2>/dev/null && truncated=yes
 
 {

@@ -24,6 +24,7 @@ tool="nmap"
 target="$VICTIM"
 case "$name" in
   exp01-syn-scan)    cmd=(sudo nmap -sS -Pn -n -p 1-1000 --max-retries 1 "$VICTIM") ;;
+  live-early-01)     cmd=(sudo nmap -sS -Pn -n -p 1-1000 --max-retries 1 "$VICTIM") ;;  # live, early warnings on (victim-live-rss.sh)
   exp02-connect-scan) cmd=(nmap -sT -Pn -n -p 1-1000 --max-retries 1 "$VICTIM") ;;
   exp03-xmas-scan)   cmd=(sudo nmap -sX -Pn -n -p 1-1000 --max-retries 1 "$VICTIM") ;;
   exp04-fin-scan)    cmd=(sudo nmap -sF -Pn -n -p 1-1000 --max-retries 1 "$VICTIM") ;;

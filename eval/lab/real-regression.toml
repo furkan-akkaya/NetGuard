@@ -1,0 +1,40 @@
+# Pinned results of NetGuard on the real lab captures (docs/EVALUATION.md § 6).
+# eval/lab/real_regression.py re-analyses each capture and fails on any
+# difference, so a code change that alters real-traffic results is noticed.
+# The captures themselves stay out of git; only their hashes are pinned here.
+#
+# Updating a value is a decision, not a fix: write down why in EVALUATION.md.
+# Values from commit "fix(flows): ... both endpoints reset" (27 Oct 2026).
+
+[[capture]]
+name = "exp01-syn-scan"
+sha256 = "376d4b6c4d54af96" # prefix; the full hash is checked by ingest.py and the manifest
+packets = 2009
+decode_errors = 0
+flows = 1001
+final_rules = ["NG-SCAN-001", "NG-SCAN-002"]
+states = { REJ = 999, RSTO = 1, S0 = 1 }
+zeek_args = []
+
+[[capture]]
+name = "live-syn-01"
+sha256 = "65533b5b4a7f2ecb"
+packets = 2005
+decode_errors = 0
+flows = 1000
+final_rules = ["NG-SCAN-001", "NG-SCAN-002"]
+states = { REJ = 999, RSTO = 1 }
+zeek_args = []
+
+[[capture]]
+name = "benign-01"
+sha256 = "f3c6a7f9ddc48642"
+packets = 4245
+decode_errors = 0
+flows = 398
+final_rules = []
+states = { SF = 377, S0 = 20, REJ = 1 }
+# NetGuard has one 60 s UDP idle timeout; Zeek closes DNS/mDNS sessions after
+# 10 s. With Zeek's default, mDNS bursts 47 s apart are two Zeek flows and one
+# NetGuard flow (two such cases here); with the same timeout the flows are equal.
+zeek_args = ["dns_session_timeout=60sec"]

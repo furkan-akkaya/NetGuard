@@ -13,12 +13,13 @@
 # Entity convention (src = attacker 10.77.0.10, unless noted):
 #   portscan, udpscan -> "src->dst"   synflood -> "dst"   others -> "src"
 #
-# What this two-VM topology can measure now: portscan, trw, udpscan, hostsweep,
-# fragments, synflood. It canNOT measure, without changes coordinated
-# separately: NG-ARP-001 (needs a third address/gateway to impersonate),
-# NG-DNS-001 / NG-DNS-002 (need a DNS resolver on the victim), and the baseline
-# rules NG-RATE-001 / NG-VOL-001 (need >=10 min of history then a change; see
-# the benign experiment). Those acceptance criteria stay open.
+# What this two-VM topology can measure directly: portscan, trw, udpscan,
+# hostsweep, fragments, synflood. The other rules get bounded stand-ins that
+# need no network change (added 27 Oct 2026, before any of them ran):
+# NG-ARP-001 by a binding change for an UNUSED address (exp11, not a real
+# man-in-the-middle), NG-DNS-001/002 by lookups from the victim to a minimal
+# responder on Kali (exp12, exp13), NG-RATE-001/NG-VOL-001 by 13 min of
+# baseline then a bounded change (exp14).
 schema_version = 1
 
 [[experiments]]
@@ -113,10 +114,59 @@ expected = [
   { detector = "synflood", entity = "10.77.0.20" },
 ]
 
-# Not run yet; added so its (empty) ground truth exists before its capture does.
+# Run 27 Oct 2026 as a live capture (EVALUATION.md § 6); ground truth was written before it ran.
 [[experiments]]
 name = "benign-01"
 kind = "benign"
 script = "victim-live-rss.sh benign-01 3600  (with kali-benign.sh on Kali)"
 note = "1 h of ordinary client traffic from Kali to the victim's services; nothing may be expected. Also feeds the RSS and live-vs-offline checks"
 expected = []
+
+# --- Added 27 Oct 2026, before any of these ran -------------------------------
+
+[[experiments]]
+name = "exp11-arp-binding"
+kind = "attack"
+script = "sudo python3 kali_arp_binding.py"
+note = "gratuitous ARP for the unused 10.77.0.99, 3x from 02:00:00:00:99:01 then 3x from 02:00:00:00:99:02: one binding change, no real host impersonated. Without DHCP in view the change cannot be explained by a lease"
+expected = [
+  { detector = "arpspoof", entity = "10.77.0.99" },
+]
+
+[[experiments]]
+name = "exp12-dns-nxdomain"
+kind = "attack"
+script = "python3 victim_dns_queries.py nxdomain  (with sudo python3 kali_dns_responder.py on Kali)"
+note = "the VICTIM looks up 40 random DGA-like names (<12 chars>.test), 2/s; the Kali responder answers NXDOMAIN. Entity is the client that received the NXDOMAINs"
+expected = [
+  { detector = "nxdomain", entity = "10.77.0.20" },
+]
+
+[[experiments]]
+name = "exp13-dns-tunnel"
+kind = "attack"
+script = "python3 victim_dns_queries.py tunnel  (with sudo python3 kali_dns_responder.py on Kali)"
+note = "the VICTIM sends 80 A queries with random 32-char base32 labels under t.lab-tunnel.test, 2/s; answered with empty NOERROR, so NXDOMAIN must stay silent. Entity is the client"
+expected = [
+  { detector = "dnstunnel", entity = "10.77.0.20" },
+]
+
+[[experiments]]
+name = "exp14-rate-volume"
+kind = "attack"
+script = "python3 kali_rate_burst.py  (then python3 victim_volume_burst.py on Ubuntu when told)"
+note = "13 min paced benign baseline, then 300 SSH banner reads at 10/s from Kali (connection rate) and one 48 MB upload from the victim to Kali (volume). Each source is judged against its own baseline"
+expected = [
+  { detector = "connrate", entity = "10.77.0.10" },
+  { detector = "volume", entity = "10.77.0.20" },
+]
+
+[[experiments]]
+name = "live-early-01"
+kind = "attack"
+script = "victim-live-rss.sh live-early-01 120  (with kali-run.sh live-early-01 on Kali)"
+note = "exp01's SYN scan captured LIVE with early warnings on, to measure the live early-warning delay (eval/lab/live_delay.py); same ground truth as exp01"
+expected = [
+  { detector = "portscan", entity = "10.77.0.10->10.77.0.20" },
+  { detector = "trw", entity = "10.77.0.10" },
+]
