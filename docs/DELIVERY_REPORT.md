@@ -37,7 +37,7 @@ commit cannot contain its own CI result):
 
 | Check | Result |
 |---|---|
-| Python tests (macOS, Python 3.11) | 397 passed, coverage 93.25 % (gate 90 %) |
+| Python tests (macOS, Python 3.11) | 418 passed, coverage 93.27 % (gate 90 %) |
 | Lint, format, strict types | ruff clean, mypy `--strict` clean (76 source files) |
 | Dashboard | 14 tests passed, production build OK |
 | Dependencies | pip-audit and pnpm audit: no known vulnerabilities; license gate (no GPL/AGPL/SSPL/EUPL) passed |
@@ -52,17 +52,21 @@ Real traffic (isolated UTM lab, details in [EVALUATION.md § 6](EVALUATION.md)):
 | exp01, nmap SYN scan, offline | NG-SCAN-001 and NG-SCAN-002 with the declared entities, 0 false positives; flows equal to Zeek 8.2.2 (1001/1001) |
 | live-syn-01, same scan, live | live final alerts equal offline analysis except `reported_at`; 0 kernel drops; Zeek 1000/1000 |
 | benign-01, 1 h low-rate SSH/ping traffic, live | 0 alerts live and offline, 0 kernel drops, peak RSS 34.0 MiB; flows equal to Zeek with its DNS timeout at 60 s |
+| exp02-exp05, exp07-exp10 (connect, Xmas, FIN, NULL, UDP scans, ping sweep, fragmented scan, SYN burst), offline | each raised exactly its declared detections, no other alert, 0 kernel drops; flows equal to Zeek except exp09 (no fragment reassembly, a documented limit); NULL/FIN/Xmas found a flow-state bug, fixed |
 
-All three are pinned by `eval/lab/real_regression.py --zeek` (packets,
-flows, flow states, final alerts, Zeek equality); it passed on this branch.
-The live runs used a build of commit `a845dea`; they were not repeated with
-later builds.
+All eleven are pinned by `eval/lab/real_regression.py --zeek` (packets,
+flows, flow states, final alerts, Zeek equality or the pinned exp09
+difference); it passed on this branch. The live runs used a build of commit
+`a845dea`, the eight scans a lab kit of `8a7f181`; the analysis above is the
+current code's. Captures from exp05 on also hold the lab bridge's own HTTP
+control connections to 10.77.0.20:8766 (no alerts), including an access token
+in clear text: they are not shareable as they are.
 
 ## Not verified, or not met
 
-- Precision/recall on real traffic: one attack type so far. Nine further
-  scans, a bounded SYN burst, ARP, DNS and baseline experiments are prepared
-  but not run ([eval/lab/RUN.md](../eval/lab/RUN.md)).
+- Precision/recall on real traffic: one run per experiment, so no rate.
+  The slow scan (exp06), ARP, DNS and baseline experiments are prepared but
+  not measured ([eval/lab/RUN.md](../eval/lab/RUN.md)).
 - Live early-warning delay: not measured (runner ready: `live-early-01`).
 - False-positive rate on real networks: the benign hour is one narrow traffic
   mix, not a rate.

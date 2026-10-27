@@ -282,8 +282,8 @@ negatives in more detail.
 | ARP without visible DHCP | A re-assigned IP or a VRRP/HSRP failover raises a MEDIUM alert (`dhcp_reassignment`, low confidence) | Mitigated when the DHCP ACK is in the capture (ADR-0011); a rogue DHCP server answering first is trusted (TOFU, configure `dhcp_servers`) |
 | Decoy scans with spoofed sources (`nmap -D`) | One scan becomes many small ones per source, each possibly below threshold | Open: correlation groups by actor, not by target |
 | Spoofed-source floods | Per-source detector tables overflow: a real scan inside such a flood can be missed (§3) | Reported since Phase 10 (`stats.detectors`, warnings) |
-| No IP fragment reassembly | Probes inside fragments (`nmap -f`) are not analysed; NG-FRAG-001 reports the evasion itself. IPv6 fragments and DHCPv6 not inspected | Open; reassembly only if lab data shows the need |
-| Flow orientation without a SYN | Mid-stream flows keep the first sender as originator | Open; documented (ADR-0004) |
+| No IP fragment reassembly | Probes inside fragments (`nmap -f`) are not analysed; NG-FRAG-001 reports the evasion itself. On the real exp09 capture the 100 probed connections appear reversed (starting at the victim's reply) and as `OTH`, where Zeek reassembles and reports `REJ`/`RSTO` (§ 6). IPv6 fragments and DHCPv6 not inspected | Open; reassembly only if lab data shows the need |
+| Flow orientation without a SYN | Mid-stream flows keep the first sender as originator (as Zeek does); their states follow Zeek's endpoint rules (checked on real NULL/FIN/Xmas scans, § 6) | Open; documented (ADR-0004) |
 | Retransmission vs. reordering | Late out-of-order segments are counted as retransmissions | Inherent to passive observation (ADR-0004) |
 | Live alert latency | In the synthetic replay benchmark, early warnings arrive 1–2 s after a threshold is crossed; rules with intervals add their interval (§2, detection delay). Not yet measured live (§6) | By design (ADR-0010) |
 | Throughput | ~100k packets/s offline on an M1; not a line-rate sensor (§3) | By design: home/lab networks, low-traffic servers, forensics |
@@ -291,13 +291,15 @@ negatives in more detail.
 
 ## 6. Real captures
 
-**Three real captures measured so far (27 Oct 2026)**: two SYN scans, one
+**Real captures measured so far (27 Oct 2026)**: two SYN scans, one
 analysed offline (exp01) and one captured live by `netguard monitor` on the
-victim's lab interface (live-syn-01), and one hour of live benign traffic
-(benign-01). This is a start, not a verdict: one attack type and one benign
-traffic mix, on an isolated two-VM UTM lab (Kali 10.77.0.10 -> Ubuntu
-10.77.0.20). No other attack type has been captured yet, so the attack
-criteria in [LAB_SETUP.md § 8](LAB_SETUP.md) stay open.
+victim's lab interface (live-syn-01), one hour of live benign traffic
+(benign-01), and eight further scan experiments (exp02-exp05, exp07-exp10,
+last section). All on an isolated two-VM UTM lab (Kali 10.77.0.10 -> Ubuntu
+10.77.0.20). Each experiment is one run of one tool configuration: the
+results say the declared rule fired with the declared entity on that capture,
+not what precision or recall NetGuard has in general. The slow scan (exp06),
+ARP, DNS, baseline and live early-warning experiments are not measured yet.
 
 Provenance and integrity: the capture bytes are hash-verified
 (SHA-256 `376d4b6c…bbbd93a9`, matched on the capture host and the Mac). This
@@ -466,3 +468,56 @@ What this shows, and what it does not:
 The tooling behind these: `netguard lab evaluate --manifest`, `compare-flows`,
 and the lab scripts in `eval/lab/` ([CAPTURE_EVALUATION.md](CAPTURE_EVALUATION.md),
 [LAB_SETUP.md](LAB_SETUP.md)).
+
+### exp02-exp10 — scans run by the lab bridge
+
+Run on 27 Oct 2026 by a fixed-action bridge on the two lab VMs, with the lab
+kit built from commit `8a7f181` (`BUILD.json`; the kit's `SHA256SUMS` verified
+on the Mac). Every capture's files were hash-checked on the Mac against the
+manifest written on the capture host. The bridge itself talks over the lab
+network: Kali polls an HTTP endpoint on 10.77.0.20:8766 for jobs and uploads
+results there. Those control connections are **in the captures** of exp05,
+exp07-exp10 (21-24 `SF` flows each, TCP port 8766), which raised no alert. They carry an access
+token in clear text, so these captures are not shareable as they are (they
+stay out of git like every capture), and the token should be rotated.
+
+| Capture | Tool (Kali) | Packets / kernel drops | Final alerts (declared entity) | Flows vs Zeek 8.2.2 |
+|---|---|---|---|---|
+| exp02-connect-scan-r02 | `nmap -sT -p 1-1000 --max-parallelism 1` | 2006 / 0 | NG-SCAN-001, NG-SCAN-002 | 1000/1000 equal |
+| exp03-xmas-scan | `nmap -sX -p 1-1000 --scan-delay 10ms` | 2004 / 0 | NG-SCAN-001 | 1001/1001 equal (after the fix below) |
+| exp04-fin-scan | `nmap -sF -p 1-1000 --scan-delay 10ms` | 2008 / 0 | NG-SCAN-001 | 1003/1003 equal (after the fix) |
+| exp05-null-scan | `nmap -sN -p 1-1000 --scan-delay 10ms` | 2230 / 0 | NG-SCAN-001 | 1023/1023 equal (after the fix) |
+| exp07-udp-scan | `nmap -sU --top-ports 100` | 478 / 0 | NG-SCAN-003 | 214/214 equal |
+| exp08-ping-sweep | `nmap -sn --max-rate 100 10.77.0.0/24` | 798 / 0 | NG-SWEEP-001 | 24/24 equal |
+| exp09-frag-scan | `nmap -sS -f -p 1-100 --scan-delay 10ms` | 632 / 0 | NG-FRAG-001 | 23 equal, 100 differ: design limit |
+| exp10-syn-burst | `hping3 -S -p 9 -i u10000 -c 1500` (closed port, 100/s) | 3240 / 0 | NG-SYN-001 | 1523/1523 equal |
+
+Each experiment raised exactly its declared detections (detector and entity
+from `experiments.toml`, written before the runs) and no other alert. The first
+exp02 run is not counted: tcpdump dropped 438 of 2010 packets, and the
+experiment was repeated with `--max-parallelism 1` (r02, 0 drops).
+
+**A flow-state bug found by these captures.** NULL, FIN and Xmas probes carry
+no SYN. NetGuard called every such connection `OTH`; Zeek applies its endpoint
+states anyway and reports `RSTRH` for a NULL probe answered by RST, `RSTR` for
+a FIN or Xmas probe answered by RST, and `SH` for an unanswered FIN probe
+(999 + 2 differences in each capture). NetGuard now follows Zeek's rules
+(ADR-0004 rule 3), checked case by case against Zeek 8.2.2 and with a
+regression test reduced from the real probes. The labels reach no detector
+(TRW counts only first contacts opened by a SYN), and the alerts of all eleven
+pinned captures are unchanged.
+
+**exp09: a design limit, not a bug.** `nmap -f` splits each SYN into three
+8-byte IP fragments; the TCP flags are in the second. NetGuard does not
+reassemble fragments, so the probe is not a TCP segment to it and each of the
+100 probed connections starts at the victim's reply: reversed direction,
+state `OTH`. Zeek reassembles and reports 99 `REJ` and 1 `RSTO`. NG-FRAG-001
+reports the fragmentation itself; the scan rules do not see these probes.
+The difference is pinned by size in `real-regression.toml`, so it can neither
+grow nor disappear unnoticed.
+
+The VMs ran the `8a7f181` build, which still had the old `OTH` labels; the
+fix changes no alert, and the offline re-analysis with the fixed code is what
+the table reports. `eval/lab/real_regression.py --zeek` pins all eleven
+captures.
+

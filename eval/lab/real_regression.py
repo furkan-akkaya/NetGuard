@@ -8,7 +8,8 @@ that is present, this verifies the hash prefix, analyses it with the default
 configuration and compares packets, decode errors, flows, flow states and the
 set of final alert rules with the pinned values. With --zeek it also runs
 Zeek on the capture (a local `zeek`, else the zeek/zeek:8.2.2 image with the
-network disabled) and requires `lab compare-flows` to be equal.
+network disabled) and requires `lab compare-flows` to be equal, or to differ
+by exactly the pinned `zeek_known_difference` (an explained design limit).
 
 Exit 0 when every present capture matches, 1 on any difference, 2 when no
 capture was found or the input is invalid. Captures that are missing are
@@ -88,16 +89,25 @@ def check(capture_dir: Path, with_zeek: bool) -> int:
         if with_zeek:
             with tempfile.TemporaryDirectory() as tmp:
                 report = compare_flows(path, _zeek(path, case["zeek_args"], Path(tmp)))
-            if not report["equal"]:
+            # A known, explained difference (e.g. no fragment reassembly) is
+            # pinned by its size: it must neither grow nor silently vanish.
+            known = case.get("zeek_known_difference")
+            got_diff = {"only_netguard": report["only_netguard"], "only_zeek": report["only_zeek"]}
+            want_diff = {k: known[k] for k in got_diff} if known else {"only_netguard": 0, "only_zeek": 0}
+            if got_diff != want_diff or (not known and not report["equal"]):
                 problems.append(
                     f"zeek: matched {report['matched']}, only NetGuard {report['only_netguard']}, "
-                    f"only Zeek {report['only_zeek']}"
+                    f"only Zeek {report['only_zeek']} (expected {want_diff})"
                 )
         if problems:
             failed += 1
             print(f"FAIL    {name}: " + "; ".join(problems))
         else:
             zeek_note = f", Zeek equal{' with ' + ' '.join(case['zeek_args']) if case['zeek_args'] else ''}"
+            if case.get("zeek_known_difference"):
+                known = case["zeek_known_difference"]
+                diff = f"{known['only_netguard']}/{known['only_zeek']}"
+                zeek_note = f", Zeek differs as pinned ({diff}: {known['reason']})"
             print(
                 f"OK      {name}: {got['packets']} packets, {got['flows']} flows, "
                 f"final rules {got['final_rules'] or 'none'}{zeek_note if with_zeek else ''}"
