@@ -19,6 +19,20 @@ Related alerts are grouped into incidents.
 > Validated against 17 accepted real lab captures and automated tests.
 > No tag or GitHub release exists yet. See the [delivery report](docs/DELIVERY_REPORT.md) for open limitations and release steps.
 
+## In plain words
+
+Every device on a network talks by sending small pieces of data called **packets**.
+NetGuard reads a recording of those packets, or watches them live, and looks for patterns that usually mean someone is probing or misusing the network.
+
+Think of a building with many doors. A visitor who walks to one office is normal.
+A visitor who tries the handle of a thousand doors in a minute is not — even if every door stays locked.
+NetGuard is the guard who watches the corridor camera: it counts the doors that were tried, notes which ones opened, and writes a report saying **who**, **what**, **when** and **why it looks suspicious**.
+It never locks a door or chases anyone; it only watches and explains.
+
+**See it step by step:** an [interactive walkthrough](https://furkan-akkaya.vercel.app/netguard/) (Turkish) animates how one port scan becomes an alert, next to normal traffic that does not.
+
+New to networking terms? The [glossary](#glossary) below explains every term used in this README.
+
 ## How it works
 
 ```mermaid
@@ -47,24 +61,63 @@ Being on the same network does not give it visibility into every other device's 
 
 ## What it detects
 
-| Rule | Behaviour |
-|---|---|
-| [NG-SCAN-001](docs/rules/NG-SCAN-001.md) | SYN, connect, NULL, FIN and XMAS port scans |
-| [NG-SCAN-002](docs/rules/NG-SCAN-002.md) | Scans identified by successful and failed connection outcomes, including slow scans |
-| [NG-SCAN-003](docs/rules/NG-SCAN-003.md) | UDP port scans |
-| [NG-SWEEP-001](docs/rules/NG-SWEEP-001.md) | ICMP/ARP host discovery and horizontal TCP scans |
-| [NG-SYN-001](docs/rules/NG-SYN-001.md) | Many SYN attempts with few completed handshakes |
-| [NG-ARP-001](docs/rules/NG-ARP-001.md) | Suspicious IP–MAC binding changes |
-| [NG-DNS-001](docs/rules/NG-DNS-001.md) | Long, unique subdomain queries consistent with DNS tunnelling |
-| [NG-DNS-002](docs/rules/NG-DNS-002.md) | NXDOMAIN bursts that may indicate DGA-like activity |
-| [NG-FRAG-001](docs/rules/NG-FRAG-001.md) | Suspicious small IP fragments or split transport headers |
-| [NG-RATE-001](docs/rules/NG-RATE-001.md) | Increased new connections relative to a host's own baseline |
-| [NG-VOL-001](docs/rules/NG-VOL-001.md) | Increased outbound bytes relative to a host's own baseline |
+| Rule | Behaviour | In plain words |
+|---|---|---|
+| [NG-SCAN-001](docs/rules/NG-SCAN-001.md) | SYN, connect, NULL, FIN and XMAS port scans | Trying many doors (ports) of one device in a short time to see which are open |
+| [NG-SCAN-002](docs/rules/NG-SCAN-002.md) | Scans identified by successful and failed connection outcomes, including slow scans | The same idea, judged by which attempts were answered or refused; also catches scans spread slowly over time |
+| [NG-SCAN-003](docs/rules/NG-SCAN-003.md) | UDP port scans | Door-trying over UDP, a protocol without a connection handshake |
+| [NG-SWEEP-001](docs/rules/NG-SWEEP-001.md) | ICMP/ARP host discovery and horizontal TCP scans | Finding out which devices exist on a network, or trying the same door on many devices |
+| [NG-SYN-001](docs/rules/NG-SYN-001.md) | Many SYN attempts with few completed handshakes | Many connections started but never finished; can exhaust a server (SYN flood) |
+| [NG-ARP-001](docs/rules/NG-ARP-001.md) | Suspicious IP–MAC binding changes | A device suddenly claims another device's address, a common trick to sit in the middle of traffic |
+| [NG-DNS-001](docs/rules/NG-DNS-001.md) | Long, unique subdomain queries consistent with DNS tunnelling | Data smuggled out inside very long, never-repeating website-name lookups |
+| [NG-DNS-002](docs/rules/NG-DNS-002.md) | NXDOMAIN bursts that may indicate DGA-like activity | Many lookups for names that do not exist, typical of malware searching for its control server |
+| [NG-FRAG-001](docs/rules/NG-FRAG-001.md) | Suspicious small IP fragments or split transport headers | Packets cut into unusually small pieces, which can slip past inspection tools |
+| [NG-RATE-001](docs/rules/NG-RATE-001.md) | Increased new connections relative to a host's own baseline | A device opens far more new connections than it normally does |
+| [NG-VOL-001](docs/rules/NG-VOL-001.md) | Increased outbound bytes relative to a host's own baseline | A device sends far more data out than it normally does; possible data theft |
 
 These behaviours alone do not prove an attack.
 For example, DNS misconfiguration can produce NXDOMAIN responses, and legitimate telemetry can use long DNS names.
 The [rule catalog](docs/rules/README.md) documents thresholds and known false positives.
 Confidence is not a statistical attack probability; it comes from [documented evidence factors](docs/CONFIDENCE.md).
+
+## Glossary
+
+| Term | Meaning |
+|---|---|
+| **Packet** | A small piece of data sent over a network. Everything online — a web page, a message — travels as many packets. |
+| **PCAP / PCAPNG** | A file format that records packets, like a video recording of network traffic. |
+| **Live traffic / capture** | Watching packets as they happen instead of reading a recording. |
+| **Capture point** | The place where traffic is recorded. NetGuard only sees what passes this point. |
+| **IP address** | A device's address on the network, for example `10.0.0.20`. |
+| **MAC address** | The hardware ID of a network card, used inside the local network. |
+| **Port** | A numbered entry point for a service on a device. 443 is usually HTTPS (secure web), 22 usually SSH (remote login). |
+| **Port scan** | Trying many ports to find which services are running. Often the first step before an attack. |
+| **TCP / UDP** | The two main ways to send data. TCP starts with a handshake and confirms delivery; UDP just sends. |
+| **SYN, SYN-ACK, RST** | TCP handshake messages. SYN = “can we talk?”, SYN-ACK = “yes, this port is open”, RST = “no, this port is closed”. |
+| **Flow / connection** | All packets exchanged between two devices for one conversation, matched in both directions. |
+| **DNS** | The internet's phone book: turns a name like `example.com` into an IP address. |
+| **NXDOMAIN** | The DNS answer “this name does not exist”. |
+| **DNS tunnelling** | Hiding data inside DNS lookups to sneak it past firewalls. |
+| **DGA** | Domain generation algorithm: malware that invents many random names to find its control server. |
+| **ARP** | The local-network protocol that maps IP addresses to MAC addresses. Faking it lets an attacker intercept traffic. |
+| **ICMP** | Network control messages; `ping` uses it. |
+| **IP fragment** | A piece of a packet that was too big and got split. Tiny fragments can be used to evade inspection. |
+| **Baseline** | What is normal for a specific device, learned from its own earlier traffic. |
+| **Threshold** | The limit that must be crossed before a rule reacts, for example 15 different ports in 60 seconds. |
+| **Alert** | One finding from one rule, with its evidence. |
+| **Incident** | Several related alerts grouped together because they involve the same actor around the same time. |
+| **Confidence score** | How strong the evidence for an alert is, built from documented factors. Not a probability of attack. |
+| **False positive** | An alert on harmless activity. |
+| **Early warning / final alert** | In live mode NetGuard can warn as soon as a threshold is crossed, then send the complete alert when the activity ends. Both describe the same event. |
+| **MITRE ATT&CK** | A public catalogue of attacker techniques. `T1046`, for example, means network service discovery. |
+| **tcpdump** | A standard command-line tool that records network packets. NetGuard uses it for live capture. |
+| **CLI / REST API / dashboard** | Three ways to use NetGuard: typed commands, requests from other programs, and a web page in the browser. |
+| **Passive** | Only observes; never blocks, changes or sends traffic. |
+| **Kernel packet drops** | Packets the operating system could not keep up with and lost before analysis. Zero means nothing was missed. |
+| **RSS** | How much memory the program actually uses. |
+| **Zeek** | A widely used network analysis tool, used here as an independent comparison. |
+| **SBOM** | Software bill of materials: a list of every component inside a release. |
+| **Release candidate (rc)** | A version that is believed ready but not yet officially released. |
 
 ## Quick start
 
