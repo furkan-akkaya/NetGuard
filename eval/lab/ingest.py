@@ -78,6 +78,12 @@ def ingest(transfer: Path) -> list[str]:
             print(f"warning: {name}: no kernel-drop count in {name}.meta.txt", file=sys.stderr)
         elif dropped != "0":
             print(f"warning: {name}: tcpdump reported {dropped} packets dropped by the kernel", file=sys.stderr)
+        if meta.get("captured") != meta.get("received_by_filter"):
+            print(
+                f"warning: {name}: tcpdump received {meta.get('received_by_filter')} packets "
+                f"but wrote {meta.get('captured')}; the capture is incomplete",
+                file=sys.stderr,
+            )
         if exp["kind"] == "attack":
             attack = _fields(transfer / f"{name}.attack.txt")
             tool, version, command = attack["tool"], attack["tool_version"], attack["command"]

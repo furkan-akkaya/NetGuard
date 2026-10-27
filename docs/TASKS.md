@@ -33,7 +33,8 @@ Deferred (ADR-0011): Zeek/Suricata input, ICMP tunnel rule, resolver policy, sea
 
 - [x] **8.3** UTM lab network (reported by the user, 27 Oct 2026): Kali 10.77.0.10 ↔ Ubuntu VM 10.77.0.20 on one named Host Network (UTM 5.0.8), ping 3/3; no route to the Mac or internet. The physical server stays out of attack traffic
 - [x] **8.6** Lab scripts ([eval/lab/](../eval/lab/)): victim capture, experiment 01 (SYN scan), ingest into the manifest; ground truth for exp01 and benign-01 written before any run; scripts exercised in a container (not a lab result)
-- [ ] **8.7** 👤 Run the one-line tool check on the Ubuntu VM ([LAB_SETUP.md § 4](LAB_SETUP.md)) and set up a transfer channel that meets § 3; then run experiment 01 (§ 5)
+- [x] **8.7** Ubuntu VM checked by the user (27 Oct 2026): Ubuntu 26.04.1 LTS, Python 3.14.4, tcpdump installed, SSH active
+- [ ] **8.8** 👤 Set up a transfer channel that meets [LAB_SETUP.md § 3](LAB_SETUP.md) (none yet: the Mac cannot reach the lab network); then run experiment 01 (§ 5)
 - [ ] **9.5** Run `deploy/netguard.service` under systemd on the Ubuntu server ([DEPLOYMENT.md](DEPLOYMENT.md))
 - [ ] **6.5** Live capture on a real interface (loopback already verified in an Ubuntu container): `netguard monitor -i <iface> --write live.pcap` during lab attacks; compare with `netguard analyze live.pcap`; note kernel drops ([LIVE_CAPTURE.md](LIVE_CAPTURE.md))
 - [ ] **8.4** Capture attack traffic (`nmap -sS/-sT/-sX/-sN/-sF/-sU/-sn`, `-T1`, `masscan`, `arp-scan`, `bettercap arp.spoof`) and ≥ 1 h of benign traffic into `captures/` (git-ignored)

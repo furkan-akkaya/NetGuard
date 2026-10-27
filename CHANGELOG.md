@@ -20,7 +20,7 @@ Phase 10: code-quality review, evaluation report and release preparation.
 - `--allowed-origin` for `netguard serve`.
 - Statistics: `alerts.events_total`, `alerts.final_total`, `alerts.history_dropped`.
 - docs/CAPTURE_EVALUATION.md; lab acceptance criteria in LAB_SETUP.md, fixed before any lab result.
-- `eval/lab/`: lab scripts for the isolated UTM network (victim capture with hashing and tcpdump drop counts, experiment 01 SYN scan with address and confirmation guards, `ingest.py` that verifies transferred captures and writes the manifest) and `experiments.toml` with ground truth written before any run.
+- `eval/lab/`: lab scripts for the isolated UTM network (victim capture that announces readiness only after tcpdump reports `listening on`, refuses cleanly when sudo, tcpdump or the interface fails, captures in immediate mode and records the hash and tcpdump's counts, experiment 01 SYN scan with address and confirmation guards, `ingest.py` that verifies transferred captures and writes the manifest) and `experiments.toml` with ground truth written before any run.
 - LAB_SETUP.md rewritten for the lab as built: one named Host Network, no route to the Mac or internet, transfer-channel requirements, a one-line tool check for the victim, and expected results that match the current rules (UDP scans: NG-SCAN-003; slow scans: NG-SCAN-002).
 
 ### Changed

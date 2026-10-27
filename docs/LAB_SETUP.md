@@ -91,8 +91,13 @@ expects NG-SCAN-001 (`portscan`, `10.77.0.10->10.77.0.20`) and NG-SCAN-002
 (`trw`, `10.77.0.10`).
 
 1. **Ubuntu:** `bash victim-capture.sh exp01-syn-scan`
-   It finds the 10.77.0.x interface (refuses if there is none), starts
-   tcpdump and prints `Capture is running`.
+   It finds the 10.77.0.x interface (refuses if there is none), asks for the
+   sudo password first, starts tcpdump, and prints `>>> Capture is running`
+   only after tcpdump itself has reported `listening on`. If sudo is refused,
+   tcpdump is missing, the interface is down or tcpdump does not report
+   `listening on` within 10 s, it says `do NOT start the experiment` (or
+   `FAILED`), keeps no pcap and exits with status 1. **Start Kali only after
+   the `>>> Capture is running` line.**
 2. **Kali:** `bash kali-exp01-syn-scan.sh`
    It checks that it runs on 10.77.0.10 and reaches 10.77.0.20 on the lab
    network, asks you to type `capture-running`, then runs
@@ -112,10 +117,18 @@ expects NG-SCAN-001 (`portscan`, `10.77.0.10->10.77.0.20`) and NG-SCAN-002
 
 Before the real run, the scripts were exercised in a disposable Ubuntu
 26.04 container on the Mac, with two network namespaces on a veth pair
-standing in for the VMs (nmap 7.98, tcpdump 4.99.6). The guards refused a
-non-lab address and a missing confirmation, the capture and hashing worked,
-and `ingest.py` rejected a modified capture. That run tested the scripts,
-not NetGuard on real traffic, and is not a lab result.
+standing in for the VMs (nmap 7.98, tcpdump 4.99.6), as a normal user with
+sudo rights. The guards refused a non-lab address and a missing
+confirmation; the capture refused cleanly when sudo was refused, tcpdump was
+missing, the interface was down or tcpdump never reported `listening on`;
+the ready line always came after tcpdump's `listening on`; a Ctrl-C sent to
+the whole foreground process group (as a terminal does) kept tcpdump's
+packet and drop counts; and `ingest.py` rejected a modified capture. That
+testing found that without `--immediate-mode` a Ctrl-C soon after the last
+packet lost 11 of 11 packets while tcpdump reported 0 kernel drops; the
+script now uses it, and `ingest.py` warns when tcpdump wrote fewer packets
+than it received. These runs tested the scripts, not NetGuard on real
+traffic, and are not lab results.
 
 ## 6. Later experiments
 
