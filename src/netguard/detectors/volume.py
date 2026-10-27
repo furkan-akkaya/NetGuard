@@ -30,6 +30,7 @@ def _mb(n: float) -> str:
 class VolumeDetector(Detector):
     name = "volume"
     rules = (RuleInfo(RULE_ID, "Abnormal outbound traffic volume"),)
+    counters = ("baselines.evicted",)
 
     def __init__(self, config: Config) -> None:
         self.cfg = config.volume

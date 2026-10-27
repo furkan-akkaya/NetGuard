@@ -20,21 +20,38 @@ Deferred (ADR-0011): Zeek/Suricata input, ICMP tunnel rule, resolver policy, sea
 
 ## Now: Phase 10, documentation, release and portfolio (Phase 8 lab work waits on the user)
 
-- [ ] **10.1** Code-quality review across modules (consistency, dead code, naming)
-- [ ] **10.2** Engineering evaluation report (what was built, measured, not measured)
-- [ ] **10.3** Accurate screenshots and a short demo from real analyses
-- [ ] **10.4** v1.0 release checklist against the brief's Definition of Done
-- [ ] **10.5** 👤 Tag, run the release workflow, review and publish the draft release; decide on repository visibility
-- [ ] **10.6** LinkedIn/portfolio text draft (technically grounded, no unmeasured claims)
+- [x] **10.1** Code-quality review across modules: detector state losses now reported, dead code and an unused dependency removed
+- [x] **10.2** Engineering evaluation report ([ENGINEERING_REPORT.md](ENGINEERING_REPORT.md)); limitations table and benchmarks brought up to date
+- [x] **10.3** Screenshots and CLI demo from real analyses of the synthetic scenarios ([DEMO.md](DEMO.md)); fixed the traffic chart they exposed
+- [x] **10.4** v1.0 checklist against the Definition of Done ([RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md)): 8/12 met, so no v1.0.0 yet; release steps rehearsed locally and, on pull requests, by `release-dryrun.yml`
+- [x] **10.8** Release candidate prepared: version `1.0.0rc1` in all three places, CHANGELOG section used as release notes, install/verify/uninstall guide ([DEPLOYMENT.md](DEPLOYMENT.md)), delivery report ([DELIVERY_REPORT.md](DELIVERY_REPORT.md)); artefacts rehearsed by `release-dryrun.yml`. Not tagged
+- [ ] **10.5** 👤 Decide: merge PR #8 then #9, tag `v1.0.0rc1` (draft pre-release, stays private); later `v1.0.0` after the lab; repository visibility
+- [x] **10.6** LinkedIn (EN/TR), CV and interview drafts with measured claims only ([PORTFOLIO.md](PORTFOLIO.md))
+- [x] **10.7** Fixes from the external audit (27 Oct 2026): concurrent upload quota, full Origin check (`--allowed-origin`), bounded live alert history, time-series bound, release gates (tagged-source checks, locked install = SBOM, sdist coverage)
+- [x] **8.5** Lab tooling without the lab: `lab evaluate --manifest`, `lab compare-flows` (Zeek), acceptance criteria fixed in advance ([LAB_SETUP.md § 8](LAB_SETUP.md))
 
 ## Waiting on the user 👤
 
-- [ ] **8.3** Build the UTM lab: Kali (attacker) + Ubuntu (victim) on an isolated host-only network ([LAB_SETUP.md](LAB_SETUP.md))
+- [x] **8.3** UTM lab network (reported by the user, 27 Oct 2026): Kali 10.77.0.10 ↔ Ubuntu VM 10.77.0.20 on one named Host Network (UTM 5.0.8), ping 3/3; no route to the Mac or internet. The physical server stays out of attack traffic
+- [x] **8.6** Lab scripts ([eval/lab/](../eval/lab/)): victim capture, experiment 01 (SYN scan), ingest into the manifest; ground truth for exp01 and benign-01 written before any run; scripts exercised in a container (not a lab result)
+- [x] **8.7** Ubuntu VM checked by the user (27 Oct 2026): Ubuntu 26.04.1 LTS, Python 3.14.4, tcpdump installed, SSH active
+- [x] **8.8** Transfer channel in use (UTM VirtFS share); experiment 01 captured and transferred
+- [x] **8.9** First real capture measured (exp01 SYN scan, hash-verified): NG-SCAN-001 + NG-SCAN-002 with declared entities, 0 FP; flow states == real Zeek 8.2.2 conn.log (1001/1001); replay == offline final alerts. One capture, not tool-wide precision/recall. See [EVALUATION.md § 6](../docs/EVALUATION.md)
+- [x] **8.10** Runners for the remaining experiments (`eval/lab/kali-run.sh`), benign + RSS live runner (`victim-live-rss.sh`), live-vs-offline and Zeek helpers; container-tested
+- [x] **8.11a** Live-interface SYN measurement (live-syn-01, 90 s, 0 kernel drops reported): live final alerts == offline except `reported_at`; flow states == Zeek 8.2.2 (1000/1000)
+- [x] **8.11b** 1 h benign baseline + RSS (benign-01, build of `a845dea`): 3640 s, 4245 packets, 0 kernel drops; live 0 = offline 0 final alerts; peak RSS 34.0 MiB; flow states vs Zeek 8.2.2 396/397, differences explained. One low-rate SSH-banner/ping mix, not a production FP rate ([EVALUATION.md § 6](EVALUATION.md))
+- [x] **8.11c** Live delay with early warnings on (live-early-01, 120 s, 0 kernel drops): early warnings 0.683 s (NG-SCAN-001) and 0.757 s (NG-SCAN-002) after the threshold-crossing packet; final alerts equal offline except `reported_at`. One run, one scan type ([EVALUATION.md § 6](EVALUATION.md)); `live_delay.py --pcap` now replays the capture to find the crossing
+- [ ] **8.12** 👤 Remaining attack experiments: connect (r02), Xmas, FIN, NULL, UDP, sweep, frag and SYN burst done on 27 Oct 2026 (each exactly its declared detections; [EVALUATION.md § 6](EVALUATION.md)); slow scan exp06 done too (NG-SCAN-002 only, as declared). All attack experiments of 8.12 measured once each
+- [ ] **8.17** Decide: the baselines (NG-RATE-001, NG-VOL-001) learn from the partial first interval of a capture or live session as if it were a full one; in the failed exp14 run 01 that inflated the deviation and put the threshold 4 connections above the burst. Options: skip the partial first interval, or keep it and document. Not changed: r02 was analysed with the unchanged code
+- [x] **8.16** Connections without a SYN (NULL/FIN/Xmas probes) follow Zeek's endpoint states (`RSTRH`/`RSTR`/`SH` instead of `OTH`): 17 cases checked against Zeek 8.2.2, regression test from the real probes, exp03-exp05 now equal to Zeek; no alert changes. exp09's difference is the documented no-reassembly limit, pinned by size
+- [x] **8.14** Flow state: an RST after the FIN exchange was RSTO, Zeek says SF (seen once in benign-01). Now follows Zeek's endpoint rules for FIN/RST order (ADR-0004); regression test from the real connection, 14 orderings checked against Zeek 8.2.2; benign-01 397/397 TCP/UDP flows match, equal with Zeek's DNS timeout at 60 s
+- [x] **8.15** Flow state when both endpoints reset now follows Zeek (RSTR, or REJ without payload). The REJ *label* does not feed the detectors (they use connection events; pinned by a test); 33 orderings and pre-handshake cases checked against Zeek 8.2.2; real-capture regression unchanged (`eval/lab/real_regression.py`)
+- [x] **8.13** ARP, DNS and baseline rules: exp11 (NG-ARP-001), exp12 (NG-DNS-002, 40/40 NXDOMAIN) and exp13 (NG-DNS-001) measured, each exactly as declared; exp14: run 01 failed (9945 of 59091 packets dropped by the kernel; not counted), **r02 accepted** (0 drops; raw capture: NG-RATE-001 and NG-VOL-001 with the declared entities; Zeek 2331/2331), run with the owner's local helper variant (1 MiB/s, 64 MiB buffer; not byte-identical to the repository's helpers, which now default to the same values with bounded `--rate` and `NG_CAPTURE_BUFFER_KIB`)
 - [ ] **9.5** Run `deploy/netguard.service` under systemd on the Ubuntu server ([DEPLOYMENT.md](DEPLOYMENT.md))
-- [ ] **6.5** Live capture on a real interface (loopback already verified in an Ubuntu container): `netguard monitor -i <iface> --write live.pcap` during lab attacks; compare with `netguard analyze live.pcap`; note kernel drops ([LIVE_CAPTURE.md](LIVE_CAPTURE.md))
+- [x] **6.5** Live capture on a real interface: done on the lab VM in live-syn-01 and benign-01 (`monitor --sudo --write`, compared with offline analysis, kernel drops recorded); see 8.11a/b
 - [ ] **8.4** Capture attack traffic (`nmap -sS/-sT/-sX/-sN/-sF/-sU/-sn`, `-T1`, `masscan`, `arp-scan`, `bettercap arp.spoof`) and ≥ 1 h of benign traffic into `captures/` (git-ignored)
-- [ ] **2.11** On those captures: `netguard flows` state distribution for `nmap -sS`, compared with Zeek `conn.log`
-- [ ] On lab captures: `nmap -sS -T1`, `nmap -sU`, `nmap -f`, `hping3 -S --flood` (isolated lab only) to validate NG-SCAN-002/003, NG-FRAG-001, NG-SYN-001
+- [x] **2.11** `nmap -sS` state distribution compared with Zeek `conn.log` on real captures (exp01 1001/1001, live-syn-01 1000/1000)
+- [ ] On lab captures: `nmap -sS -T1`, `nmap -sU`, `nmap -f`, a bounded `hping3 -S` burst (isolated lab only) to validate NG-SCAN-002/003, NG-FRAG-001, NG-SYN-001 (part of 8.12)
 - [ ] Re-check every confidence factor on real lab captures (Phase 8); remove factors that do not separate true from false positives
 - [ ] Work through the questions in learning notes 01–08
 

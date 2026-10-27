@@ -1,7 +1,7 @@
 {
   "name": "netguard-dashboard",
   "private": true,
-  "version": "0.8.0",
+  "version": "1.0.0rc1",
   "type": "module",
   "description": "NetGuard web dashboard (built into src/netguard/web/static)",
   "license": "MIT",

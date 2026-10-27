@@ -41,6 +41,7 @@ class DnsTunnelDetector(Detector):
     name = "dnstunnel"
     packet_protos = frozenset({"udp"})
     rules = (RuleInfo(RULE_ID, "Possible DNS tunnelling", T1071_004),)
+    counters = ("tracker.evicted_keys", "suppressed")
 
     def __init__(self, config: Config) -> None:
         self.cfg = config.dnstunnel

@@ -85,6 +85,7 @@ class _Source:
 class TrwDetector(Detector):
     name = "trw"
     rules = (RuleInfo(RULE_ID, "Scan detected by connection outcomes (TRW)", T1046),)
+    counters = ("evicted_sources",)
 
     def __init__(self, config: Config) -> None:
         self.cfg = config.trw

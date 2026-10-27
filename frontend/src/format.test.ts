@@ -1,4 +1,5 @@
-import { endpoint, formatBytes, formatDuration, formatNumber, formatTime, humanize, timeAgo } from "./format";
+import { endpoint, formatBytes, formatDuration, formatNumber, formatTime, humanize, stateLosses, timeAgo } from "./format";
+import type { Stats } from "./api";
 import { qs } from "./api";
 
 test("formatBytes uses SI units and handles bad input", () => {
@@ -35,4 +36,19 @@ test("misc helpers", () => {
 test("qs drops empty values and encodes the rest", () => {
   expect(qs({ a: "x y", b: "", c: undefined, d: null, e: 0 })).toBe("?a=x+y&e=0");
   expect(qs({})).toBe("");
+});
+
+test("stateLosses sums only dropped-state counters", () => {
+  const stats = {
+    detectors: {
+      synflood: { evicted_targets: 90 },
+      arpspoof: { untracked_ips: 2, explained_by_dhcp: 5 },
+      portscan: { evicted_keys: 0, suppressed: 3 },
+    },
+  } as unknown as Stats;
+  expect(stateLosses(stats)).toEqual([
+    ["synflood", 90],
+    ["arpspoof", 2],
+  ]);
+  expect(stateLosses({} as Stats)).toEqual([]);
 });

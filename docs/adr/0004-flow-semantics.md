@@ -44,9 +44,33 @@ precedence:
 1. Originator SYN, no responder SYN → `REJ` (responder RST) › `RSTOS0`
    (originator RST) › `SH` (originator FIN) › `S0`.
 2. Responder SYN, no originator SYN → `RSTRH` › `SHR` › `OTH`.
-3. No SYN at all → `OTH` (mid-stream).
+3. No SYN at all (NULL/FIN/Xmas probes, mid-stream pickup): the same
+   per-endpoint FIN/RST record as rule 4, where an endpoint that sent neither
+   FIN nor RST counts as inactive, as Zeek's INACTIVE/PARTIAL. Responder
+   reset → `RSTRH` (originator inactive, e.g. a NULL probe answered by RST)
+   or `RSTR` (originator sent FIN, e.g. FIN/Xmas probes), `REJ` if both reset
+   without payload; originator reset → `OTH` (responder inactive) or `RSTO`;
+   originator FIN → `SF` (both) or `SH`; responder FIN → `SHR`; otherwise
+   `OTH` (amended 27 Oct 2026: before, every such flow was `OTH`; real NULL,
+   FIN and Xmas scans showed 999 differences each against Zeek). Checked
+   against Zeek 8.2.2 for 17 cases, state and history
+   (`test_connections_without_syn_match_zeek`). No detector uses these
+   labels: TRW counts only first contacts opened by a SYN.
 4. Both SYNs (established) → `RSTO` › `RSTR` › `SF` (FIN both ways) › `S2`
-   (originator FIN only) › `S3` (responder FIN only) › `S1`.
+   (originator FIN only) › `S3` (responder FIN only) › `S1`. Here FIN and RST
+   are not taken from the OR of flags but from a small per-endpoint record,
+   because their order matters (amended 27 Oct 2026, after a real lab capture
+   showed the difference): as in Zeek's endpoint state machine, an RST from an
+   endpoint that already sent its FIN is ignored when the peer has sent its
+   FIN too, and when the peer's FIN comes after such an RST, the connection
+   is still `SF`. An RST from an endpoint that had not sent FIN, or FIN and
+   RST in one segment, is an abort as before. Checked case by case against
+   Zeek 8.2.2 (`tests/test_flows.py::test_fin_and_rst_order_matches_zeek`).
+   When **both** endpoints reset, the responder is checked first, as in
+   Zeek's `conn_state`: `RSTR`, or `REJ` when neither side sent payload. That
+   `REJ` is only a label: the detectors use connection events (`attempt`,
+   `answered`, `rejected`, `established`), where such a connection was
+   answered and established, never rejected.
 
 UDP/ICMP flows are `SF` if the responder sent anything, otherwise `S0`.
 

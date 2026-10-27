@@ -30,7 +30,7 @@ import subprocess
 import threading
 import time
 from collections.abc import Callable, Iterator
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import IO, BinaryIO
 
@@ -75,6 +75,21 @@ def validate_spec(spec: CaptureSpec) -> None:
         raise SourceError("snaplen must be between 64 and 262144")
 
 
+def _drop_user() -> str:
+    """The account tcpdump -Z drops to: the user NetGuard runs as. SUDO_USER is
+    only the answer when NetGuard itself runs as root under sudo; under
+    `sudo -u lab` it names the invoking account (often root), not this one."""
+    euid = os.geteuid()
+    if euid == 0:
+        return os.environ.get("SUDO_USER", "")
+    import pwd
+
+    try:
+        return pwd.getpwuid(euid).pw_name
+    except KeyError:  # a uid with no passwd entry (some containers)
+        return os.environ.get("USER", "")
+
+
 def tcpdump_command(spec: CaptureSpec, tcpdump: str = "tcpdump") -> list[str]:
     """The argument vector (never a shell string): -U flushes per packet, -n avoids DNS lookups."""
     validate_spec(spec)
@@ -82,7 +97,7 @@ def tcpdump_command(spec: CaptureSpec, tcpdump: str = "tcpdump") -> list[str]:
     if spec.max_packets:
         cmd += ["-c", str(spec.max_packets)]
     if spec.use_sudo:
-        user = os.environ.get("SUDO_USER") or os.environ.get("USER") or ""
+        user = _drop_user()
         if not user or user == "root":
             raise SourceError("--sudo needs a non-root user to drop to (tcpdump -Z)")
         cmd = ["sudo", "-n", *cmd, "-Z", user]
@@ -336,7 +351,6 @@ class SessionResult:
     seconds: float
     stopped_by: str
     error: str | None = None
-    status_lines: list[str] = field(default_factory=list)
 
 
 class LiveSession:
@@ -353,9 +367,12 @@ class LiveSession:
         clock_rate: float = 1.0,
         on_status: Callable[[Engine], None] | None = None,
         status_every: float | None = None,
+        max_alert_history: int = 10_000,
     ) -> None:
         self.source = source
-        self.engine = Engine(config, on_alert=on_alert, on_flow=on_flow)
+        # A session can run for days: keep only the latest alert events in memory.
+        # on_alert receives every one of them as it happens.
+        self.engine = Engine(config, on_alert=on_alert, on_flow=on_flow, max_alert_history=max_alert_history)
         self.duration = duration
         self.idle_advance = idle_advance
         # Capture seconds per wall second (replay speed); 0 = never advance on idle.

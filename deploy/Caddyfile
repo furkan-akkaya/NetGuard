@@ -1,5 +1,8 @@
 # TLS in front of NetGuard (see docs/DEPLOYMENT.md). Caddy obtains certificates
 # automatically for public names; for a lab use `tls internal`.
+# NetGuard must then be started with
+#   --allowed-host netguard.lab.example --allowed-origin https://netguard.lab.example
+# otherwise it refuses the proxied Host name (421) and dashboard writes (403).
 netguard.lab.example {
     # tls internal
     reverse_proxy 127.0.0.1:8000

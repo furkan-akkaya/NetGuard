@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import dataclass, replace
+from operator import attrgetter
 
 from netguard.config import Config
 from netguard.flows import Flow
@@ -32,6 +33,10 @@ class Detector:
     packet_protos: frozenset[str] | None = None
     #: The rules this detector raises; listed by ``netguard rules``.
     rules: tuple[RuleInfo, ...] = ()
+    #: Integer attributes (dotted paths allowed) reported in the analysis
+    #: statistics. Names starting with ``evicted`` mean detection state was
+    #: dropped under memory pressure; the outputs warn about them.
+    counters: tuple[str, ...] = ()
 
     def __init__(self, config: Config) -> None:
         self.global_cfg = config
@@ -55,6 +60,10 @@ class Detector:
     def flush(self) -> Iterable[Alert]:
         """End of input: emit everything still pending."""
         return ()
+
+    def counter_values(self) -> dict[str, int]:
+        """Current values of ``counters``, keyed by their last path component."""
+        return {path.rsplit(".", 1)[-1]: int(attrgetter(path)(self)) for path in self.counters}
 
 
 def as_early(alerts: Iterable[Alert | None]) -> list[Alert]:

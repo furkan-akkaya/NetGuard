@@ -3,7 +3,7 @@
 NetGuard reads attacker-controlled bytes by design (packets, capture files,
 DNS names) and, when serving, exposes an HTTP API and a dashboard. This page
 lists what is protected, from whom, at every entry point, and which test pins
-each defence. Reviewed for v0.8.0 (Phase 9).
+each defence. Reviewed for v0.8.0 (Phase 9); updated after the external audit of 27 October 2026.
 
 ## Assets and adversaries
 
@@ -29,11 +29,11 @@ each defence. Reviewed for v0.8.0 (Phase 9).
 | Packet decoding | Crash or exception hides a packet (detection bypass); parser differential | Never raises; struct fast path checked against dpkt by a differential fuzz test; malformed DNS loses only its fields | `test_decode.py`, `test_dns.py` |
 | Detector state | Spoofed-source floods exhaust memory or CPU | Every table bounded, eviction O(1), drops counted (fail-open) | `test_window.py`, `test_flows.py`, `benchmarks/flood_memory.py` |
 | Evasion | Slow scans, fragmentation, rogue DHCP laundering ARP spoofing | TRW without window, fragment rule, trusted-server DHCP correlation | `test_scenarios.py`, `test_phase7.py` |
-| Live capture | Privileged code parsing traffic; argument injection; symlink overwrite with `--write` | NetGuard refuses root, tcpdump holds capture privilege (`-Z` with sudo); argv without shell, validated interface; output opened `O_EXCL|O_NOFOLLOW` before tcpdump starts | `test_live.py` |
-| Upload | Disk exhaustion, non-capture files, path traversal via filename | Streamed with size cap and global storage quota, magic check, random stored names, SHA-256 de-duplication | `test_api.py`, `test_guard.py` |
+| Live capture | Privileged code parsing traffic; argument injection; symlink overwrite with `--write`; memory growth in sessions that run for days | NetGuard refuses root, alert history bounded to the latest 10 000 events (every event is still printed, drops are counted), time series bounded, tcpdump holds capture privilege (`-Z` with sudo); argv without shell, validated interface; output opened `O_EXCL|O_NOFOLLOW` before tcpdump starts | `test_live.py` |
+| Upload | Disk exhaustion (also by concurrent uploads), non-capture files, path traversal via filename | Streamed with size cap; global storage quota with per-chunk reservations shared by concurrent uploads and released on failure or disconnect; magic check, random stored names, SHA-256 de-duplication | `test_api.py`, `test_guard.py` |
 | Analysis jobs | Parser bug or memory bomb takes the API down; job flood | Separate worker process with timeout, `RLIMIT_CPU`, `RLIMIT_AS` (Linux), queue limit | `test_store_jobs.py`, `test_api.py`, Linux container check |
 | API queries | SQL injection, huge pages | Bound parameters, allowlisted sort keys, page ≤ 1000 | `test_api.py` |
-| Malicious web page (localhost API) | **DNS rebinding** (reads all data), **cross-site writes** via "simple requests", large bodies | Host allowlist (421), cross-origin unsafe methods refused (403), raw-body endpoints require non-simple content types (415), 1 MiB body cap outside the upload | `test_guard.py` |
+| Malicious web page (localhost API) | **DNS rebinding** (reads all data), **cross-site writes** via "simple requests" (also from another port on the same host), large bodies | Host allowlist (421), unsafe methods refused (403) unless `Origin` is absent or equals the server's scheme, host and port or an explicitly allowed origin (`null` and malformed origins refused), raw-body endpoints require non-simple content types (415), 1 MiB body cap outside the upload | `test_guard.py` |
 | Remote API clients | Unauthenticated access | Loopback by default; non-loopback refused without a ≥ 16-char bearer token (constant-time compare) | `test_api.py` |
 | Dashboard | Stored XSS from capture strings, clickjacking | Text-only rendering, CSP `script-src 'self'`, `frame-ancestors 'none'`, no inline scripts (CI check) | `security.test.tsx`, CI frontend job |
 | HTML report | XSS from capture strings | Everything escaped, CSP without scripts | `test_report.py` |
@@ -56,6 +56,25 @@ each defence. Reviewed for v0.8.0 (Phase 9).
    shared hosts). Now created exclusively, without following links.
 6. **SQLite WAL/SHM files inherited the default umask** (low): now 077.
 7. **Broken-pipe exit code 120** on Python 3.14 (robustness).
+
+## Findings fixed after the external audit (27 October 2026)
+
+An independent review reproduced four defects that the Phase 9 tests did not
+cover. Each now has a regression test that failed before the fix.
+
+1. **Concurrent uploads exceeded the quota** (medium): the free space was
+   checked once per upload, so two 400-byte uploads against a 500-byte quota
+   both succeeded (800 bytes stored). Fixed with reservations
+   (`test_concurrent_uploads_cannot_exceed_the_quota`).
+2. **Origin compared host names only** (medium): `http://localhost:9999` was
+   accepted for writes to `http://localhost`, including a body-less POST that
+   starts an analysis. Exploiting it needs a malicious page served from
+   another port of the same host; not demonstrated with a real browser.
+   Fixed: scheme, host and port must match (`test_origin_must_match_scheme_host_and_port`).
+3. **Unbounded alert history in live sessions** (low, availability): every
+   alert event stayed in memory for the whole session. Fixed with a bounded
+   history (accelerated 25-hour capture-clock test; not a 25-hour wall-clock run).
+4. **Time series could exceed its bucket limit** with sparse timestamps (low).
 
 ## Residual risks (accepted, documented)
 

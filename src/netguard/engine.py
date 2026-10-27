@@ -10,6 +10,7 @@ deterministic: the same pcap and config always produce the same output.
 
 from __future__ import annotations
 
+from collections import deque
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field, replace
 
@@ -18,7 +19,7 @@ from netguard.config import Config
 from netguard.decode import UnsupportedLinkType, decode
 from netguard.detectors import Detector, build_detectors
 from netguard.flows import Flow, FlowTable
-from netguard.models import Alert, Packet
+from netguard.models import STAGE_FINAL, Alert, Packet
 from netguard.stats import TrafficStats
 
 TICK_SECONDS = 1.0  # how often (in capture time) detectors may close incidents and flows expire
@@ -37,12 +38,18 @@ class Engine:
         detectors: list[Detector] | None = None,
         on_alert: Callable[[Alert], None] | None = None,
         on_flow: Callable[[Flow], None] | None = None,
+        max_alert_history: int | None = None,
     ) -> None:
         self.config = config or Config()
         self.detectors = detectors if detectors is not None else build_detectors(self.config)
         self.stats = TrafficStats()
         self.flows = FlowTable(self.config.flows)
-        self.alerts: list[Alert] = []
+        if max_alert_history is not None and max_alert_history < 1:
+            raise ValueError("max_alert_history must be positive")
+        # Offline analyses keep every alert (None). Live sessions keep a bounded
+        # tail: ``on_alert`` still receives every event, and the statistics
+        # count how many were dropped from this in-memory history.
+        self._alert_history: deque[Alert] = deque(maxlen=max_alert_history)
         self._on_alert = on_alert
         self._on_flow = on_flow
         self._next_tick: float | None = None
@@ -53,13 +60,22 @@ class Engine:
         self._packet_detectors = [d for d in self.detectors if type(d).on_packet is not Detector.on_packet]
         self._by_proto: dict[str, list[Detector]] = {}
 
+    @property
+    def alerts(self) -> list[Alert]:
+        """The retained alert events (all of them unless ``max_alert_history`` is set)."""
+        return list(self._alert_history)
+
     def _emit(self, alerts: Iterable[Alert]) -> None:
         for alert in alerts:
             if alert.reported_at is None and self._now is not None:
                 alert = replace(alert, reported_at=self._now)
             if alert.confidence is None:
                 alert = replace(alert, confidence=assess(alert.rule_id, alert.evidence))
-            self.alerts.append(alert)
+            self.stats.alert_events_total += 1
+            self.stats.final_alerts_total += alert.stage == STAGE_FINAL
+            if len(self._alert_history) == self._alert_history.maxlen:
+                self.stats.alert_history_dropped += 1
+            self._alert_history.append(alert)
             if self._on_alert:
                 self._on_alert(alert)
 
@@ -133,8 +149,9 @@ class Engine:
         self._end_flows(self.flows.drain())
         for det in self.detectors:
             self._emit(det.flush())
-        self.alerts.sort(key=lambda a: (a.first_seen, a.detector))
-        return AnalysisResult(stats=self.stats, alerts=self.alerts)
+        alerts = sorted(self._alert_history, key=lambda a: (a.first_seen, a.detector))
+        self.stats.detector_counters = {d.name: d.counter_values() for d in self.detectors if d.counters}
+        return AnalysisResult(stats=self.stats, alerts=alerts)
 
 
 def analyze_frames(frames: Iterable[tuple[float, bytes, int]], config: Config | None = None) -> AnalysisResult:

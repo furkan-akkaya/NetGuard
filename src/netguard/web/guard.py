@@ -9,8 +9,12 @@ the user's own browser. Three checks run before any route:
   loopback names and explicitly allowed hosts are accepted.
 * **Cross-origin writes (CSRF).** Browsers send some cross-site requests
   without a CORS preflight ("simple requests", e.g. ``Content-Type:
-  text/plain``). A state-changing request whose ``Origin`` is not this server
-  is refused. Requests without ``Origin`` (curl, scripts) are unaffected.
+  text/plain``). A state-changing request whose ``Origin`` is not exactly this
+  server (scheme, host *and* port: another port on localhost is another
+  site's service) or an explicitly allowed origin is refused, as are ``null``
+  and malformed origins. Requests without ``Origin`` (curl, scripts) are
+  unaffected. Behind a TLS proxy the browser's origin (``https://name``)
+  differs from what NetGuard sees (``http``), so it must be allowed by name.
 * **Body size.** Everything except the capture upload (which streams with its
   own cap) is limited to ``MAX_BODY`` bytes, counted while reading, so a
   chunked request cannot bypass a ``Content-Length`` check.
@@ -33,6 +37,8 @@ App = Callable[[Scope, Receive, Send], Awaitable[None]]
 MAX_BODY = 1024 * 1024
 LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "[::1]", "::1"})
 UNSAFE_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
+DEFAULT_PORTS = {"http": 80, "https": 443}
+Origin = tuple[str, str, int]  # scheme, host, port
 
 
 def _host_only(value: str) -> str:
@@ -43,11 +49,37 @@ def _host_only(value: str) -> str:
     return value.rsplit(":", 1)[0] if value.count(":") == 1 else value
 
 
+def parse_origin(value: str) -> Origin | None:
+    """'https://Name:443' -> ('https', 'name', 443); None for null, paths or anything malformed."""
+    try:
+        parts = urlsplit(value.strip())
+        port = parts.port
+    except ValueError:
+        return None
+    scheme = parts.scheme.lower()
+    if scheme not in DEFAULT_PORTS or not parts.hostname or parts.username or parts.password:
+        return None
+    if parts.path not in ("", "/") or parts.query or parts.fragment:
+        return None
+    return scheme, parts.hostname.lower(), port or DEFAULT_PORTS[scheme]
+
+
+def _request_origin(scheme: str, host_header: str) -> Origin | None:
+    return parse_origin(f"{scheme}://{host_header}") if host_header else None
+
+
 class RequestGuard:
-    def __init__(self, app: App, allowed_hosts: Iterable[str], streamed_paths: Iterable[str] = ()) -> None:
+    def __init__(
+        self,
+        app: App,
+        allowed_hosts: Iterable[str],
+        streamed_paths: Iterable[str] = (),
+        allowed_origins: Iterable[str] = (),
+    ) -> None:
         self.app = app
         self.allowed = LOOPBACK_HOSTS | {_host_only(h) for h in allowed_hosts if h}
         self.streamed = tuple(streamed_paths)
+        self.origins = {o for o in (parse_origin(v) for v in allowed_origins) if o is not None}
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http":
@@ -60,9 +92,12 @@ class RequestGuard:
             return
         method = scope["method"]
         origin = headers.get("origin")
-        if method in UNSAFE_METHODS and origin is not None and _host_only(urlsplit(origin).netloc) != host:
-            await _reject(send, 403, "cross-origin request refused")
-            return
+        if method in UNSAFE_METHODS and origin is not None:
+            claimed = parse_origin(origin)
+            own = _request_origin(scope.get("scheme", "http"), headers.get("host", ""))
+            if claimed is None or (claimed != own and claimed not in self.origins):
+                await _reject(send, 403, "cross-origin request refused")
+                return
         path = scope.get("path", "")
         if any(path == p or path.startswith(p + "?") for p in self.streamed) or method not in UNSAFE_METHODS:
             await self.app(scope, receive, send)

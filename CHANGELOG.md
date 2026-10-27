@@ -2,6 +2,86 @@
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning: [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+## [1.0.0rc1] - 2026-10-27
+
+Release **candidate**, not v1.0.0: the Definition of Done is not fully met
+(docs/RELEASE_CHECKLIST.md). It collects Phase 10 (code-quality review,
+evaluation report, release preparation), the fixes from the external audit
+of 27 October 2026 and the first real lab measurements. Every number below
+comes from a run that was performed; what was not measured is said so.
+
+Install: verify `SHA256SUMS`, then
+`pip install -c netguard-1.0.0rc1-requirements.txt "netguard-1.0.0rc1-py3-none-any.whl[web]"`
+(docs/DEPLOYMENT.md, which also covers live capture permissions, upgrading
+and uninstalling). Known limits: docs/EVALUATION.md § 5 and § 6.
+
+### Added
+- Analysis statistics report every detector's counters (`stats.detectors`). When a detector dropped state because its table was full (`evicted_*`, `untracked_*`), the text output, the HTML report and the dashboard show a warning. Before, these losses were counted internally but never shown, although the docs said they were.
+- NG-ARP-001 counts new IPs it could not track because the binding table was full (`untracked_ips`).
+
+### Measured (first real lab capture, 27 Oct 2026)
+- One real nmap SYN scan (isolated UTM lab, hash-verified capture): NG-SCAN-001 and NG-SCAN-002 fired with the declared entities, 0 false positives (4 stray SSDP multicast packets raised nothing). Flow states matched a real Zeek 8.2.2 `conn.log` exactly (1001/1001, zero differences). Replay through the live pipeline produced the same final alerts as offline analysis.
+- The same scan captured live by `netguard monitor` on the victim (live-syn-01, 90 s, 0 kernel drops reported): the two live final alerts equal offline analysis of the written pcap in every field except `reported_at`, and flow states match Zeek 8.2.2 (1000/1000). Two captures of one attack type are not precision/recall for the tool, and live delay with early warnings is not measured. See docs/EVALUATION.md § 6.
+- One hour of live benign lab traffic (benign-01: paced SSH banner reads and pings from Kali, multicast background; build of `a845dea`): 4245 packets, 0 kernel drops, 0 final alerts live and offline, analyser peak RSS 34.0 MiB. Flow states matched Zeek 8.2.2 for 396 of 397 flows; the mDNS split comes from Zeek's 10 s DNS session timeout, and one FIN-then-RST connection was RSTO in NetGuard but SF in Zeek (fixed, see below). One narrow traffic mix: not a false-positive rate or a memory guarantee for real networks.
+
+### Security
+- Concurrent uploads could exceed the storage quota (two 400-byte uploads against a 500-byte quota were both stored). Uploads now reserve quota per chunk; reservations are released when the capture is stored or the upload fails, is rejected or disconnects.
+- The Origin check compared host names only: `http://localhost:9999` could change data on `http://localhost`, including a body-less POST that starts an analysis. Scheme, host and port must now match; `null` and malformed origins are refused. **Behind a TLS proxy, add `--allowed-origin https://<name>`**, or dashboard writes get 403.
+
+### Added
+- `netguard lab evaluate --manifest`: score checksum-pinned captures against ground truth declared in advance (tool, tool version, command, provenance, configuration hash); lab, public and synthetic scores are kept apart; integrity failures exit 2 without a score. Adapted from an earlier unmerged patch after review.
+- `netguard lab compare-flows`: compare every TCP/UDP flow (endpoints, direction, state) with a Zeek JSON `conn.log`.
+- `--allowed-origin` for `netguard serve`.
+- Statistics: `alerts.events_total`, `alerts.final_total`, `alerts.history_dropped`.
+- docs/CAPTURE_EVALUATION.md; lab acceptance criteria in LAB_SETUP.md, fixed before any lab result.
+- `eval/lab/`: lab scripts for the isolated UTM network (victim capture that announces readiness only after tcpdump reports `listening on`, refuses cleanly when sudo, tcpdump or the interface fails, captures in immediate mode and records the hash and tcpdump's counts, experiment 01 SYN scan with address and confirmation guards, `ingest.py` that verifies transferred captures and writes the manifest) and `experiments.toml` with ground truth written before any run.
+- LAB_SETUP.md rewritten for the lab as built: one named Host Network, no route to the Mac or internet, transfer-channel requirements, a one-line tool check for the victim, and expected results that match the current rules (UDP scans: NG-SCAN-003; slow scans: NG-SCAN-002).
+
+- `eval/lab/kali-run.sh`: one guarded runner for every planned attack experiment (SYN/connect/XMAS/FIN/NULL/slow/UDP scans, ping sweep, fragmented scan, a bounded SYN burst), each refusing to run outside 10.77.0.10 -> 10.77.0.20 and bounded (fixed ports/counts/rates, no unbounded flooding). `experiments.toml` carries their ground truth, written before any run, listing only the detectors each experiment should trigger on this two-VM topology.
+- `eval/lab/victim-live-rss.sh`: runs `netguard monitor --sudo` (NetGuard stays a normal user, tcpdump via `sudo -n`), announces readiness only after a tcpdump capture process is actually running, samples the analyser's RSS and records VmHWM (the kernel's peak), the monotonic elapsed time, the monitor exit status, kernel-drop count and write-truncation, and reports NEEDS REVIEW instead of success on a failed, short, under-sampled or lossy run.
+- `eval/lab/kali-benign.sh`: paced, non-scanning client traffic for the benign baseline. `eval/lab/live_offline_equal.py`: compares a live JSONL run's final alerts with offline analysis of the written pcap. `eval/lab/zeek-compare.sh`: runs Zeek on a capture and compares flows.
+- `.github/workflows/release-dryrun.yml`: runs every release gate and uploads the artefacts (wheel, sdist, SBOM, checksums, locked requirements) WITHOUT a tag or a release, with a read-only token. It runs on pull requests that touch what a release is built from; the manual `workflow_dispatch` trigger only becomes available once the file is on the default branch (a dispatch from this branch returned HTTP 404).
+
+### Changed
+- Live sessions keep the latest 10 000 alert events in memory; every event is still printed, and the summary says when older ones were dropped. Offline analyses keep every alert.
+- Release workflow: a version with letters (`1.0.0rc1`) becomes a draft *pre-release*.
+- Release workflow: re-checks the tagged source (lint, types, tests with the 90% gate, dependency audit, licenses) and all three version fields; installs the wheel with the locked dependencies, checks the installed set against the lock the SBOM is made from, and ships that requirements file; the sdist now contains tests, docs, benchmarks, deploy files and the dashboard sources, may contain only git-tracked files, and must rebuild the dashboard and pass the tests; the smoke-test server is stopped.
+
+### Fixed
+- Flow state of connections without a SYN (NULL, FIN and Xmas probes, mid-stream pickup): NetGuard called all of them `OTH`; Zeek applies its endpoint states and reports `RSTRH` (NULL probe answered by RST), `RSTR` (FIN/Xmas probe answered by RST), `SH` (unanswered FIN probe) and so on. NetGuard now does the same: 17 cases checked against Zeek 8.2.2 (state and history), a regression test reduced from the real lab probes, and the real exp03-exp05 captures now equal Zeek (999 differences each before). No detector uses these labels; no alert changed on any of the eleven pinned real captures.
+- Flow state when both endpoints reset: NetGuard reported `RSTO`; Zeek checks the responder first and reports `RSTR`, or `REJ` when neither side sent payload. NetGuard now does the same. Only the state label changes: TRW and the SYN-flood rule use connection events, where such a connection was answered and established, never rejected (pinned by a test). Pre-handshake states (S0, REJ, RSTOS0, SH, SHR, RSTRH, OTH) and the 23 FIN/RST orderings tried were checked against Zeek 8.2.2 one pcap each: all equal.
+- Flow state: an RST sent after both sides had sent FIN made a normally closed connection `RSTO`/`RSTR`; Zeek reports `SF`. FIN and RST order now follows Zeek's endpoint rules (ADR-0004), checked against Zeek 8.2.2 for 14 orderings, with a regression test reduced from the real lab connection. On the benign lab capture every NetGuard flow now matches Zeek.
+- `monitor --sudo` dropped tcpdump's privileges to `SUDO_USER` before the account NetGuard runs as. Started with `sudo -u lab` from root, that named root and the capture was refused. It now drops to the effective user (`SUDO_USER` only when NetGuard itself is root). Found in the lab-kit rehearsal.
+- `eval/lab/victim-live-rss.sh` ended silently when NetGuard failed to start (an empty `grep` under `set -e -o pipefail`); it now always prints its RESULT / NEEDS REVIEW verdict. `kali_rate_burst.py` printed its "NOW" prompt before listening, so an immediate upload could be refused; `kali_arp_binding.py` wrote its record to root's home under `sudo`; `victim_volume_burst.py` sent 48 MB faster than tcpdump could keep up (1576 kernel drops, 11 MB captured, below the 20 MB floor) and is now paced at 4 MB/s. All fixed; all four found in the rehearsal. The expected detections were not changed.
+- The time series could exceed its bucket limit with sparse timestamps; downsampling now repeats until the limit holds, keeping the totals.
+- The dashboard's traffic chart drew a line across empty time buckets, so a gap followed by a burst looked like a gradual ramp. It is now a step chart that drops to zero where no traffic was seen. Its axis labels no longer grow with the chart's width.
+
+### Lab tooling
+- Real lab results for eight more experiments (connect, Xmas, FIN, NULL, UDP scans, ping sweep, fragmented scan, SYN burst): each raised exactly its declared detections and no other alert (docs/EVALUATION.md § 6). The fragmented scan differs from Zeek by the documented no-reassembly limit, pinned by size (`zeek_known_difference`). The captures also contain the lab bridge's HTTP control traffic on TCP 8766 (no alerts).
+- Real lab results for the slow scan (exp06), the ARP binding change (exp11), DNS NXDOMAIN (exp12) and tunnel-like names (exp13), each exactly its declared detection, and a live early-warning run (live-early-01): early warnings 0.683 s and 0.757 s after the threshold-crossing packet, final alerts equal offline except `reported_at`. Sixteen real captures pinned. The lab bridge's control traffic uses TCP 8766 and 8767.
+- `eval/lab/live_delay.py --pcap` finds each early warning's threshold-crossing packet by replaying the run's capture through the same detectors. Before, it called `reported_at - last_seen` the delay after the triggering packet; that is only the age of the newest evidence (0.011 s in live-early-01) and is now labelled so.
+- exp14 r02 accepted: 0 kernel drops, raw capture with default rules gives exactly NG-RATE-001 (10.77.0.10) and NG-VOL-001 (10.77.0.20); Zeek 2331/2331. A pre-declared additional analysis without the lab control ports 8766/8767 (19516 packets removed) gives the same two alerts and is reported separately. Seventeen real captures pinned; each of the eleven rules has a real lab detection.
+- exp14 run 01 failed and is not counted: at 4 MiB/s tcpdump (default buffer) dropped 9945 of 59091 packets. `victim-capture.sh` now gives tcpdump a 64 MiB buffer (`NG_CAPTURE_BUFFER_KIB`, 1024-262144 KiB) and marks any kernel drop NEEDS REVIEW; `victim_volume_burst.py` defaults to 1 MiB/s (`--rate`, 0.5-4 MiB/s).
+- `eval/lab/real_regression.py` with `real-regression.toml`: re-analyses the real lab captures (kept out of git) and fails when packets, flows, flow states or final alerts differ from the pinned values; `--zeek` also requires the Zeek comparison to be equal.
+- Bounded runners for the rules the two-VM lab could not exercise, with ground truth written before any run: an ARP binding change for an unused address (exp11), DNS NXDOMAIN and tunnel-like lookups against a minimal lab-only responder on Kali (exp12, exp13), and 13 minutes of baseline followed by a connection and a volume burst (exp14). `live-early-01` and `eval/lab/live_delay.py` measure the live early-warning delay. Rehearsed in network namespaces; not lab results.
+- `scripts/build_lab_kit.py`: builds the offline kit for the VMs (single-file `netguard-lab.pyz` with the locked dpkt, the scripts, `RUN.md`, `BUILD.json` naming the commit, `SHA256SUMS`).
+
+### Documentation
+- docs/DEPLOYMENT.md: verifying release artefacts (checksums, locked install, SBOM), live capture with `--sudo` or a removable capability, and uninstalling.
+- docs/DELIVERY_REPORT.md: what this candidate contains, the evidence for each claim and the steps that remain.
+- docs/ENGINEERING_REPORT.md: what was built, the decisions behind it, the defects found by measuring, what was verified and what was not.
+- docs/EVALUATION.md: the limitations table is brought up to date (Phase 6–7 fixes, flood state losses); current throughput and flood measurements.
+- Learning note 10 (Turkish): reporting what is counted, honest charts, the Definition of Done and release candidates.
+- docs/PORTFOLIO.md: LinkedIn (English and Turkish), CV and interview drafts that use only measured claims.
+- docs/RELEASE_CHECKLIST.md: the brief's Definition of Done checked item by item. Verdict: not met yet (real-traffic evaluation, live capture on a real interface and a release run are missing), so no v1.0.0 claim.
+- docs/DEMO.md: screenshots and command-line output from real runs on the synthetic lab scenarios, with the steps to reproduce them.
+
+### Removed
+- `python-multipart` from the `web` extra: installed but never used (uploads are streamed raw bodies).
+- Unused code found in the review: `FlowTable.active()`, `FlowTable.flows_started`, `SessionResult.status_lines`, `Host.tcp_to_ip()` in the lab generator.
+
 ## [0.8.0] - 2026-10-22
 
 Phase 9: security hardening and CI/CD, against a written threat model

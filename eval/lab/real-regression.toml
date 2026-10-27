@@ -1,0 +1,209 @@
+# Pinned results of NetGuard on the real lab captures (docs/EVALUATION.md § 6).
+# eval/lab/real_regression.py re-analyses each capture and fails on any
+# difference, so a code change that alters real-traffic results is noticed.
+# The captures themselves stay out of git; only their hashes are pinned here.
+#
+# Updating a value is a decision, not a fix: write down why in EVALUATION.md.
+# Values from commit "fix(flows): ... both endpoints reset" (27 Oct 2026).
+
+[[capture]]
+name = "exp01-syn-scan"
+sha256 = "376d4b6c4d54af96" # prefix; the full hash is checked by ingest.py and the manifest
+packets = 2009
+decode_errors = 0
+flows = 1001
+final_rules = ["NG-SCAN-001", "NG-SCAN-002"]
+states = { REJ = 999, RSTO = 1, S0 = 1 }
+zeek_args = []
+
+[[capture]]
+name = "live-syn-01"
+sha256 = "65533b5b4a7f2ecb"
+packets = 2005
+decode_errors = 0
+flows = 1000
+final_rules = ["NG-SCAN-001", "NG-SCAN-002"]
+states = { REJ = 999, RSTO = 1 }
+zeek_args = []
+
+[[capture]]
+name = "benign-01"
+sha256 = "f3c6a7f9ddc48642"
+packets = 4245
+decode_errors = 0
+flows = 398
+final_rules = []
+states = { SF = 377, S0 = 20, REJ = 1 }
+# NetGuard has one 60 s UDP idle timeout; Zeek closes DNS/mDNS sessions after
+# 10 s. With Zeek's default, mDNS bursts 47 s apart are two Zeek flows and one
+# NetGuard flow (two such cases here); with the same timeout the flows are equal.
+zeek_args = ["dns_session_timeout=60sec"]
+
+# Scans run by the lab bridge with the 8a7f181 kit (27 Oct 2026). Each of
+# these captures also holds the bridge's own control connections: HTTP between
+# Kali and 10.77.0.20:8766 (21-24 SF flows per capture, no alerts). The first
+# exp02 run is not pinned: tcpdump dropped 438 of 2010 packets; r02 repeated it
+# with --max-parallelism 1 and 0 drops.
+# Flow states of exp03-exp05 are from commit "fix(flows): connections without
+# a SYN follow Zeek"; before it NetGuard called all 1001 probe flows OTH.
+
+[[capture]]
+name = "exp02-connect-scan-r02"
+sha256 = "a31528ab77ffcd96"
+packets = 2006
+decode_errors = 0
+flows = 1000
+final_rules = ["NG-SCAN-001", "NG-SCAN-002"]
+states = { REJ = 999, RSTO = 1 }
+zeek_args = []
+
+[[capture]]
+name = "exp03-xmas-scan"
+sha256 = "73df30a771337db9"
+packets = 2004
+decode_errors = 0
+flows = 1001
+final_rules = ["NG-SCAN-001"]
+states = { RSTR = 999, SH = 2 }
+zeek_args = []
+
+[[capture]]
+name = "exp04-fin-scan"
+sha256 = "632cbe9ad41e1efe"
+packets = 2008
+decode_errors = 0
+flows = 1003
+final_rules = ["NG-SCAN-001"]
+states = { RSTR = 999, S0 = 2, SH = 2 }
+zeek_args = []
+
+[[capture]]
+name = "exp05-null-scan"
+sha256 = "ad82734e2bc2adbc"
+packets = 2230
+decode_errors = 0
+flows = 1023
+final_rules = ["NG-SCAN-001"]
+states = { OTH = 2, RSTRH = 999, SF = 22 }
+zeek_args = []
+
+[[capture]]
+name = "exp07-udp-scan"
+sha256 = "fa948c0d99ef0c0b"
+packets = 478
+decode_errors = 0
+flows = 215
+final_rules = ["NG-SCAN-003"]
+states = { S0 = 194, SF = 21 }
+zeek_args = []
+
+[[capture]]
+name = "exp08-ping-sweep"
+sha256 = "4dc29eb4210b4ec5"
+packets = 798
+decode_errors = 0
+flows = 24
+final_rules = ["NG-SWEEP-001"]
+states = { SF = 24 }
+zeek_args = []
+
+[[capture]]
+name = "exp09-frag-scan"
+sha256 = "b880c33e83ec291e"
+packets = 632
+decode_errors = 0
+flows = 124
+final_rules = ["NG-FRAG-001"]
+states = { OTH = 100, S0 = 2, SF = 22 }
+zeek_args = []
+# Design limit, not a bug: NetGuard does not reassemble IP fragments. nmap -f
+# puts only ports and sequence number in the first 8-byte fragment, so the
+# probe is not a TCP segment to NetGuard; each flow starts at the victim's
+# reply (reversed direction, OTH). Zeek reassembles: 99 REJ + 1 RSTO + 1 S0.
+# NG-FRAG-001 reports the fragmentation itself.
+zeek_known_difference = { only_netguard = 100, only_zeek = 100, reason = "no IP fragment reassembly" }
+
+[[capture]]
+name = "exp10-syn-burst"
+sha256 = "60e39ca954fe506b"
+packets = 3240
+decode_errors = 0
+flows = 1523
+final_rules = ["NG-SYN-001"]
+states = { REJ = 1500, S0 = 2, SF = 21 }
+zeek_args = []
+
+# Run by the lab bridge on 27 Oct 2026 (kit of 8a7f181). The bridge's control
+# connections use TCP 8766 and 8767 between the VMs and are in these captures.
+# live-early-01 is the live early-warning run (eval/lab/live_delay.py --pcap).
+# exp13: the capture ran about 14 min while the queries took 40 s (the bridge
+# paused to update a helper); after the queries it holds only control traffic (10863
+# packets on 8766/8767) and 12 multicast packets (mDNS, IPv6). Its Zeek
+# difference is a timeout parameter: Zeek splits an unanswered SYN attempt
+# after tcp_attempt_delay (5 s), NetGuard keeps SYN retransmissions in one flow
+# for its 30 s handshake timeout; with tcp_attempt_delay=30sec it is equal.
+
+[[capture]]
+name = "exp06-slow-scan"
+sha256 = "ef05fabd6069ed66"
+packets = 3985
+decode_errors = 0
+flows = 435
+final_rules = ["NG-SCAN-002"]
+states = { REJ = 53, RSTO = 1, S0 = 4, SF = 377 }
+zeek_args = []
+
+[[capture]]
+name = "exp11-arp-binding"
+sha256 = "0e841fc89c1603ca"
+packets = 645
+decode_errors = 0
+flows = 62
+final_rules = ["NG-ARP-001"]
+states = { SF = 62 }
+zeek_args = []
+
+[[capture]]
+name = "exp12-dns-nxdomain"
+sha256 = "68642e5a79cc3232"
+packets = 857
+decode_errors = 0
+flows = 79
+final_rules = ["NG-DNS-002"]
+states = { S0 = 2, S2 = 1, SF = 76 }
+zeek_args = []
+
+[[capture]]
+name = "exp13-dns-tunnel"
+sha256 = "dff0f36391efd8ff"
+packets = 11517
+decode_errors = 0
+flows = 1146
+final_rules = ["NG-DNS-001"]
+states = { RSTR = 6, S0 = 30, S2 = 4, SF = 1105, SH = 1 }
+zeek_args = ["tcp_attempt_delay=30sec"]
+
+[[capture]]
+name = "live-early-01"
+sha256 = "a58b0a0e6178fdac"
+packets = 4263
+decode_errors = 0
+flows = 1225
+final_rules = ["NG-SCAN-001", "NG-SCAN-002"]
+states = { REJ = 999, RSTO = 1, SF = 225 }
+zeek_args = []
+
+# exp14 retry (run 01 failed on 9945 kernel drops and is not pinned). Kit
+# 8a7f181 with the owner's local helper variant on Ubuntu (1 MiB/s upload,
+# 64 MiB tcpdump buffer). Raw capture, default rules; the bridge's control
+# connections are included (pinned as captured, not filtered).
+
+[[capture]]
+name = "exp14-rate-volume-r02"
+sha256 = "0808fe99ac005bf7"
+packets = 59720
+decode_errors = 0
+flows = 2332
+final_rules = ["NG-RATE-001", "NG-VOL-001"]
+states = { S0 = 1, SF = 2331 }
+zeek_args = []

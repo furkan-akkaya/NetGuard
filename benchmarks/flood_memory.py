@@ -43,6 +43,7 @@ def main(n: int) -> None:
     print(
         f"packets={n:,} flows={s.flows_total:,} evicted={s.flows_evicted:,} "
         f"endpoints_kept={len(s.endpoints):,} approximate={s.endpoints_approximate} "
+        f"detector_state_losses={s.state_losses()} "
         f"peak_rss={rss_mb:.0f}MB time={elapsed:.1f}s ({n / elapsed:,.0f} pkt/s, Packet objects, no decode)"
     )
 

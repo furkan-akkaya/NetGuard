@@ -50,6 +50,7 @@ class FragmentDetector(Detector):
     name = "fragments"
     packet_protos = frozenset({"ip-frag", "ip-other", "tcp", "udp", "icmp"})
     rules = (RuleInfo(RULE_ID, "Suspicious IP fragmentation (possible IDS evasion)", T1599),)
+    counters = ("evicted",)
 
     def __init__(self, config: Config) -> None:
         self.cfg = config.fragments

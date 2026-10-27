@@ -1,0 +1,24 @@
+# Copy to eval/captures.toml. Replace paths, IPs, command, version and SHA-256
+# with the actual experiment BEFORE running evaluation. Do not copy labels
+# from NetGuard's own output. No command in this file is executed.
+schema_version = 1
+
+[[captures]]
+name = "lab-syn-scan"
+path = "../captures/syn_scan.pcap"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+kind = "attack"
+provenance = "lab" # lab | synthetic | public; scores are separated by provenance
+# Record actual tool version and command, using the lab's verified addresses.
+tool = "nmap"
+tool_version = "7.95 (replace with `nmap --version`)"
+command = "sudo nmap -sS -p 1-1000 VICTIM_LAB_IP"
+note = "Replace the addresses below; these labels describe the intended experiment."
+expected = [
+  { detector = "portscan", entity = "10.77.0.10->10.77.0.20" },
+  { detector = "trw", entity = "10.77.0.10" },
+]
+# config = "../netguard.toml"  # optional, relative to this manifest
+
+# For benign traffic, add another [[captures]] entry with its own hash,
+# name, path, tool, tool_version, command, provenance, kind = "benign", expected = [].

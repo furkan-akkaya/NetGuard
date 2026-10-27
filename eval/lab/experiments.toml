@@ -1,0 +1,172 @@
+# Ground truth for the UTM lab experiments, written BEFORE any of them is run
+# (docs/LAB_SETUP.md § 8). Lab: Kali 10.77.0.10 -> Ubuntu VM 10.77.0.20 on an
+# isolated UTM named Host Network, no route to the Mac/home/internet.
+# eval/lab/ingest.py combines these labels with the transferred captures'
+# hashes and tool versions into eval/captures.toml (git-ignored).
+#
+# "expected" lists only the detectors that SHOULD fire for this experiment
+# given the CURRENT rules and this two-host topology. A rule that is expected
+# to miss (documented below) is NOT listed, so a listed miss is a real result.
+# Change a label only for a documented reason (e.g. the experiment changed),
+# never because NetGuard's output differed: a miss is a result.
+#
+# Entity convention (src = attacker 10.77.0.10, unless noted):
+#   portscan, udpscan -> "src->dst"   synflood -> "dst"   others -> "src"
+#
+# What this two-VM topology can measure directly: portscan, trw, udpscan,
+# hostsweep, fragments, synflood. The other rules get bounded stand-ins that
+# need no network change (added 27 Oct 2026, before any of them ran):
+# NG-ARP-001 by a binding change for an UNUSED address (exp11, not a real
+# man-in-the-middle), NG-DNS-001/002 by lookups from the victim to a minimal
+# responder on Kali (exp12, exp13), NG-RATE-001/NG-VOL-001 by 13 min of
+# baseline then a bounded change (exp14).
+schema_version = 1
+
+[[experiments]]
+name = "exp01-syn-scan"
+kind = "attack"
+script = "kali-run.sh exp01-syn-scan"
+note = "nmap -sS of 1000 ports; victim without firewall: closed ports answer RST"
+expected = [
+  { detector = "portscan", entity = "10.77.0.10->10.77.0.20" },
+  { detector = "trw", entity = "10.77.0.10" },
+]
+
+[[experiments]]
+name = "exp02-connect-scan"
+kind = "attack"
+script = "kali-run.sh exp02-connect-scan"
+note = "nmap -sT: full connect scan; mostly closed ports -> first-contact failures"
+expected = [
+  { detector = "portscan", entity = "10.77.0.10->10.77.0.20" },
+  { detector = "trw", entity = "10.77.0.10" },
+]
+
+[[experiments]]
+name = "exp03-xmas-scan"
+kind = "attack"
+script = "kali-run.sh exp03-xmas-scan"
+note = "nmap -sX: no SYN, so TRW (SYN-based) is expected to stay silent; portscan fires on distinct ports"
+expected = [
+  { detector = "portscan", entity = "10.77.0.10->10.77.0.20" },
+]
+
+[[experiments]]
+name = "exp04-fin-scan"
+kind = "attack"
+script = "kali-run.sh exp04-fin-scan"
+note = "nmap -sF: FIN probes, no SYN; TRW expected silent"
+expected = [
+  { detector = "portscan", entity = "10.77.0.10->10.77.0.20" },
+]
+
+[[experiments]]
+name = "exp05-null-scan"
+kind = "attack"
+script = "kali-run.sh exp05-null-scan"
+note = "nmap -sN: no flags, no SYN; TRW expected silent"
+expected = [
+  { detector = "portscan", entity = "10.77.0.10->10.77.0.20" },
+]
+
+[[experiments]]
+name = "exp06-slow-scan"
+kind = "attack"
+script = "kali-run.sh exp06-slow-scan"
+note = "nmap -sS -T1 -p 1-50 (~15 s/probe, ~12 min). NG-SCAN-001 is expected to MISS it (< 15 ports / 60 s window), so only trw is listed; its silence confirms the window limitation"
+expected = [
+  { detector = "trw", entity = "10.77.0.10" },
+]
+
+[[experiments]]
+name = "exp07-udp-scan"
+kind = "attack"
+script = "kali-run.sh exp07-udp-scan"
+note = "nmap -sU --top-ports 100; closed UDP ports answer ICMP port-unreachable (subject to the victim's ICMP rate limit)"
+expected = [
+  { detector = "udpscan", entity = "10.77.0.10->10.77.0.20" },
+]
+
+[[experiments]]
+name = "exp08-ping-sweep"
+kind = "attack"
+script = "kali-run.sh exp08-ping-sweep"
+note = "nmap -sn 10.77.0.0/24: ARP requests to 254 addresses -> >= 15 distinct hosts probed, even though only one answers"
+expected = [
+  { detector = "hostsweep", entity = "10.77.0.10" },
+]
+
+[[experiments]]
+name = "exp09-frag-scan"
+kind = "attack"
+script = "kali-run.sh exp09-frag-scan"
+note = "nmap -sS -f: fragmented SYN probes. NetGuard does not reassemble, so NG-FRAG-001 reports the evasion; the port scan inside the fragments may not be seen, so only fragments is listed"
+expected = [
+  { detector = "fragments", entity = "10.77.0.10" },
+]
+
+[[experiments]]
+name = "exp10-syn-burst"
+kind = "attack"
+script = "kali-run.sh exp10-syn-burst"
+note = "bounded hping3 SYN burst (1500 packets ~100/s) to one closed port, no final ACK: >= 500 attempts/10 s with ~0% completed. synflood entity is the target"
+expected = [
+  { detector = "synflood", entity = "10.77.0.20" },
+]
+
+# Run 27 Oct 2026 as a live capture (EVALUATION.md § 6); ground truth was written before it ran.
+[[experiments]]
+name = "benign-01"
+kind = "benign"
+script = "victim-live-rss.sh benign-01 3600  (with kali-benign.sh on Kali)"
+note = "1 h of ordinary client traffic from Kali to the victim's services; nothing may be expected. Also feeds the RSS and live-vs-offline checks"
+expected = []
+
+# --- Added 27 Oct 2026, before any of these ran -------------------------------
+
+[[experiments]]
+name = "exp11-arp-binding"
+kind = "attack"
+script = "sudo python3 kali_arp_binding.py"
+note = "gratuitous ARP for the unused 10.77.0.99, 3x from 02:00:00:00:99:01 then 3x from 02:00:00:00:99:02: one binding change, no real host impersonated. Without DHCP in view the change cannot be explained by a lease"
+expected = [
+  { detector = "arpspoof", entity = "10.77.0.99" },
+]
+
+[[experiments]]
+name = "exp12-dns-nxdomain"
+kind = "attack"
+script = "python3 victim_dns_queries.py nxdomain  (with sudo python3 kali_dns_responder.py on Kali)"
+note = "the VICTIM looks up 40 random DGA-like names (<12 chars>.test), 2/s; the Kali responder answers NXDOMAIN. Entity is the client that received the NXDOMAINs"
+expected = [
+  { detector = "nxdomain", entity = "10.77.0.20" },
+]
+
+[[experiments]]
+name = "exp13-dns-tunnel"
+kind = "attack"
+script = "python3 victim_dns_queries.py tunnel  (with sudo python3 kali_dns_responder.py on Kali)"
+note = "the VICTIM sends 80 A queries with random 32-char base32 labels under t.lab-tunnel.test, 2/s; answered with empty NOERROR, so NXDOMAIN must stay silent. Entity is the client"
+expected = [
+  { detector = "dnstunnel", entity = "10.77.0.20" },
+]
+
+[[experiments]]
+name = "exp14-rate-volume"
+kind = "attack"
+script = "python3 kali_rate_burst.py  (then python3 victim_volume_burst.py on Ubuntu when told)"
+note = "13 min paced benign baseline, then 300 SSH banner reads at 10/s from Kali (connection rate) and one 48 MB upload from the victim to Kali, paced at 4 MB/s so the capture keeps up (volume). Each source is judged against its own baseline"
+expected = [
+  { detector = "connrate", entity = "10.77.0.10" },
+  { detector = "volume", entity = "10.77.0.20" },
+]
+
+[[experiments]]
+name = "live-early-01"
+kind = "attack"
+script = "victim-live-rss.sh live-early-01 120  (with kali-run.sh live-early-01 on Kali)"
+note = "exp01's SYN scan captured LIVE with early warnings on, to measure the live early-warning delay (eval/lab/live_delay.py); same ground truth as exp01"
+expected = [
+  { detector = "portscan", entity = "10.77.0.10->10.77.0.20" },
+  { detector = "trw", entity = "10.77.0.10" },
+]

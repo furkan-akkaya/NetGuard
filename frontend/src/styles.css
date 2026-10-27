@@ -504,7 +504,7 @@ table.bars td.num {
 
 .chart svg {
   width: 100%;
-  height: auto;
+  height: 160px;
   display: block;
 }
 
@@ -520,9 +520,13 @@ table.bars td.num {
 }
 
 .chart-axis {
-  fill: var(--muted);
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--muted);
   font-size: 11px;
   font-family: var(--mono);
+  margin-top: 4px;
 }
 
 .chart figcaption {

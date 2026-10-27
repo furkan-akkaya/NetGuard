@@ -27,6 +27,7 @@ RULE_ID = "NG-RATE-001"
 class ConnRateDetector(Detector):
     name = "connrate"
     rules = (RuleInfo(RULE_ID, "Unusual connection frequency"),)
+    counters = ("baselines.evicted",)
 
     def __init__(self, config: Config) -> None:
         self.cfg = config.connrate

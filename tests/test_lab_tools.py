@@ -1,0 +1,95 @@
+"""Lab scripts in eval/lab: live_delay.py and the exp14 capture/upload limits."""
+
+import json
+import os
+import subprocess
+import sys
+from datetime import UTC, datetime
+from pathlib import Path
+
+import pytest
+
+from netguard.lab.scenarios import ATTACKER, SERVER
+from netguard.lab.synth import syn_probe, write_pcap
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "eval" / "lab"))
+import live_delay  # type: ignore[import-not-found]  # eval/lab is not a package
+import victim_volume_burst  # type: ignore[import-not-found]
+
+
+def _iso(ts: float) -> str:
+    return datetime.fromtimestamp(ts, UTC).isoformat()
+
+
+@pytest.fixture
+def scan_pcap(tmp_path):
+    # 40 closed ports, one probe every 0.1 s: the portscan rule (15 distinct
+    # ports) crosses its threshold with the 15th probe, at t = 101.4.
+    frames = [f for i in range(40) for f in syn_probe(ATTACKER, SERVER, 100.0 + i * 0.1, 1 + i, open_=False)]
+    path = tmp_path / "scan.pcap"
+    write_pcap(path, frames)
+    return path
+
+
+def test_threshold_crossing_is_the_packet_that_crossed_not_the_newest_evidence(scan_pcap, tmp_path):
+    crossed = live_delay.threshold_crossings(scan_pcap)
+    key = ("NG-SCAN-001", ATTACKER.ip, SERVER.ip)
+    assert crossed[key] == pytest.approx(101.4)
+
+    # A live report 0.25 s after the crossing whose incident had grown to the
+    # 20th probe: newest evidence 0.05 s old, threshold delay 0.25 s.
+    alert = {
+        "stage": "early",
+        "rule_id": "NG-SCAN-001",
+        "src": ATTACKER.ip,
+        "dst": SERVER.ip,
+        "first_seen": _iso(100.0),
+        "last_seen": _iso(101.6),
+        "reported_at": _iso(101.65),
+    }
+    jsonl = tmp_path / "live.jsonl"
+    jsonl.write_text(json.dumps(alert) + "\n", encoding="utf-8")
+    (row,) = live_delay.delays(jsonl, crossed)
+    assert row["after_newest_evidence_s"] == pytest.approx(0.05)
+    assert row["after_threshold_crossed_s"] == pytest.approx(0.25)
+    assert row["after_incident_first_seen_s"] == pytest.approx(1.65)
+
+
+def test_without_pcap_no_threshold_delay_is_claimed(scan_pcap, tmp_path, capsys):
+    alert = {
+        "stage": "early",
+        "rule_id": "NG-SCAN-001",
+        "src": ATTACKER.ip,
+        "dst": SERVER.ip,
+        "first_seen": _iso(100.0),
+        "last_seen": _iso(101.6),
+        "reported_at": _iso(101.65),
+    }
+    jsonl = tmp_path / "live.jsonl"
+    jsonl.write_text(json.dumps(alert) + "\n", encoding="utf-8")
+    assert live_delay.main([str(jsonl)]) == 0
+    err = capsys.readouterr().err
+    assert "not the delay after the threshold" in err
+    assert "threshold-crossing delay not computed" in err
+    assert live_delay.main([str(jsonl), "--pcap", str(scan_pcap)]) == 0
+    assert "largest delay after the threshold-crossing packet: 0.250s" in capsys.readouterr().err
+
+
+def test_volume_upload_rate_defaults_to_1_mib_and_is_bounded():
+    # 4 MiB/s lost 9945 of 59091 packets in the first real exp14 run.
+    assert victim_volume_burst.parse_rate([]) == 1.0
+    assert victim_volume_burst.parse_rate(["--rate", "0.5"]) == 0.5
+    for bad in (["--rate", "0.1"], ["--rate", "8"], ["--speed", "1"], ["--rate"]):
+        with pytest.raises(ValueError):
+            victim_volume_burst.parse_rate(bad)
+    # At the default rate one 60 s interval still holds at least half the upload.
+    assert victim_volume_burst.TOTAL / 2 > 20_000_000
+
+
+@pytest.mark.parametrize("value", ["10", "999999", "64M", "-1"])
+def test_capture_buffer_is_bounded_before_anything_runs(value, tmp_path):
+    script = Path(__file__).resolve().parents[1] / "eval" / "lab" / "victim-capture.sh"
+    env = dict(os.environ, NG_CAPTURE_BUFFER_KIB=value, HOME=str(tmp_path))
+    result = subprocess.run(["bash", str(script), "exp-test"], env=env, capture_output=True, text=True, check=False)
+    assert result.returncode == 2
+    assert "NG_CAPTURE_BUFFER_KIB must be 1024-262144" in result.stderr

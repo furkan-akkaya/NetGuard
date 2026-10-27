@@ -1,6 +1,6 @@
 # NetGuard Yol Haritası
 
-> Son güncelleme: **2026-10-22** · Mevcut sürüm: **v0.8.0** · Aktif faz: **Faz 10 — Release hazırlığı** (👤 Faz 8 lab yakalamaları bekliyor)
+> Son güncelleme: **2026-10-27** · Mevcut sürüm: **v0.8.0** (aday: **1.0.0rc1**, etiketlenmedi) · Aktif faz: **Faz 10 — Release hazırlığı** (👤 kalan Faz 8 lab koşuları bekliyor)
 >
 > Bu dosya projenin **tek** yol haritasıdır. Güncel iş listesi
 > [docs/TASKS.md](docs/TASKS.md), ölçülmüş sonuçlar
@@ -40,7 +40,7 @@ ileride onların çıktılarını ek girdi olarak okuyabilir.
 RAM'li Ubuntu sunucu (kurban / dağıtım hedefi). Bulut, ücretli API ve
 mikroservis yok.
 
-## 2. Mevcut durum (2026-10-22)
+## 2. Mevcut durum (2026-10-27)
 
 | Faz | Konu | Durum | Sürüm |
 |---|---|---|---|
@@ -52,20 +52,36 @@ mikroservis yok.
 | 5 | Web dashboard | ✅ | **v0.5.0 = MVP** |
 | 6 | Canlı yakalama ve replay | ✅ (👤 lab doğrulaması) | **v0.6.0** |
 | 7 | İleri tespit ve tehdit istihbaratı | ✅ | **v0.7.0** |
-| 8 | Test, benchmark, değerlendirme | 🔄 · 👤 lab | v0.9.0 |
+| 8 | Test, benchmark, değerlendirme | 🔄 ilk gerçek ölçümler var · 👤 kalan lab koşuları | 1.0.0rc1 |
 | 9 | Güvenlik sertleştirme ve CI/CD | ✅ | **v0.8.0** |
-| 10 | Dokümantasyon, release, portföy | ⏳ | **v1.0.0** |
+| 10 | Dokümantasyon, release, portföy | 🔄 aday hazır · 👤 inceleme, merge ve etiket kararı | **1.0.0rc1** aday; v1.0.0 lab'den sonra |
 
-**Ölçülmüş durum (v0.8.0):** 11 tespit kuralı, güven puanı ve korelasyon,
-REST API, web dashboard, canlı yakalama; 324 Python testi (3.11–3.14) ve 12
+**Ölçülmüş durum (1.0.0rc1 adayı):** 11 tespit kuralı, güven puanı ve korelasyon,
+REST API, web dashboard, canlı yakalama; 425 Python testi (3.11–3.14) ve 14
 frontend testi, kapsama %93; ruff, mypy `--strict`, TypeScript strict temiz;
 bilinen açığı olan bağımlılık yok (pip-audit, pnpm audit). Yazılı tehdit
 modeli ([THREAT_MODEL.md](docs/THREAT_MODEL.md)); kurulum temiz ortamda ve
 Ubuntu 26.04 ARM64 container'ında doğrulandı, Linux'ta canlı yakalama
 (loopback) ve worker bellek sınırı gerçek olarak çalıştı.
 
-**Gerçek dünyada doğrulama yok:** tüm tespit sonuçları şimdilik sentetik
-senaryolardan (canlı yakalama boru hattı Linux'ta doğrulandı, tespit doğruluğu değil). Lab yakalamaları (Faz 8) kullanıcının UTM ortamını gerektirir.
+**Gerçek trafikte ilk ölçümler (2026-10-27, izole UTM lab):** iki SYN taraması
+(biri canlı yakalama) ve bir saatlik düşük hızlı normal trafik. Taramada iki
+tarama kuralı beklenen varlıkla tetiklendi; normal trafikte canlıda ve
+offline'da 0 alarm, 0 kernel kaybı, en yüksek RSS 34,0 MiB; flow durumları
+Zeek 8.2.2 ile eşit (bkz. [EVALUATION.md § 6](docs/EVALUATION.md)). Bu, aracın
+genel doğruluğu değildir: tek saldırı türü ve tek normal trafik karışımı.
+Ardından lab köprüsüyle sekiz deney daha koştu (connect/Xmas/FIN/NULL, UDP,
+ping taraması, fragment taraması, SYN burst): her biri yalnız beklenen alarmı
+verdi. NULL/FIN/Xmas yakalamaları bir flow durumu hatası buldu (SYN'siz
+bağlantılar hep `OTH`'du; Zeek `RSTRH`/`RSTR`/`SH` diyor), düzeltildi ve
+Zeek ile eşit. Fragment taramasındaki fark tasarım sınırıdır (IP fragment
+birleştirme yok). Sonra yavaş tarama, ARP, DNS ve canlı erken uyarı da
+ölçüldü: her biri yalnız beklenen alarmı verdi; canlıda erken uyarı eşiği
+geçiren paketten 0,68-0,76 s sonra raporlandı (tek koşu). Baseline deneyi
+(exp14) ilk koşuda 9945 kernel kaybıyla başarısız sayıldı; tekrar koşusu
+(r02) 0 kayıpla NG-RATE-001 ve NG-VOL-001'i verdi. 11 kuralın her biri artık
+en az bir gerçek lab yakalamasında beklenen varlıkla tetiklendi (17 kabul
+edilen yakalama, deney başına tek koşu; doğruluk oranı değildir).
 
 ## 3. Fazlar arası bağımlılık
 
@@ -292,10 +308,10 @@ belgelendi (TOFU, IP/MAC aktör ayrımı, tutarlılık kontrolü ≠ doğruluk).
 |---|---|---|
 | 8.1 | Etiketli sentetik senaryolar, `lab evaluate`, CI'da skor tablosu | ✅ |
 | 8.2 | Tekrarlanabilir benchmark'lar (`benchmarks/`), flood bellek testi | ✅ v0.2 |
-| 8.3 | UTM lab: Kali → Ubuntu, izole host-only ağ ([LAB_SETUP.md](docs/LAB_SETUP.md)) | 👤 |
-| 8.4 | Saldırı yakalamaları (`nmap` tipleri ve zamanlamaları, `masscan`, `arp-scan`, `bettercap`) ve ≥ 1 saat benign trafik | 👤 |
-| 8.5 | Yakalama manifestosu (`eval/captures.toml`: sha256, araç, komut, beklenen alarm); `lab evaluate --manifest` | ⏳ |
-| 8.6 | Precision/recall, benign trafikte saat başına alarm, tespit gecikmesi; açık veri setleri (lisansına uygun) | ⏳ |
+| 8.3 | UTM lab: Kali → Ubuntu, izole host-only ağ ([LAB_SETUP.md](docs/LAB_SETUP.md)) | ✅ (kullanıcı kurdu) |
+| 8.4 | Saldırı yakalamaları ve ≥ 1 saat benign trafik | 🔶 SYN taraması ×2 ve 1 saat benign tamam; kalan deneyler 👤 ([eval/lab/RUN.md](eval/lab/RUN.md)) |
+| 8.5 | Yakalama manifestosu (`eval/captures.toml`: sha256, araç, komut, beklenen alarm); `lab evaluate --manifest`; gerçek pcap gerileme testi (`eval/lab/real_regression.py`) | ✅ |
+| 8.6 | Precision/recall, benign trafikte saat başına alarm, tespit gecikmesi; açık veri setleri (lisansına uygun) | 🔶 tek benign saat 0 alarm; precision/recall ve canlı erken uyarı gecikmesi kalan koşulara bağlı |
 | 8.7 | Kesilen iş, bozuk girdi, uzun çalışma senaryoları | ⏳ |
 
 ### Faz 9 — Güvenlik sertleştirme ve CI/CD ✅ (v0.8.0)
@@ -321,6 +337,23 @@ taslağı.
 **v1.0 tamamlanma tanımı:** brief'teki "Definition of Done" maddelerinin
 hepsi kanıtla karşılanmış; karşılanamayan madde varsa açıkça yazılır ve tam
 uyum iddia edilmez.
+
+**Durum (2026-10-27):** 10.1–10.4, 10.6–10.8 tamam. `1.0.0rc1` adayı
+`fix/audit-2026-10-27` dalında (PR #9; PR #8'i içerir) hazır, etiketlenmedi.
+Kontrol listesi ([RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md)): 12
+maddeden 8'i karşılandı, 4'ü kısmen (flow doğrulaması, canlı yakalama,
+ölçülmüş sınırlar, release artefaktları). Release kapıları etiketsiz
+`release-dryrun.yml` ile GitHub'da çalıştı; etiketle tetiklenen iş akışı henüz
+çalışmadı. Teslim raporu: [DELIVERY_REPORT.md](docs/DELIVERY_REPORT.md).
+
+**Dış denetim (2026-10-27):** bağımsız bir inceleme, testlerin kaçırdığı dört
+kusuru yeniden üretti: eşzamanlı yüklemelerde kota aşımı, portu karşılaştırmayan
+Origin kontrolü, canlı oturumda sınırsız alarm geçmişi ve sınırı aşabilen zaman
+serisi. Release sürecinde de üç eksik buldu: etiketlenen kaynak yeniden test
+edilmiyordu, kurulan bağımlılıklar SBOM ile eşleşmiyordu ve sdist eksikti.
+Hepsi `fix/audit-2026-10-27` dalında regresyon testleriyle düzeltildi. Aynı dalda
+gerçek yakalama değerlendirmesi için manifesto ve Zeek karşılaştırma araçları ile
+lab kabul ölçütleri de hazırlandı. Lab sonuçları hâlâ yok.
 
 ---
 
@@ -361,14 +394,16 @@ Kapsama eşiği %90 (CI'da zorunlu). Gerçek pcap'ler git'e girmez (`.gitignore`
 | İzleme sunucusu ping sweep gibi görünüyor | `monitoring_poller` FP (allowlist; düşük güven) | Allowlist |
 | Yanlış DNS arama son eki DGA gibi görünüyor | `search_suffix_nxdomain` FP (düşük güven) | Allowlist / yapılandırma |
 | Saldırgan IP ve MAC ile iki ayrı aktör | Tarama (IP) ve ARP (MAC) alarmları iki olay | v1.x (IP↔MAC eşleme) |
-| Baseline kuralları ısınma istiyor | 10 dakikadan kısa yakalamalarda hız/hacim alarmı yok | Faz 4 (kalıcı baseline) |
-| Decoy/sahte kaynaklı taramalar | Bir tarama birçok kaynağa bölünüyor | Faz 7 |
-| IP fragment birleştirme yok | Parçalı probe'lar analiz edilmiyor; NG-FRAG-001 atlatmayı raporluyor | Faz 7 (gerekirse) |
+| Baseline kuralları ısınma istiyor | 10 dakikadan kısa yakalamalarda hız/hacim alarmı yok; baseline analizler arasında saklanmıyor | Ertelendi (ADR-0011) |
+| Decoy/sahte kaynaklı taramalar | Bir tarama birçok kaynağa bölünüyor | Açık (korelasyon aktöre göre, hedefe göre değil) |
+| Sahte kaynaklı flood | Kaynak bazlı dedektör tabloları taşıyor, flood içindeki gerçek bir tarama kaçabilir | Faz 10'dan beri çıktıda raporlanıyor |
+| IP fragment birleştirme yok | Parçalı probe'lar analiz edilmiyor; NG-FRAG-001 atlatmayı raporluyor | Lab verisi gerektirirse |
 
 ## 9. Kullanıcı gerektiren işler 👤
 
-- UTM lab kurulumu ve gerçek yakalamalar (8.3, 8.4); yalnızca sahip olunan,
-  izole ağda.
+- Kalan lab koşuları (8.4, 8.11c, 8.12, 8.13): [eval/lab/RUN.md](eval/lab/RUN.md);
+  yalnızca sahip olunan, izole ağda.
+- PR #8 ve #9'un incelenip birleştirilmesi, `v1.0.0rc1` etiketi.
 - GitHub: repo görünürlüğünü değiştirmek (şu an private), release yayınlamak.
 - Canlı yakalama testleri için yetkili arayüz seçimi ve `sudo`.
 
@@ -379,6 +414,11 @@ Kapsama eşiği %90 (CI'da zorunlu). Gerçek pcap'ler git'e girmez (`.gitignore`
 - Plan değişirse nedeni bir satırla aşağıya yazılır; mimari etkisi varsa ADR açılır.
 
 ### Değişiklik kaydı
+
+- **2026-10-27:** Dış denetim düzeltmeleri, ilk gerçek lab ölçümleri (exp01,
+  live-syn-01, benign-01) ve Zeek ile flow durumu uyumu (FIN/RST sırası, iki
+  taraflı RST). Kalan deneyler için sınırlı lab paketi. Sürüm `1.0.0rc1`
+  adayına çekildi (etiket yok); v0.9.0 ayrı bir sürüm olarak çıkmayacak.
 
 - **2026-10-22:** Faz 9 tamamlandı ve v0.8.0 olarak yayına hazırlandı. Sürüm
   numaraları artık faz numarasını değil yayın sırasını izliyor: Faz 8 (lab

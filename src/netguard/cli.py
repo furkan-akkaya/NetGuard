@@ -27,6 +27,7 @@ from netguard.config import ConfigError, config_to_mapping, load_config, to_toml
 from netguard.decode import UnsupportedLinkType
 from netguard.detectors import DETECTORS
 from netguard.engine import Engine
+from netguard.lab.manifest import ManifestError
 from netguard.models import Alert
 from netguard.output import FlowWriter, format_alert, render_json, render_text, use_color, write_jsonl_alert
 from netguard.report import render_report
@@ -106,6 +107,13 @@ def build_parser() -> argparse.ArgumentParser:
         default=[],
         help="extra host name clients may use (e.g. behind a reverse proxy); repeatable",
     )
+    sv.add_argument(
+        "--allowed-origin",
+        action="append",
+        default=[],
+        help="browser origin allowed to change data besides the server's own, e.g. https://netguard.lab "
+        "behind a TLS proxy; repeatable",
+    )
     sv.add_argument("--job-timeout", type=float, default=600.0, help="seconds per analysis")
     sv.add_argument("--job-memory-mb", type=int, default=1024, help="worker memory limit (enforced on Linux)")
     sv.add_argument("--max-stored-flows", type=int, default=500_000, help="flow rows kept per analysis")
@@ -115,13 +123,21 @@ def build_parser() -> argparse.ArgumentParser:
         help="allow a non-loopback --host without NETGUARD_API_TOKEN (only behind another auth layer)",
     )
 
-    lab = sub.add_parser("lab", help="synthetic lab scenarios")
+    lab = sub.add_parser("lab", help="synthetic scenarios and labelled capture evaluation")
     lab_sub = lab.add_subparsers(dest="lab_command", required=True)
     lab_sub.add_parser("list", help="list scenarios")
     gen = lab_sub.add_parser("generate", help="write scenario pcaps to a directory")
     gen.add_argument("outdir", type=Path)
     gen.add_argument("--scenario", action="append", help="only this scenario (repeatable)")
-    lab_sub.add_parser("evaluate", help="run all scenarios and print a Markdown scorecard")
+    ev = lab_sub.add_parser("evaluate", help="score synthetic scenarios, or checksum-pinned captures")
+    ev.add_argument("--manifest", type=Path, help="TOML capture manifest (see docs/CAPTURE_EVALUATION.md)")
+    ev.add_argument("-f", "--format", choices=("markdown", "json"), default="markdown")
+    ev.add_argument("--strict", action="store_true", help="exit 1 on false positives, misses or capture warnings")
+    comp = lab_sub.add_parser("compare-flows", help="compare a capture with Zeek JSON conn.log (TCP/UDP)")
+    comp.add_argument("capture", type=Path)
+    comp.add_argument("zeek_log", type=Path)
+    comp.add_argument("-c", "--config", type=Path)
+
     return parser
 
 
@@ -212,7 +228,7 @@ def _run_session(args: argparse.Namespace, source: object, clock_rate: float) ->
         s = engine.stats
         print(
             f"[status] packets {s.packets:,}  bytes {s.bytes:,}  active flows {len(engine.flows):,}  "
-            f"alerts {len(engine.alerts):,}",
+            f"alerts {s.alert_events_total:,}",
             file=sys.stderr,
             flush=True,
         )
@@ -253,10 +269,12 @@ def _run_session(args: argparse.Namespace, source: object, clock_rate: float) ->
     delays = [first_report[a.alert_id] - a.first_seen for a in finals if a.alert_id in first_report]
     summary = (
         f"{outcome.source['source']}: {outcome.stopped_by} after {outcome.seconds:.1f}s; "
-        f"{s.packets:,} packets, {s.flows_total:,} flows, {len(finals)} alerts"
+        f"{s.packets:,} packets, {s.flows_total:,} flows, {s.final_alerts_total} alerts"
     )
-    if delays:
+    if delays and not s.alert_history_dropped:
         summary += f" (detection delay median {sorted(delays)[len(delays) // 2]:.1f}s, max {max(delays):.1f}s)"
+    if s.alert_history_dropped:
+        summary += f"; {s.alert_history_dropped:,} older alert events not kept in memory (all were printed)"
     extra = {k: v for k, v in outcome.source.items() if k != "source"}
     if extra:
         summary += "; " + ", ".join(f"{k.replace('_', ' ')}: {v}" for k, v in extra.items())
@@ -323,6 +341,7 @@ def cmd_serve(args: argparse.Namespace) -> int:
         token=os.environ.get(TOKEN_ENV) or None,
         allow_remote_without_token=args.insecure_no_auth,
         allowed_hosts=args.allowed_host,
+        allowed_origins=args.allowed_origin,
         max_upload_bytes=args.max_upload_mb * 1024 * 1024,
         max_storage_bytes=int(args.max_storage_gb * 1024**3),
         analysis_config=load_config(args.config),
@@ -355,7 +374,26 @@ def cmd_lab(args: argparse.Namespace) -> int:
             n = synth.write_pcap(path, sc.build())
             print(f"wrote {path} ({n} packets)")
     elif args.lab_command == "evaluate":
-        print(evaluate.render_markdown(evaluate.run_all()))
+        if args.manifest:
+            from netguard.lab.manifest import render_manifest_markdown, run_manifest
+
+            report = run_manifest(args.manifest)
+            print(json.dumps(report, indent=2) if args.format == "json" else render_manifest_markdown(report))
+            if args.strict and any(r["fp"] or r["fn"] or r["warnings"] for r in report["captures"]):
+                return 1
+        else:
+            if args.format != "markdown":
+                raise ManifestError("--format json requires --manifest")
+            results = evaluate.run_all()
+            print(evaluate.render_markdown(results))
+            if args.strict and any(r.fp or r.fn for r in results):
+                return 1
+    elif args.lab_command == "compare-flows":
+        from netguard.lab.compare import compare_flows
+
+        comparison = compare_flows(args.capture, args.zeek_log, args.config)
+        print(json.dumps(comparison, indent=2))
+        return EXIT_OK if comparison["equal"] else 1
     return EXIT_OK
 
 
@@ -381,7 +419,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         # the last write is only noticed at interpreter exit (exit code 120).
         sys.stdout.flush()
         return code
-    except (ConfigError, CaptureFormatError, UnsupportedLinkType, KeyError) as exc:
+    except (ConfigError, CaptureFormatError, UnsupportedLinkType, ManifestError, KeyError) as exc:
         print(f"netguard: error: {exc}", file=sys.stderr)
         return EXIT_ERROR
     except BrokenPipeError:

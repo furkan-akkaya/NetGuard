@@ -196,6 +196,7 @@ uv run python benchmarks/make_bench_pcap.py /tmp/bench.pcap
 | v0.2.0 `netguard flows` (export only) | 2.15 s | 31 MB | ~113k pkt/s |
 | v0.3.0, 11 rules, before protocol dispatch | 2.6–2.7 s | 36 MB | ~90k pkt/s |
 | v0.3.0, 11 rules (protocol dispatch, ADR-0006) | 2.45–2.5 s (first run 3.0 s) | 36 MB | ~97k pkt/s |
+| v0.8.0 + Phase 10 changes (11 rules, confidence, correlation) | 2.47–2.48 s | 34 MB | ~98k pkt/s |
 
 v0.2.0 does strictly more work per packet (flow table, connection state,
 sequence tracking, richer statistics) and is still ~1.6× faster than v0.1.0.
@@ -217,11 +218,21 @@ uv run python benchmarks/flood_memory.py 500000
 | Before the tracker fixes (flow table already bounded) | 519 MB peak RSS | did not finish in 120 s (O(max_keys) work per packet once full) |
 | v0.2.0 (3 rules) | 219 MB, 1.5 s | 349 MB, 8.7 s (~57k pkt/s); 300 000 flows evicted, endpoint table approximate |
 | v0.3.0 (11 rules) | 263 MB, 2.3 s | 469 MB, 11.6 s (~43k pkt/s) |
+| v0.8.0 + Phase 10 (11 rules, Apple M1, Python 3.11) | 263 MB, 2.3 s | 469 MB, 11.7 s (~43k pkt/s) |
 
 Peak memory is bounded by `[flows] max_flows` (200 000) and each rule's key
 limit (`max_keys`, `max_sources`, `max_targets`), not by traffic volume. On the
 4 GB Ubuntu host the v0.3.0 worst case uses about 12% of RAM; lowering
 `max_flows` and the per-rule limits shrinks it further.
+
+What the flood costs in detection (measured in Phase 10, 500k packets): the
+flood itself is detected (one final NG-SYN-001 alert; its state is keyed by
+target, so it does not fill up), but the per-source tables of other rules
+overflow and drop state: portscan and hostsweep 400 000 keys each, TRW
+450 000 sources, the connection-rate and volume baselines 490 000 hosts each.
+A real scan hidden inside such a flood can therefore be missed. Since Phase 10
+the output says so (`stats.detectors`, a warning in the text output, the HTML
+report and the dashboard) instead of only counting it internally.
 
 For scale: a fully loaded 1 Gbit/s link carries roughly 80k–1.4M packets/s
 depending on packet size, so NetGuard is **not** a line-rate sensor. It fits
@@ -255,25 +266,397 @@ home and lab networks, low-traffic servers, and offline forensic analysis.
   time series. When a cap is hit, NetGuard degrades to *missed detections*
   (fail-open), counts it in the output, and never grows without bound.
 
-## 5. Known limitations (v0.3.0)
+## 5. Known limitations (reviewed in Phase 10)
 
-| Limitation | Impact | Planned fix |
+Detection limitations. Each rule page lists its own false positives and
+negatives in more detail.
+
+| Limitation | Impact | Status |
 |---|---|---|
-| Window rule (NG-SCAN-001) has a fixed 60 s window | Slow scans evade it | TRW (NG-SCAN-002) covers them up to its 1 h state horizon |
-| TRW needs SYN-based probes | NULL/FIN/XMAS scans are only seen by the window rule | — (by design) |
-| UDP scans and Linux ICMP rate limiting | Closed UDP ports mostly look silent | Evidence only; the rule does not depend on ICMP |
-| Baseline rules need warm-up | No rate/volume alerts in captures shorter than 10 min | Persistent baselines once Phase 4 stores history |
+| Window rule (NG-SCAN-001) has a fixed 60 s window | Slow scans evade it | Mitigated: TRW (NG-SCAN-002) detects them up to its 1 h state horizon (`slow_scan`) |
+| TRW needs SYN-based probes | NULL/FIN/XMAS scans are only seen by the window rule | By design |
+| UDP scans and ICMP rate limiting | Closed UDP ports often look silent | The rule does not depend on ICMP replies; they are evidence only |
+| Baseline rules need warm-up | No rate/volume alerts in captures shorter than 10 min; baselines are per analysis, not kept between analyses | Open (seasonal/persistent baselines deferred, ADR-0011) |
 | DNS over HTTPS/TLS | Tunnels and DGA lookups inside DoH/DoT are invisible | Out of scope (encrypted) |
-| Registered domain heuristic | Multi-level public suffixes may be keyed one level too high | Optional Public Suffix List (Phase 7) |
-| Overlapping alerts | A SYN scan raises NG-SCAN-001 and NG-SCAN-002 | Correlation (Phase 7) |
-| ARP: one change = alert | DHCP re-assignment and VRRP failover raise MEDIUM alerts | DHCP/lease correlation, flip-flop-only mode (Phase 7) |
-| Spoofed source IPs | Decoy scans (`nmap -D`) split one scan into many sources | Target-centric correlation (Phase 7) |
-| Idle-timeout reporting | Live alerts arrive ≥ 10 s after the scan pauses | Early-warning alerts (6.4) |
-| No IP fragment reassembly | Probes inside fragments (`nmap -f`) are not analysed; NG-FRAG-001 reports the evasion itself. IPv6 fragments not inspected | Reassembly only if lab data shows the need (Phase 7) |
-| Flow orientation without a SYN | Mid-stream flows keep the first sender as originator | Port heuristics only if lab data shows the need |
-| Retransmission vs. reordering | Late out-of-order segments are counted as retransmissions | Inherent to passive observation; documented (ADR-0004) |
+| Registered-domain heuristic | Names under multi-level public suffixes may be grouped one level too high | Open (no Public Suffix List, to avoid a download/dependency) |
+| ARP without visible DHCP | A re-assigned IP or a VRRP/HSRP failover raises a MEDIUM alert (`dhcp_reassignment`, low confidence) | Mitigated when the DHCP ACK is in the capture (ADR-0011); a rogue DHCP server answering first is trusted (TOFU, configure `dhcp_servers`) |
+| Decoy scans with spoofed sources (`nmap -D`) | One scan becomes many small ones per source, each possibly below threshold | Open: correlation groups by actor, not by target |
+| Spoofed-source floods | Per-source detector tables overflow: a real scan inside such a flood can be missed (§3) | Reported since Phase 10 (`stats.detectors`, warnings) |
+| No IP fragment reassembly | Probes inside fragments (`nmap -f`) are not analysed; NG-FRAG-001 reports the evasion itself. On the real exp09 capture the 100 probed connections appear reversed (starting at the victim's reply) and as `OTH`, where Zeek reassembles and reports `REJ`/`RSTO` (§ 6). IPv6 fragments and DHCPv6 not inspected | Open; reassembly only if lab data shows the need |
+| Flow orientation without a SYN | Mid-stream flows keep the first sender as originator (as Zeek does); their states follow Zeek's endpoint rules (checked on real NULL/FIN/Xmas scans, § 6) | Open; documented (ADR-0004) |
+| Retransmission vs. reordering | Late out-of-order segments are counted as retransmissions | Inherent to passive observation (ADR-0004) |
+| Live alert latency | In the synthetic replay benchmark, early warnings arrive 1–2 s after a threshold is crossed; rules with intervals add their interval (§2, detection delay). Live, one run: 0.68-0.76 s after the threshold-crossing packet for the two scan rules (§6, live-early-01) | By design (ADR-0010) |
+| Throughput | ~100k packets/s offline on an M1; not a line-rate sensor (§3) | By design: home/lab networks, low-traffic servers, forensics |
+| Confidence scores | Factors and scenarios come from the same author; separation is a consistency check, not accuracy | Must be re-checked on real lab captures (Phase 8) |
 
 ## 6. Real captures
 
-*Not yet measured.* This section will hold the results of roadmap Phase 8
-(UTM lab: Kali → Ubuntu, [LAB_SETUP.md](LAB_SETUP.md)) and of public datasets.
+**Real captures measured so far (27 Oct 2026)**: two SYN scans, one
+analysed offline (exp01) and one captured live by `netguard monitor` on the
+victim's lab interface (live-syn-01), one hour of live benign traffic
+(benign-01), and eight further scan experiments (exp02-exp05, exp07-exp10,
+last section). All on an isolated two-VM UTM lab (Kali 10.77.0.10 -> Ubuntu
+10.77.0.20). Each experiment is one run of one tool configuration: the
+results say the declared rule fired with the declared entity on that capture,
+not what precision or recall NetGuard has in general. Later the same day the
+slow scan (exp06), the ARP and DNS experiments (exp11-exp13), the live
+early-warning run (live-early-01) and the baseline experiment (exp14, accepted
+on its second run) followed (last sections).
+
+Provenance and integrity: the capture bytes are hash-verified
+(SHA-256 `376d4b6c…bbbd93a9`, matched on the capture host and the Mac). This
+first capture was taken by hand, so the command, nmap version and tcpdump
+counts come from the operator's own report/screenshots, not from the capture
+scripts; later experiments use `eval/lab/` and record their own metadata. The
+capture is **not** traffic-free: besides the scan it contains 4 SSDP multicast
+packets (192.168.128.1 -> 239.255.255.250:1900) from the UTM host side of the
+shared network. The lab has no routed internet, but it is not silent.
+
+### exp01 — `sudo nmap -sS -Pn -n -p 1-1000 --max-retries 1 --max-rate 100`
+
+| Measure | Result |
+|---|---|
+| Frames / decode errors | 2009 / 0 |
+| Flow states | REJ 999, RSTO 1, S0 1 |
+| Ground truth (declared first) | `portscan` 10.77.0.10->10.77.0.20, `trw` 10.77.0.10 |
+| Detected | both; TP 2, **FP 0**, FN 0 (the 4 SSDP packets raised nothing) |
+| NG-SCAN-001 | 1000 distinct ports in 10.0 s, 1 open (22), 999 closed; confidence 90 |
+| NG-SCAN-002 (TRW) | 1000 first contacts, 999 rejected, 1 succeeded; threshold crossed; confidence 95 |
+| No detector dropped state | all `evicted_*` / `untracked_*` zero |
+
+Reproduce: `python3 eval/lab/ingest.py <transfer-dir>` then
+`uv run netguard lab evaluate --manifest eval/captures.toml`. One attack
+capture cannot establish precision/recall for the tool; it shows the two scan
+rules fire on a real nmap SYN scan with the declared entities and no false
+positive on this capture.
+
+### Flow states vs Zeek (same capture)
+
+Compared with a real **Zeek 8.2.2** `conn.log` of the same file (network
+disabled, checksum validation on): **1001 of 1001** directional TCP/UDP flows
+matched on endpoints, direction and connection state, with **zero**
+differences (`netguard lab compare-flows`, reproduced on the Mac). This checks
+flow reconstruction against an independent tool on real traffic, not full Zeek
+semantic compatibility.
+
+### Replay vs offline (same capture)
+
+Replaying the capture through the live pipeline (`netguard replay --speed 0`)
+produced the **same two final alerts** as offline analysis
+(`eval/lab/live_offline_equal.py`, equal). This exercises the live code path
+but is not a live-interface measurement; that is the next section.
+
+### live-syn-01 — live capture on the victim's interface
+
+The same scan (`nmap -sS`, 1000 ports, `--max-rate 100`) captured live by
+`netguard monitor --sudo --duration 90 --no-early-warning` on the Ubuntu VM
+(NetGuard as a normal user, tcpdump via sudo; built from commit `a845dea`),
+which also wrote the pcap. Capture SHA-256 `65533b5b…3ff3ffce`, live JSONL
+SHA-256 `f1f7493a…605d98cb`, both verified on the Mac.
+
+| Measure | Result |
+|---|---|
+| Run (monitor summary on the VM, operator report) | 90.3 s; kernel captured 2005, received by filter 2005, **dropped 0**; 144 330 bytes written |
+| Capture (re-analysed on the Mac) | 2005 frames (2001 TCP, 4 ARP), 0 decode errors; REJ 999, RSTO 1 |
+| Live final alerts | NG-SCAN-001 and NG-SCAN-002 |
+| **Live vs offline** | the same two final alerts; every field identical except `reported_at` (`live_offline_equal.py` equal) |
+| **Flow states vs Zeek 8.2.2** | **1000 of 1000** flows matched on endpoints, direction and state, zero differences |
+
+Reporting delay: with early warnings switched off, an alert is reported only
+when its incident closes. Live, NG-SCAN-001 was reported 11.0 s and
+NG-SCAN-002 50.2 s after the last scan packet (21.0 s and 60.2 s after the
+first); offline, both are closed at the last packet because the file ends
+there. So the 60.2 s maximum is the incidents' closing time, not processing
+lag. The delay **with** early warnings has not been measured live; the
+synthetic replay benchmark (§ 2, detection delay) suggests 1-2 s for a scan
+like this, but that is an estimate until a live run confirms it.
+
+Zeek logged a warning that the trace contains only TCP control packets
+(expected for a SYN scan without payloads). One live run of one attack type
+shows the live path, kernel-drop accounting and live/offline agreement work
+on real traffic; it is not a resource or long-run measurement (that is
+benign-01, below).
+
+### benign-01 — one hour of live benign traffic
+
+`netguard monitor --sudo --duration 3640` on the Ubuntu VM's lab interface
+(`eval/lab/victim-live-rss.sh`, NetGuard as a normal user, default
+configuration, early warnings on) while `eval/lab/kali-benign.sh 3600` on Kali
+sent paced client traffic: one cycle every 4-9 s of a ping and a TCP connect
+to SSH port 22 that reads the server banner. NetGuard was the `netguard-lab.pyz`
+build of commit `a845dea`; the two runner scripts are byte-identical to the
+ones in `eval/lab/` (SHA-256 `31118e1b…` and `fee45b8a…`). This is a run of
+that build, not of later commits. The five result files (pcap, live JSONL,
+monitor output, RSS samples, metadata) were transferred and their SHA-256
+values checked on the Mac against the list written on the VM; pcap
+`f3c6a7f9…f0e7b849`.
+
+| Measure | Result |
+|---|---|
+| Run | monitor: duration reached after 3640.1 s; runner's monotonic clock 3641 s; monitor exit status 0 |
+| Kernel counters (from the monitor's summary line) | captured 4245, received by filter 4245, **dropped 0**; pcap not truncated, 421 579 bytes |
+| Capture (re-analysed on the Mac) | 4245 packets over 3608.7 s (first to last packet), 0 decode errors; TCP 3415, ICMP 750, UDP 80; 398 flows (376 SSH, 1 ICMP echo flow, 20 multicast UDP, 1 rejected TCP/80) |
+| **Final alerts** | **live 0, offline 0** (`live_offline_equal.py` equal; the live JSONL is empty, so not even an early warning); offline re-analysis used the current source, whose `src/` is unchanged since `a845dea`; no incidents; no detector reported lost state (all `evicted_*` / `untracked_*` zero) |
+| Analyser memory | 724 RSS samples, one every 5 s; first 34 488 KiB, last 30 104 KiB, highest 34 812 KiB (34.0 MiB) |
+
+What the traffic was, from the capture rather than the script: 376 SSH
+connections from Kali, 375 of which carry only the server's 42-byte banner
+(the client sends nothing) and one, starting before the generator, a full SSH
+exchange with payload in both directions; 375 ICMP echo request/reply pairs;
+one connection attempt to TCP/80, refused (the generator's one-time check for
+a web server; the victim runs none, so no HTTP followed). The UDP flows are
+all multicast that nobody answers: SSDP (UDP/1900) and mDNS (UDP/5353) from
+192.168.128.1 and an IPv6 link-local address, and the victim's own mDNS. So
+the lab interface is not traffic-free, and part of the "benign" traffic is
+the host's own discovery noise.
+
+Memory: the series rises from 34 488 to 34 812 KiB in the first two minutes,
+holds there until about 9.5 minutes into the run, then falls and stays
+between 28 808 and 32 564 KiB for the rest of the run. The peak is the highest
+5-second sample; VmHWM agreed with it, then later read 34 608 KiB. The kernel
+updates that figure lazily, so it can fall, and a short peak between two
+samples could be missed.
+
+Flow states vs **Zeek 8.2.2** (`conn.log` of the same pcap, network disabled,
+checksum validation on). With the source as it was for the run (`a845dea`),
+**396 of 397** NetGuard TCP/UDP flows matched (397 NetGuard, 399 Zeek); the
+operator reproduced this independently with the official Zeek 8.2.2 image.
+`compare-flows` reported two differences:
+
+- **mDNS flow split (explained, a timeout setting).** Zeek splits the mDNS
+  traffic from 192.168.128.1 and from an IPv6 link-local address into five
+  connections each, NetGuard into four: two packet bursts 46.7 s apart are one
+  flow for NetGuard (UDP idle timeout 60 s) and two for Zeek, which applies
+  `dns_session_timeout` (10 s) to traffic its DNS analyser handles. With
+  `dns_session_timeout=60sec` Zeek also produces four, and only the next
+  difference remains.
+- **One SSH connection classed differently (NetGuard's state rule).** In
+  10.77.0.10:40076 -> 10.77.0.20:22 both sides sent FIN, then the client sent
+  two RSTs. Zeek reports SF (closed normally; history `ShAFadfR`), NetGuard
+  RSTO, because its state function checked RST before a FIN exchange. This
+  was a real semantic difference from Zeek, not a capture artefact. **Fixed**
+  (task 8.14): NetGuard now follows Zeek's endpoint rules for the order of
+  FIN and RST (ADR-0004), with a regression test reduced from this
+  connection and 14 orderings each checked against Zeek 8.2.2.
+
+After the fix, on the same pcap: **397 of 397** NetGuard TCP/UDP flows match
+Zeek's (399 Zeek flows: only the two extra mDNS splits remain), and with
+`dns_session_timeout=60sec` the comparison is **equal (397/397)**. The mDNS
+split is a design parameter, not an error: NetGuard uses one UDP idle timeout
+(60 s, Zeek's `udp_inactivity_timeout`) for every UDP flow and has no shorter
+DNS-specific session timeout. The two SYN-scan captures still match Zeek
+exactly after the fix (1001/1001 and 1000/1000), and their alerts are
+unchanged. A later change made the state of connections that **both** sides reset follow Zeek too (task 8.15); none of the three captures has such a connection, and `eval/lab/real_regression.py --zeek` pins all three results (packets, flows, states, final alerts, Zeek equality). The flow-state fix changes no alert in any of the three captures;
+the live run itself was not repeated with the fixed build.
+
+Zeek also logged one `bad_TCP_checksum` packet (in the first SSH session);
+running Zeek with `-C` (checksums ignored) gives the same comparison.
+
+What this shows, and what it does not:
+
+- On this one hour of low-rate SSH-banner and ping traffic with multicast
+  background, NetGuard raised no alert live or offline, lost no packets in
+  the kernel, and peaked at 34.0 MiB. The LAB_SETUP criteria "benign noise"
+  (≤ 1 final alert per hour) and "resources" (RSS below 500 MB, no state-loss
+  warnings) are met **for this scenario**.
+- It is not a false-positive rate for real networks: one host pair, 1.2
+  packets/s on average, almost no payload, no web, DNS, file transfer or
+  user activity. It says nothing about memory under high traffic or over days
+  (the synthetic worst cases are in § 3).
+- UDP was compared with Zeek only as one-way multicast; there was no UDP
+  request/response traffic. SSH payload was compared only as far as flow
+  states go.
+
+The tooling behind these: `netguard lab evaluate --manifest`, `compare-flows`,
+and the lab scripts in `eval/lab/` ([CAPTURE_EVALUATION.md](CAPTURE_EVALUATION.md),
+[LAB_SETUP.md](LAB_SETUP.md)).
+
+### exp02-exp10 — scans run by the lab bridge
+
+Run on 27 Oct 2026 by a fixed-action bridge on the two lab VMs, with the lab
+kit built from commit `8a7f181` (`BUILD.json`; the kit's `SHA256SUMS` verified
+on the Mac). Every capture's files were hash-checked on the Mac against the
+manifest written on the capture host. The bridge itself talks over the lab
+network: HTTP between the VMs on TCP 8766 (jobs and uploads, on
+10.77.0.20) and, from exp06 on, TCP 8767 as well. Those control connections
+are **in the captures** of exp05 onwards (21-24 `SF` flows each in exp05,
+exp07-exp10; far more in the later, longer captures), and raised no alert. They carry an access
+token in clear text, so these captures are not shareable as they are (they
+stay out of git like every capture), and the token should be rotated.
+
+| Capture | Tool (Kali) | Packets / kernel drops | Final alerts (declared entity) | Flows vs Zeek 8.2.2 |
+|---|---|---|---|---|
+| exp02-connect-scan-r02 | `nmap -sT -p 1-1000 --max-parallelism 1` | 2006 / 0 | NG-SCAN-001, NG-SCAN-002 | 1000/1000 equal |
+| exp03-xmas-scan | `nmap -sX -p 1-1000 --scan-delay 10ms` | 2004 / 0 | NG-SCAN-001 | 1001/1001 equal (after the fix below) |
+| exp04-fin-scan | `nmap -sF -p 1-1000 --scan-delay 10ms` | 2008 / 0 | NG-SCAN-001 | 1003/1003 equal (after the fix) |
+| exp05-null-scan | `nmap -sN -p 1-1000 --scan-delay 10ms` | 2230 / 0 | NG-SCAN-001 | 1023/1023 equal (after the fix) |
+| exp07-udp-scan | `nmap -sU --top-ports 100` | 478 / 0 | NG-SCAN-003 | 214/214 equal |
+| exp08-ping-sweep | `nmap -sn --max-rate 100 10.77.0.0/24` | 798 / 0 | NG-SWEEP-001 | 24/24 equal |
+| exp09-frag-scan | `nmap -sS -f -p 1-100 --scan-delay 10ms` | 632 / 0 | NG-FRAG-001 | 23 equal, 100 differ: design limit |
+| exp10-syn-burst | `hping3 -S -p 9 -i u10000 -c 1500` (closed port, 100/s) | 3240 / 0 | NG-SYN-001 | 1523/1523 equal |
+
+Each experiment raised exactly its declared detections (detector and entity
+from `experiments.toml`, written before the runs) and no other alert. The first
+exp02 run is not counted: tcpdump dropped 438 of 2010 packets, and the
+experiment was repeated with `--max-parallelism 1` (r02, 0 drops).
+
+**A flow-state bug found by these captures.** NULL, FIN and Xmas probes carry
+no SYN. NetGuard called every such connection `OTH`; Zeek applies its endpoint
+states anyway and reports `RSTRH` for a NULL probe answered by RST, `RSTR` for
+a FIN or Xmas probe answered by RST, and `SH` for an unanswered FIN probe
+(999 + 2 differences in each capture). NetGuard now follows Zeek's rules
+(ADR-0004 rule 3), checked case by case against Zeek 8.2.2 and with a
+regression test reduced from the real probes. The labels reach no detector
+(TRW counts only first contacts opened by a SYN), and the alerts of all eleven
+pinned captures are unchanged.
+
+**exp09: a design limit, not a bug.** `nmap -f` splits each SYN into three
+8-byte IP fragments; the TCP flags are in the second. NetGuard does not
+reassemble fragments, so the probe is not a TCP segment to it and each of the
+100 probed connections starts at the victim's reply: reversed direction,
+state `OTH`. Zeek reassembles and reports 99 `REJ` and 1 `RSTO`. NG-FRAG-001
+reports the fragmentation itself; the scan rules do not see these probes.
+The difference is pinned by size in `real-regression.toml`, so it can neither
+grow nor disappear unnoticed.
+
+The VMs ran the `8a7f181` build, which still had the old `OTH` labels; the
+fix changes no alert, and the offline re-analysis with the fixed code is what
+the table reports. `eval/lab/real_regression.py --zeek` pins all eleven
+captures.
+
+
+### exp06, exp11-exp13 — slow scan, ARP and DNS
+
+Same bridge and kit (`8a7f181`), same checks (hash manifests verified on the
+Mac, ground truth from `experiments.toml`, Zeek 8.2.2 with checksums on).
+From exp06 on the bridge also uses TCP 8767, so these captures hold control
+connections on 8766 and 8767; they raised no alert.
+
+| Capture | Tool | Packets / kernel drops | Final alerts | Flows vs Zeek 8.2.2 |
+|---|---|---|---|---|
+| exp06-slow-scan | `nmap -sS -T1 -p 1-50 --max-retries 1` (825.95 s) | 3985 / 0 | NG-SCAN-002 (declared: TRW only; the window rule is not expected at this rate) | 435/435 equal |
+| exp11-arp-binding | `kali_arp_binding.py`: gratuitous ARP for the unused 10.77.0.99, 3 frames from one MAC, then 3 from another | 645 / 0 | NG-ARP-001, 10.77.0.99 | 62/62 equal (TCP/UDP; ARP is not in `conn.log`) |
+| exp12-dns-nxdomain | `victim_dns_queries.py nxdomain`: 40 queries, 40 NXDOMAIN replies | 857 / 0 | NG-DNS-002, 10.77.0.20 | 79/79 equal |
+| exp13-dns-tunnel | `victim_dns_queries.py tunnel`: 80 queries with 32-character labels, 40 s | 11517 / 0 | NG-DNS-001, 10.77.0.20 | equal with `tcp_attempt_delay=30sec` (below) |
+
+Each raised exactly its declared detection and no other alert. exp13's
+capture ran about 14 minutes although the queries took 40 s: the bridge was
+paused meanwhile to update a helper, and the capture kept running. The packets
+after the queries are control traffic on 8766/8767 (10863) and 12 multicast
+packets; they raised no alert. With Zeek's defaults exp13 has 1146 NetGuard
+and 1201 Zeek flows: all 55 extra Zeek flows belong to 28 control connections
+to port 8766 whose SYNs went unanswered while the bridge was paused; the DNS
+flows (port 53) match exactly. Zeek closes an attempt after
+`tcp_attempt_delay` (5 s) and logs the retransmitted SYNs as new connections,
+NetGuard keeps SYN retransmissions in one flow for its 30 s handshake
+timeout. With `tcp_attempt_delay=30sec` the comparison is equal. This is a
+timeout parameter, like the DNS session timeout in benign-01, not an error.
+
+### live-early-01 — live early-warning delay
+
+Live run on the victim's interface (`victim-live-rss.sh live-early-01 120`,
+`monitor --sudo`, early warnings on, `8a7f181` build) while Kali ran
+`nmap -sS -Pn -n -p 1-1000 --scan-delay 10ms --max-retries 1`. 123 s
+(monotonic), 4263 packets, 0 kernel drops, peak RSS 36292 KiB (VmHWM).
+2 early warnings and 2 final alerts (NG-SCAN-001, NG-SCAN-002, declared
+entities); the final alerts equal the offline analysis of the written pcap in
+every field except `reported_at` (`live_offline_equal.py`); flows equal to
+Zeek (1225/1225).
+
+| Early warning | Reported after the threshold-crossing packet | Newest evidence age at report | After the incident's first packet |
+|---|---|---|---|
+| NG-SCAN-001 | 0.683 s | 0.011 s | 5.135 s |
+| NG-SCAN-002 (TRW) | 0.757 s | 0.011 s | 5.135 s |
+
+How these were measured: `live_delay.py --pcap` replays the written capture
+through the same detectors, ticking after every packet, and takes the packet
+after which each early warning opened. For NG-SCAN-001 that is the 15th
+distinct destination port from 10.77.0.10 to 10.77.0.20, counting the two
+control ports 8766 and 8767 the detector also counts (without them the 15th
+scan port came 21 ms later); for TRW it is the decision time in the alert's
+own evidence (`decided_at_seconds` after `first_seen`). Both agree with an
+independent calculation from the pcap. The 0.011 s column is only how old the
+newest packet of the incident was when the report went out: the incident keeps
+growing between the threshold crossing and the next one-second tick, so it is
+not a threshold delay. The incident's first packet is a control connection
+that started 4.3 s before the scan, so the last column is not time since the
+scan began either. One run, one scan type, one host pair: it shows the live
+path reports within the one-second tick on this lab, not a latency guarantee.
+
+### exp14 run 01 — failed, not counted
+
+The first real run of the baseline experiment (`exp14-rate-volume`, 27 Oct
+2026, kit `8a7f181` with the `8b43717` upload helper at 4 MiB/s) completed its
+steps: 13 minutes of baseline, 300 of 300 SSH connections answered, the 48 MiB
+upload in 12 s. But tcpdump reported **9945 of 59091 packets dropped by the
+kernel** (49146 captured). A capture that lost a sixth of the traffic cannot
+show what the rules would have seen, so this run is **failed and not counted**,
+whatever NetGuard reports on it. The files are kept apart from the results
+(hash-verified on the Mac).
+
+For the record, and not as a result: on the incomplete capture NetGuard raised
+NG-VOL-001 for 10.77.0.20 but not NG-RATE-001 for 10.77.0.10. All 300 burst
+SYNs are in the capture, so the missing alert is not explained by the drops.
+The connection-rate baseline explains it: the lab bridge's control
+connections from Kali (about 130 per minute to 8766/8767) gave Kali a baseline
+near 139 connections per interval, the 30 s burst fell into two intervals
+(177 and 388), and the threshold was 392.2 (mean + 6 × deviation). The
+deviation was inflated because the baseline's first interval was a partial
+one at the start of the capture (23 connections), which the EWMA learns from
+like a full interval. Whether to change that is an open design question
+(task 8.17); it was not changed after seeing this result.
+
+Changes made because of the failure, before the retry is analysed: the
+capture helper now gives tcpdump a 64 MiB buffer (`NG_CAPTURE_BUFFER_KIB`,
+bounded) and marks any kernel drop as NEEDS REVIEW; the upload helper
+defaults to 1 MiB/s (`--rate`, 0.5-4 MiB/s). The retry
+(`exp14-rate-volume-r02`) runs on the VM with the owner's local variant of
+the two helpers (same rate and buffer, different bytes from the repository
+versions: SHA-256 `cddb1d41…` and `32f29430…` versus `a993fcfc…` and
+`d39c2bd8…`) on top of the `8a7f181` core. Its result follows.
+
+### exp14 r02 — baseline, connection burst and upload (accepted)
+
+The retry ran a new 13-minute baseline (capture 16:34:18-16:49:08 UTC, Kali
+16:34:21-16:48:50, burst from 16:47:25): 300 of 300 SSH connections answered,
+50331648 bytes sent and received at 1 MiB/s (48.0 s). The capture is clean:
+**59720 packets captured, 59720 received, 0 dropped by the kernel**, 0 decode
+errors. Zeek 8.2.2 (defaults, checksums on): 2331/2331 flows equal.
+
+Provenance: the capture's own manifest (`exp14-rate-volume-r02.sha256`)
+verified on the Mac; the Kali record and the Ubuntu upload log are r02's (times
+above, 48.0 s upload). The helpers write under the fixed name
+`exp14-rate-volume`, so the Ubuntu role manifest copied next to them
+(`ubuntu-exp14-rate-volume.*`) belongs to the failed run 01 (16:13 start, its
+pcap `e7e84331…`) and is not evidence for r02.
+
+**Raw capture, default rules (the result):** exactly the two declared
+detections and no other alert.
+
+| Rule | Entity | Peak | Baseline (13 intervals) | Threshold |
+|---|---|---|---|---|
+| NG-RATE-001 | 10.77.0.10 | 431 connections in one interval | 127.55 ± 15.03 | 318.9 |
+| NG-VOL-001 | 10.77.0.20 | 52.7 MB in one interval | 74 267 bytes | 20 MB floor |
+
+Kali's baseline again includes the bridge's control connections (about 120
+per interval). This time the 300-connection burst fell into one interval
+(431 > 318.9); in run 01 it was split across two (177 and 388 against 392.2).
+So the raw result holds for this run, and the margin depends on how the burst
+lines up with the 60 s intervals while the bridge is running.
+
+**Additional analysis, declared before the burst** (plan written 16:44:46
+UTC, SHA-256 `dbf6d8b7…`): the same capture without the lab control plane,
+predicate "drop TCP packets with source or destination port 8766 or 8767",
+same default rules. 19516 packets removed, 40204 kept (independently
+re-derived on the Mac with the same counts and identical packet contents; the
+owner's derived file is a nanosecond pcap, SHA-256 `14d53aec…`, a
+microsecond re-derivation hashes differently). Result: the same two
+detections, NG-RATE-001 with 303 connections against a baseline of
+8.68 ± 0.56 (threshold 21.7). This shows what the rule sees without the
+artificial control traffic; it does not replace the raw result above.
+
+Run 01 (failed, kernel drops) stays excluded, as does the first exp02 run
+(438 kernel drops). The accepted real captures are the seventeen pinned in
+`real-regression.toml`; together they give each of the eleven rules at least
+one real detection with its declared entity. That is one run per experiment
+on one lab host pair, not a precision or recall figure.

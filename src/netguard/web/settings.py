@@ -34,6 +34,9 @@ class ServerSettings:
     # Host names (besides loopback and --host) clients may use, e.g. the name a
     # reverse proxy forwards. Anything else is refused (DNS rebinding defence).
     allowed_hosts: list[str] = field(default_factory=list)
+    # Browser origins allowed to make state-changing requests besides the server's
+    # own, e.g. "https://netguard.lab" when a TLS proxy forwards to plain http.
+    allowed_origins: list[str] = field(default_factory=list)
 
     @property
     def db_path(self) -> Path:
@@ -51,6 +54,13 @@ class ServerSettings:
                 f"refusing to listen on {self.host} without an API token: set {TOKEN_ENV}, "
                 "bind to 127.0.0.1, or pass --insecure-no-auth if another layer protects the API"
             )
+        from netguard.web.guard import parse_origin
+
+        for origin in self.allowed_origins:
+            if parse_origin(origin) is None:
+                raise SettingsError(
+                    f"--allowed-origin {origin!r}: expected scheme://host[:port], e.g. https://netguard.lab"
+                )
         if self.max_upload_bytes <= 0 or self.max_storage_bytes <= 0 or self.max_pending_analyses <= 0:
             raise SettingsError("upload, storage and queue limits must be > 0")
 

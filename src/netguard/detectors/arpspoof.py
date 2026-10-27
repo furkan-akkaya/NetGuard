@@ -48,6 +48,7 @@ class ArpSpoofDetector(Detector):
     name = "arpspoof"
     packet_protos = frozenset({"arp", "udp"})  # udp: DHCP leases explain legitimate changes
     rules = (RuleInfo(RULE_ID, "ARP binding change (possible ARP spoofing)", T1557_002),)
+    counters = ("untracked_ips", "explained_by_dhcp")
 
     def __init__(self, config: Config) -> None:
         self.cfg = config.arpspoof
@@ -58,6 +59,7 @@ class ArpSpoofDetector(Detector):
         self._leases: dict[str, tuple[str, float]] = {}  # ip -> (client MAC, ACK time)
         self._dhcp_servers = set(self.cfg.dhcp_servers)
         self.explained_by_dhcp = 0  # binding changes not reported because a DHCP ACK explains them
+        self.untracked_ips = 0  # new IPs not tracked because the binding table was full
 
     def _learn_lease(self, pkt: Packet) -> None:
         dhcp = pkt.dhcp
@@ -103,6 +105,7 @@ class ArpSpoofDetector(Detector):
         binding = self.bindings.get(ip)
         if binding is None:
             if len(self.bindings) >= MAX_TRACKED_IPS:
+                self.untracked_ips += 1
                 return ()
             self.bindings[ip] = Binding(mac=mac, owner=mac, first_seen=ts, last_seen=ts, macs_seen={mac})
             return ()

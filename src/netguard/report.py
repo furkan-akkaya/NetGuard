@@ -16,6 +16,7 @@ from collections.abc import Iterable, Mapping, Sequence
 from typing import Any
 
 from netguard import __version__
+from netguard.stats import state_losses
 
 _CSP = "default-src 'none'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'"
 _SEVERITY_ORDER = {"HIGH": 0, "MEDIUM": 1, "LOW": 2}
@@ -112,6 +113,14 @@ def render_report(
         meta_rows += f"<tr><th>Capture format</th><td>{esc(capture_info.get('format'))}</td></tr>"
         if capture_info.get("truncated"):
             meta_rows += "<tr><th>Warning</th><td>The capture ends with a truncated record.</td></tr>"
+    if flows.get("evicted"):
+        meta_rows += (
+            f"<tr><th>Warning</th><td>{_num(flows['evicted'])} flows evicted early (flow table full).</td></tr>"
+        )
+    for name, lost in state_losses(stats.get("detectors", {})).items():
+        meta_rows += (
+            f"<tr><th>Warning</th><td>Detector {esc(name)} dropped state {_num(lost)} times (table full).</td></tr>"
+        )
     endpoints = stats.get("endpoints", {}).get("top_by_bytes", [])
     endpoint_rows = "".join(
         f'<tr><td class="mono">{esc(e["ip"])}</td><td class="num">{_num(e["bytes_sent"])}</td>'

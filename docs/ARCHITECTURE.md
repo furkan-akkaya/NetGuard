@@ -136,7 +136,8 @@ Testing Library (formatting, profile diffing, page states, hostile strings).
 4. **Bounded memory everywhere.** An attacker controls the input, so they also
    control how much state we create. Every map and window has a cap. When a
    cap is hit, we deliberately fail *open* (we may miss something), we count it
-   (`evicted_keys`, `flows evicted`, `endpoints approximate`), and we never
+   and show it (`stats.detectors.<name>.evicted_*`, `flows.evicted`,
+   `endpoints.approximate`; text, HTML report and dashboard warn), and we never
    crash. Cap handling itself must be O(1): an O(n) rescan when full is a
    CPU-exhaustion attack (see learning note 02 §6).
 5. **Explainability is a feature.** The text of `summary` is part of the
@@ -152,6 +153,8 @@ Testing Library (formatting, profile diffing, page states, hostile strings).
 2. Add a config dataclass in `config.py` (named after the detector, with
    `enabled` and explicit memory bounds), register it in `_SECTIONS`, and add
    it to `netguard.example.toml` (a test checks the example equals the defaults).
+   List the counters that record dropped state in `counters` (prefix
+   `evicted_` or `untracked_`), so a full table is visible in the output.
 3. Add the class to `DETECTORS` in `detectors/__init__.py`.
 4. Add unit tests built from `Packet` objects, plus at least one attack
    scenario and one *benign look-alike* scenario in `lab/scenarios.py`.

@@ -22,6 +22,7 @@ lab-pcaps/
 # Local config
 netguard.toml
 .claude/settings.local.json
+.claude/launch.json
 
 # OS / editors
 .DS_Store
@@ -31,3 +32,7 @@ netguard.toml
 # Dashboard: dependencies and the built bundle (rebuilt from frontend/)
 frontend/node_modules/
 src/netguard/web/static/
+
+# Local experiment manifests and reports can contain private addresses
+eval/captures.toml
+eval/reports/
