@@ -34,9 +34,12 @@ flowchart LR
   it on the running VMs, not only in the settings.
 - In this lab, `isolated=on` on the Ubuntu VM blocked VM-to-VM traffic; it is
   off. Check after every change: `ping -c 3 10.77.0.20` from Kali.
-- The Mac is **not** reachable from this network, and the VMs have no
+- The Mac is **not** reachable from this network, and the VMs have no routed
   internet. Nothing in this guide assumes otherwise: no `scp`, no `apt`, no
-  `pip` inside the VMs during experiments.
+  `pip` inside the VMs during experiments. "Isolated" does not mean silent,
+  though: exp01's capture contained SSDP multicast from the UTM host side of
+  the shared network, so a capture may hold host-originated traffic besides
+  the experiment. Do not document the lab as traffic-free.
 - Do not add a second NIC, SSH keys or routes for convenience. Any change to
   the lab network is coordinated separately and recorded with the results.
 
@@ -150,21 +153,32 @@ simpler experiments are understood.
 
 ## 7. Live capture on the victim (after the offline experiments)
 
-The VMs have no internet, so NetGuard is installed from a wheelhouse brought
-over the transfer channel. The analyser needs only `dpkt` (pure Python), so
-for `netguard monitor` two wheels suffice (Python ≥ 3.11 on the VM):
+The VMs have no internet, so NetGuard is brought over the transfer channel as
+a single-file app (`netguard-lab.pyz`, built from this branch, bundling the
+pure-Python `dpkt`; Python ≥ 3.11 on the VM). A VirtFS share may be
+unreadable by the normal user (host 0700 / UID mismatch), so copy the file
+into a local path the user owns and run it with the system python:
 
 ```bash
-# on the Mac
-uv build --wheel -o wheelhouse && python3 -m pip download dpkt==1.9.8 --no-deps -d wheelhouse
-# on the Ubuntu VM, after the transfer
-python3 -m venv ~/ng && ~/ng/bin/pip install --no-index --find-links wheelhouse netguard
-sudo setcap cap_net_raw,cap_net_admin=eip "$(command -v tcpdump)"   # once, see LIVE_CAPTURE.md
-~/ng/bin/netguard monitor -i <lab-interface> --write ~/ng-captures/live-01.pcap -f jsonl > ~/ng-captures/live-01.jsonl
+sudo install -m 0644 /mnt/ng-transfer/netguard-lab.pyz ~/ng-captures/netguard-lab.pyz
+export NETGUARD="python3 $HOME/ng-captures/netguard-lab.pyz"
+$NETGUARD --version
 ```
 
-Then compare the live final alerts with `netguard analyze` of the written
-file (acceptance criterion "Live = offline" below).
+Then run the live capture with the helper, which keeps NetGuard a normal user
+and starts tcpdump via `sudo -n` (`sudo -v` caches the credential once; no
+persistent `setcap` needed):
+
+```bash
+bash victim-live-rss.sh benign-01 3600          # uses $NETGUARD; see § 8
+```
+
+It announces readiness only after a tcpdump capture process is actually
+running, records the monitor's exit status, kernel-drop count, RSS samples and
+measured elapsed time, and reports NEEDS REVIEW instead of success on a failed,
+empty or under-sampled run. Then compare the live final alerts with offline
+analysis of the written file with `eval/lab/live_offline_equal.py` (acceptance
+criterion "Live = offline" below).
 
 ## 8. Recording results: manifest, Zeek, acceptance criteria
 

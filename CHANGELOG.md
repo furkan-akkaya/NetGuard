@@ -10,6 +10,9 @@ Phase 10: code-quality review, evaluation report and release preparation.
 - Analysis statistics report every detector's counters (`stats.detectors`). When a detector dropped state because its table was full (`evicted_*`, `untracked_*`), the text output, the HTML report and the dashboard show a warning. Before, these losses were counted internally but never shown, although the docs said they were.
 - NG-ARP-001 counts new IPs it could not track because the binding table was full (`untracked_ips`).
 
+### Measured (first real lab capture, 27 Oct 2026)
+- One real nmap SYN scan (isolated UTM lab, hash-verified capture): NG-SCAN-001 and NG-SCAN-002 fired with the declared entities, 0 false positives (4 stray SSDP multicast packets raised nothing). Flow states matched a real Zeek 8.2.2 `conn.log` exactly (1001/1001, zero differences). Replay through the live pipeline produced the same final alerts as offline analysis. One capture is not precision/recall for the tool, and no benign baseline or live-interface run is measured yet; see docs/EVALUATION.md § 6.
+
 ### Security
 - Concurrent uploads could exceed the storage quota (two 400-byte uploads against a 500-byte quota were both stored). Uploads now reserve quota per chunk; reservations are released when the capture is stored or the upload fails, is rejected or disconnects.
 - The Origin check compared host names only: `http://localhost:9999` could change data on `http://localhost`, including a body-less POST that starts an analysis. Scheme, host and port must now match; `null` and malformed origins are refused. **Behind a TLS proxy, add `--allowed-origin https://<name>`**, or dashboard writes get 403.
@@ -22,6 +25,11 @@ Phase 10: code-quality review, evaluation report and release preparation.
 - docs/CAPTURE_EVALUATION.md; lab acceptance criteria in LAB_SETUP.md, fixed before any lab result.
 - `eval/lab/`: lab scripts for the isolated UTM network (victim capture that announces readiness only after tcpdump reports `listening on`, refuses cleanly when sudo, tcpdump or the interface fails, captures in immediate mode and records the hash and tcpdump's counts, experiment 01 SYN scan with address and confirmation guards, `ingest.py` that verifies transferred captures and writes the manifest) and `experiments.toml` with ground truth written before any run.
 - LAB_SETUP.md rewritten for the lab as built: one named Host Network, no route to the Mac or internet, transfer-channel requirements, a one-line tool check for the victim, and expected results that match the current rules (UDP scans: NG-SCAN-003; slow scans: NG-SCAN-002).
+
+- `eval/lab/kali-run.sh`: one guarded runner for every planned attack experiment (SYN/connect/XMAS/FIN/NULL/slow/UDP scans, ping sweep, fragmented scan, a bounded SYN burst), each refusing to run outside 10.77.0.10 -> 10.77.0.20 and bounded (fixed ports/counts/rates, no unbounded flooding). `experiments.toml` carries their ground truth, written before any run, listing only the detectors each experiment should trigger on this two-VM topology.
+- `eval/lab/victim-live-rss.sh`: runs `netguard monitor --sudo` (NetGuard stays a normal user, tcpdump via `sudo -n`), announces readiness only after a tcpdump capture process is actually running, samples the analyser's RSS and records VmHWM (the kernel's peak), the monotonic elapsed time, the monitor exit status, kernel-drop count and write-truncation, and reports NEEDS REVIEW instead of success on a failed, short, under-sampled or lossy run.
+- `eval/lab/kali-benign.sh`: paced, non-scanning client traffic for the benign baseline. `eval/lab/live_offline_equal.py`: compares a live JSONL run's final alerts with offline analysis of the written pcap. `eval/lab/zeek-compare.sh`: runs Zeek on a capture and compares flows.
+- `.github/workflows/release-dryrun.yml`: a `workflow_dispatch` build that runs every release gate and uploads the artefacts (wheel, sdist, SBOM, checksums, locked requirements) WITHOUT a tag or a release, to verify the release path on GitHub before tagging.
 
 ### Changed
 - Live sessions keep the latest 10 000 alert events in memory; every event is still printed, and the summary says when older ones were dropped. Offline analyses keep every alert.

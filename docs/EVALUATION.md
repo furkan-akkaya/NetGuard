@@ -291,13 +291,57 @@ negatives in more detail.
 
 ## 6. Real captures
 
-*Not yet measured.* No real capture has been analysed for this document.
+**One real attack capture measured so far (27 Oct 2026).** This is a start,
+not a verdict: a single SYN scan on an isolated two-VM UTM lab (Kali
+10.77.0.10 -> Ubuntu 10.77.0.20). No benign baseline, no live-interface
+measurement, and no other attack type has been measured yet, so the other
+acceptance criteria in [LAB_SETUP.md § 8](LAB_SETUP.md) stay open.
 
-The tooling is ready: `netguard lab evaluate --manifest` scores
-checksum-pinned captures against ground truth declared before the run and
-keeps lab, public and synthetic scores apart; `netguard lab compare-flows`
-matches every TCP/UDP flow (endpoints, direction, state) against Zeek's
-`conn.log` ([CAPTURE_EVALUATION.md](CAPTURE_EVALUATION.md)). Both are tested
-on generated fixtures and hand-written Zeek rows only, which proves the code,
-not NetGuard's accuracy. The experiments and their acceptance criteria,
-fixed before any result exists, are in [LAB_SETUP.md § 8](LAB_SETUP.md).
+Provenance and integrity: the capture bytes are hash-verified
+(SHA-256 `376d4b6c…bbbd93a9`, matched on the capture host and the Mac). This
+first capture was taken by hand, so the command, nmap version and tcpdump
+counts come from the operator's own report/screenshots, not from the capture
+scripts; later experiments use `eval/lab/` and record their own metadata. The
+capture is **not** traffic-free: besides the scan it contains 4 SSDP multicast
+packets (192.168.128.1 -> 239.255.255.250:1900) from the UTM host side of the
+shared network. The lab has no routed internet, but it is not silent.
+
+### exp01 — `sudo nmap -sS -Pn -n -p 1-1000 --max-retries 1 --max-rate 100`
+
+| Measure | Result |
+|---|---|
+| Frames / decode errors | 2009 / 0 |
+| Flow states | REJ 999, RSTO 1, S0 1 |
+| Ground truth (declared first) | `portscan` 10.77.0.10->10.77.0.20, `trw` 10.77.0.10 |
+| Detected | both; TP 2, **FP 0**, FN 0 (the 4 SSDP packets raised nothing) |
+| NG-SCAN-001 | 1000 distinct ports in 10.0 s, 1 open (22), 999 closed; confidence 90 |
+| NG-SCAN-002 (TRW) | 1000 first contacts, 999 rejected, 1 succeeded; threshold crossed; confidence 95 |
+| No detector dropped state | all `evicted_*` / `untracked_*` zero |
+
+Reproduce: `python3 eval/lab/ingest.py <transfer-dir>` then
+`uv run netguard lab evaluate --manifest eval/captures.toml`. One attack
+capture cannot establish precision/recall for the tool; it shows the two scan
+rules fire on a real nmap SYN scan with the declared entities and no false
+positive on this capture.
+
+### Flow states vs Zeek (same capture)
+
+Compared with a real **Zeek 8.2.2** `conn.log` of the same file (network
+disabled, checksum validation on): **1001 of 1001** directional TCP/UDP flows
+matched on endpoints, direction and connection state, with **zero**
+differences (`netguard lab compare-flows`, reproduced on the Mac). This checks
+flow reconstruction against an independent tool on real traffic, not full Zeek
+semantic compatibility.
+
+### Replay vs offline (same capture)
+
+Replaying the capture through the live pipeline (`netguard replay --speed 0`)
+produced the **same two final alerts** as offline analysis
+(`eval/lab/live_offline_equal.py`, equal). This exercises the live code path
+but is **not** a live-interface measurement: a real `netguard monitor` run on
+the VM interface, with kernel-drop accounting and the 1 h benign baseline, is
+still open.
+
+The tooling behind these: `netguard lab evaluate --manifest`, `compare-flows`,
+and the lab scripts in `eval/lab/` ([CAPTURE_EVALUATION.md](CAPTURE_EVALUATION.md),
+[LAB_SETUP.md](LAB_SETUP.md)).

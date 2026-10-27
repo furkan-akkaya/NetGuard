@@ -1,29 +1,122 @@
 # Ground truth for the UTM lab experiments, written BEFORE any of them is run
-# (docs/LAB_SETUP.md § 6). Lab network: Kali 10.77.0.10 -> Ubuntu VM 10.77.0.20,
-# an isolated UTM named Host Network with no route to the Mac, home network or
-# internet. eval/lab/ingest.py combines these labels with the transferred
-# captures' hashes and tool versions into eval/captures.toml (git-ignored).
+# (docs/LAB_SETUP.md § 8). Lab: Kali 10.77.0.10 -> Ubuntu VM 10.77.0.20 on an
+# isolated UTM named Host Network, no route to the Mac/home/internet.
+# eval/lab/ingest.py combines these labels with the transferred captures'
+# hashes and tool versions into eval/captures.toml (git-ignored).
 #
-# Change a label only for a documented reason (e.g. the experiment itself
-# changed), never because NetGuard's output differed: a miss is a result.
+# "expected" lists only the detectors that SHOULD fire for this experiment
+# given the CURRENT rules and this two-host topology. A rule that is expected
+# to miss (documented below) is NOT listed, so a listed miss is a real result.
+# Change a label only for a documented reason (e.g. the experiment changed),
+# never because NetGuard's output differed: a miss is a result.
+#
+# Entity convention (src = attacker 10.77.0.10, unless noted):
+#   portscan, udpscan -> "src->dst"   synflood -> "dst"   others -> "src"
+#
+# What this two-VM topology can measure now: portscan, trw, udpscan, hostsweep,
+# fragments, synflood. It canNOT measure, without changes coordinated
+# separately: NG-ARP-001 (needs a third address/gateway to impersonate),
+# NG-DNS-001 / NG-DNS-002 (need a DNS resolver on the victim), and the baseline
+# rules NG-RATE-001 / NG-VOL-001 (need >=10 min of history then a change; see
+# the benign experiment). Those acceptance criteria stay open.
 schema_version = 1
 
 [[experiments]]
 name = "exp01-syn-scan"
 kind = "attack"
-script = "kali-exp01-syn-scan.sh"
-note = "nmap SYN scan of 1000 ports, victim without firewall: closed ports answer RST"
+script = "kali-run.sh exp01-syn-scan"
+note = "nmap -sS of 1000 ports; victim without firewall: closed ports answer RST"
 expected = [
-  # NG-SCAN-001: 1000 distinct ports on one target within 60 s (threshold 15).
   { detector = "portscan", entity = "10.77.0.10->10.77.0.20" },
-  # NG-SCAN-002: first-contact attempts mostly rejected (>= 5 failures).
   { detector = "trw", entity = "10.77.0.10" },
 ]
 
-# Not run yet; added here so its labels exist before its capture does.
+[[experiments]]
+name = "exp02-connect-scan"
+kind = "attack"
+script = "kali-run.sh exp02-connect-scan"
+note = "nmap -sT: full connect scan; mostly closed ports -> first-contact failures"
+expected = [
+  { detector = "portscan", entity = "10.77.0.10->10.77.0.20" },
+  { detector = "trw", entity = "10.77.0.10" },
+]
+
+[[experiments]]
+name = "exp03-xmas-scan"
+kind = "attack"
+script = "kali-run.sh exp03-xmas-scan"
+note = "nmap -sX: no SYN, so TRW (SYN-based) is expected to stay silent; portscan fires on distinct ports"
+expected = [
+  { detector = "portscan", entity = "10.77.0.10->10.77.0.20" },
+]
+
+[[experiments]]
+name = "exp04-fin-scan"
+kind = "attack"
+script = "kali-run.sh exp04-fin-scan"
+note = "nmap -sF: FIN probes, no SYN; TRW expected silent"
+expected = [
+  { detector = "portscan", entity = "10.77.0.10->10.77.0.20" },
+]
+
+[[experiments]]
+name = "exp05-null-scan"
+kind = "attack"
+script = "kali-run.sh exp05-null-scan"
+note = "nmap -sN: no flags, no SYN; TRW expected silent"
+expected = [
+  { detector = "portscan", entity = "10.77.0.10->10.77.0.20" },
+]
+
+[[experiments]]
+name = "exp06-slow-scan"
+kind = "attack"
+script = "kali-run.sh exp06-slow-scan"
+note = "nmap -sS -T1 -p 1-50 (~15 s/probe, ~12 min). NG-SCAN-001 is expected to MISS it (< 15 ports / 60 s window), so only trw is listed; its silence confirms the window limitation"
+expected = [
+  { detector = "trw", entity = "10.77.0.10" },
+]
+
+[[experiments]]
+name = "exp07-udp-scan"
+kind = "attack"
+script = "kali-run.sh exp07-udp-scan"
+note = "nmap -sU --top-ports 100; closed UDP ports answer ICMP port-unreachable (subject to the victim's ICMP rate limit)"
+expected = [
+  { detector = "udpscan", entity = "10.77.0.10->10.77.0.20" },
+]
+
+[[experiments]]
+name = "exp08-ping-sweep"
+kind = "attack"
+script = "kali-run.sh exp08-ping-sweep"
+note = "nmap -sn 10.77.0.0/24: ARP requests to 254 addresses -> >= 15 distinct hosts probed, even though only one answers"
+expected = [
+  { detector = "hostsweep", entity = "10.77.0.10" },
+]
+
+[[experiments]]
+name = "exp09-frag-scan"
+kind = "attack"
+script = "kali-run.sh exp09-frag-scan"
+note = "nmap -sS -f: fragmented SYN probes. NetGuard does not reassemble, so NG-FRAG-001 reports the evasion; the port scan inside the fragments may not be seen, so only fragments is listed"
+expected = [
+  { detector = "fragments", entity = "10.77.0.10" },
+]
+
+[[experiments]]
+name = "exp10-syn-burst"
+kind = "attack"
+script = "kali-run.sh exp10-syn-burst"
+note = "bounded hping3 SYN burst (1500 packets ~100/s) to one closed port, no final ACK: >= 500 attempts/10 s with ~0% completed. synflood entity is the target"
+expected = [
+  { detector = "synflood", entity = "10.77.0.20" },
+]
+
+# Not run yet; added so its (empty) ground truth exists before its capture does.
 [[experiments]]
 name = "benign-01"
 kind = "benign"
-script = "(manual: 1 h of ordinary use of the victim, no scanning)"
-note = "benign baseline on the lab network; nothing may be expected"
+script = "victim-live-rss.sh benign-01 3600  (with kali-benign.sh on Kali)"
+note = "1 h of ordinary client traffic from Kali to the victim's services; nothing may be expected. Also feeds the RSS and live-vs-offline checks"
 expected = []
