@@ -52,6 +52,57 @@ def test_tcp_connection_states(state, sequence):
     assert _one_flow(pkts).state == state
 
 
+# FIN/RST orderings after an established handshake, with the state Zeek 8.2.2
+# reports for each (checked by running Zeek on one pcap per case). The order
+# matters: an RST from an endpoint that already sent its FIN is ignored once
+# the peer has closed too, and a peer's later FIN turns it back into SF.
+_HANDSHAKE = [("o", SYN), ("r", SYN | ACK), ("o", ACK)]
+CLOSE_CASES = {
+    "fin_both": ("SF", [("o", FIN | ACK), ("r", FIN | ACK), ("o", ACK)]),
+    "fin_both_then_rst_o": ("SF", [("o", FIN | ACK), ("r", FIN | ACK), ("o", RST)]),
+    "fin_both_then_rst_r": ("SF", [("o", FIN | ACK), ("r", FIN | ACK), ("r", RST)]),
+    "fin_both_then_rst_o_and_r": ("SF", [("o", FIN | ACK), ("r", FIN | ACK), ("o", RST), ("r", RST)]),
+    "fin_o_rst_o_then_fin_r": ("SF", [("o", FIN | ACK), ("o", RST), ("r", FIN | ACK)]),
+    "fin_r_rst_r_then_fin_o": ("SF", [("r", FIN | ACK), ("r", RST), ("o", FIN | ACK)]),
+    "fin_o_then_rst_o": ("RSTO", [("o", FIN | ACK), ("r", ACK), ("o", RST)]),
+    "fin_o_then_rst_r": ("RSTR", [("o", FIN | ACK), ("r", ACK), ("r", RST)]),
+    "fin_r_then_rst_o": ("RSTO", [("r", FIN | ACK), ("o", ACK), ("o", RST)]),
+    "fin_r_then_rst_r": ("RSTR", [("r", FIN | ACK), ("o", ACK), ("r", RST)]),
+    "fin_o_rst_r_then_fin_o_again": ("RSTR", [("o", FIN | ACK), ("r", RST), ("o", FIN | ACK)]),
+    "rst_o_then_fin_r": ("RSTO", [("o", RST), ("r", FIN | ACK)]),
+    "fin_rst_one_segment": ("RSTO", [("o", FIN | RST | ACK)]),
+    "fin_r_then_fin_rst_o": ("RSTO", [("r", FIN | ACK), ("o", FIN | RST | ACK)]),
+}
+
+
+@pytest.mark.parametrize(("state", "sequence"), CLOSE_CASES.values(), ids=CLOSE_CASES)
+def test_fin_and_rst_order_matches_zeek(state, sequence):
+    steps = _HANDSHAKE + sequence
+    pkts = [(_o if d == "o" else _r)(i * 0.01, flags) for i, (d, flags) in enumerate(steps)]
+    assert _one_flow(pkts).state == state
+
+
+def test_rst_after_fin_exchange_is_a_normal_close():
+    # Reduced from a real SSH banner read in the lab (benign-01): both sides
+    # sent FIN, then the client reset twice. Zeek 8.2.2 logs SF with history
+    # ShAFadfR; NetGuard used to report RSTO.
+    pkts = [
+        _o(0.0, SYN, seq=2658235027),
+        _r(0.0001, SYN | ACK, seq=2253569570),
+        _o(0.0007, ACK, seq=2658235028),
+        _o(0.0014, FIN | ACK, seq=2658235028),
+        _r(0.0026, ACK, seq=2253569571),
+        _r(0.0112, PSH | ACK, seq=2253569571, payload=42),
+        _r(0.0116, FIN | ACK, seq=2253569613),
+        _o(0.0118, RST, seq=2658235029),
+        _o(0.0120, RST, seq=2658235029),
+    ]
+    flow = _one_flow(pkts)
+    assert flow.state == "SF"
+    assert flow.history == "ShAFadfR"
+    assert flow.retransmissions == 0
+
+
 def test_missed_syn_flips_orientation():
     flow = _one_flow([_r(0, SYN | ACK), _o(0.01, ACK)])
     assert (flow.src_ip, flow.src_port, flow.dst_ip, flow.dst_port) == (C, 40000, S, 80)

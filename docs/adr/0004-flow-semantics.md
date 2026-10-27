@@ -46,7 +46,18 @@ precedence:
 2. Responder SYN, no originator SYN → `RSTRH` › `SHR` › `OTH`.
 3. No SYN at all → `OTH` (mid-stream).
 4. Both SYNs (established) → `RSTO` › `RSTR` › `SF` (FIN both ways) › `S2`
-   (originator FIN only) › `S3` (responder FIN only) › `S1`.
+   (originator FIN only) › `S3` (responder FIN only) › `S1`. Here FIN and RST
+   are not taken from the OR of flags but from a small per-endpoint record,
+   because their order matters (amended 27 Oct 2026, after a real lab capture
+   showed the difference): as in Zeek's endpoint state machine, an RST from an
+   endpoint that already sent its FIN is ignored when the peer has sent its
+   FIN too, and when the peer's FIN comes after such an RST, the connection
+   is still `SF`. An RST from an endpoint that had not sent FIN, or FIN and
+   RST in one segment, is an abort as before. Checked case by case against
+   Zeek 8.2.2 (`tests/test_flows.py::test_fin_and_rst_order_matches_zeek`).
+   Known difference left: when **both** endpoints reset, NetGuard reports
+   `RSTO`, while Zeek checks the responder first and reports `RSTR`, or `REJ`
+   when neither side sent payload.
 
 UDP/ICMP flows are `SF` if the responder sent anything, otherwise `S0`.
 

@@ -58,6 +58,14 @@ CONN_STATES = {
 # ordered by expiry time.
 _HALF_OPEN, _ESTABLISHED, _CLOSED, _UDP, _OTHER = range(5)
 
+# How one endpoint ended, for an established connection's state. It follows
+# Zeek's endpoint state machine (TCPSessionAdapter: UpdateEstablishedState,
+# UpdateClosedState) rather than the OR of flags, because there the order of
+# FIN and RST matters: an RST from an endpoint that already sent its FIN is
+# ignored when the peer has closed too, and a peer's later FIN turns such an
+# RST back into a normal close.
+_OPEN, _FINNED, _RESET, _RESET_AFTER_FIN = range(4)
+
 
 def seq_after(a: int, b: int) -> bool:
     """``a`` is later than ``b`` in 32-bit sequence space (RFC 1982 serial arithmetic)."""
@@ -91,6 +99,8 @@ class Flow:
     end_reason: str = ""
     _orig_next: int | None = field(default=None, repr=False)
     _resp_next: int | None = field(default=None, repr=False)
+    _orig_end: int = field(default=_OPEN, repr=False)
+    _resp_end: int = field(default=_OPEN, repr=False)
     _cls: int = field(default=_OTHER, repr=False)
 
     @property
@@ -127,15 +137,16 @@ class Flow:
             return "OTH"
         if not orig_syn:
             return "OTH"
-        if o & RST:
+        oe, re = self._orig_end, self._resp_end
+        if oe >= _RESET:
             return "RSTO"
-        if r & RST:
+        if re >= _RESET:
             return "RSTR"
-        if o & FIN and r & FIN:
+        if oe == _FINNED and re == _FINNED:
             return "SF"
-        if o & FIN:
+        if oe == _FINNED:
             return "S2"
-        if r & FIN:
+        if re == _FINNED:
             return "S3"
         return "S1"
 
@@ -204,10 +215,30 @@ class Flow:
             self._mark("D", orig)
         if flags & FIN:
             self._mark("F", orig)
+        if flags & (FIN | RST):
+            self._update_end(flags, orig)
         if flags & RST:
             self._mark("R", orig)
         elif pkt.tcp_seq is not None:
             self._track_seq(pkt.tcp_seq, payload + bool(flags & SYN) + bool(flags & FIN), orig)
+
+    def _update_end(self, flags: int, orig: bool) -> None:
+        """Advance the sending endpoint's FIN/RST state (see ``_OPEN`` and friends)."""
+        end, peer = (self._orig_end, self._resp_end) if orig else (self._resp_end, self._orig_end)
+        if end == _OPEN:
+            if flags & RST:
+                end = _RESET  # FIN+RST in one segment is an abort
+            else:
+                end = _FINNED
+                if peer == _RESET_AFTER_FIN:
+                    peer = _FINNED  # the peer's FIN-then-RST was a normal close after all
+        elif end == _FINNED and flags & RST and peer != _FINNED:
+            end = _RESET_AFTER_FIN
+        # Once reset, an endpoint stays reset; an RST after both FINs changes nothing.
+        if orig:
+            self._orig_end, self._resp_end = end, peer
+        else:
+            self._resp_end, self._orig_end = end, peer
 
     def _track_seq(self, seq: int, length: int, orig: bool) -> None:
         """Count segments that do not advance the sequence space.

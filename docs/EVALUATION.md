@@ -414,9 +414,10 @@ updates that figure lazily, so it can fall, and a short peak between two
 samples could be missed.
 
 Flow states vs **Zeek 8.2.2** (`conn.log` of the same pcap, network disabled,
-checksum validation on): **396 of 397** TCP/UDP flows match on endpoints,
-direction and state. The comparison does **not** come out equal, and
-`compare-flows` reports two differences:
+checksum validation on). With the source as it was for the run (`a845dea`),
+**396 of 397** NetGuard TCP/UDP flows matched (397 NetGuard, 399 Zeek); the
+operator reproduced this independently with the official Zeek 8.2.2 image.
+`compare-flows` reported two differences:
 
 - **mDNS flow split (explained, a timeout setting).** Zeek splits the mDNS
   traffic from 192.168.128.1 and from an IPv6 link-local address into five
@@ -428,9 +429,21 @@ direction and state. The comparison does **not** come out equal, and
 - **One SSH connection classed differently (NetGuard's state rule).** In
   10.77.0.10:40076 -> 10.77.0.20:22 both sides sent FIN, then the client sent
   two RSTs. Zeek reports SF (closed normally; history `ShAFadfR`), NetGuard
-  RSTO, because its state function checks RST before a FIN exchange. This is
-  a real semantic difference from Zeek, not a capture artefact; it is listed
-  as an open task (8.14). It does not change any alert here.
+  RSTO, because its state function checked RST before a FIN exchange. This
+  was a real semantic difference from Zeek, not a capture artefact. **Fixed**
+  (task 8.14): NetGuard now follows Zeek's endpoint rules for the order of
+  FIN and RST (ADR-0004), with a regression test reduced from this
+  connection and 14 orderings each checked against Zeek 8.2.2.
+
+After the fix, on the same pcap: **397 of 397** NetGuard TCP/UDP flows match
+Zeek's (399 Zeek flows: only the two extra mDNS splits remain), and with
+`dns_session_timeout=60sec` the comparison is **equal (397/397)**. The mDNS
+split is a design parameter, not an error: NetGuard uses one UDP idle timeout
+(60 s, Zeek's `udp_inactivity_timeout`) for every UDP flow and has no shorter
+DNS-specific session timeout. The two SYN-scan captures still match Zeek
+exactly after the fix (1001/1001 and 1000/1000), and their alerts are
+unchanged. The flow-state fix changes no alert in any of the three captures;
+the live run itself was not repeated with the fixed build.
 
 Zeek also logged one `bad_TCP_checksum` packet (in the first SSH session);
 running Zeek with `-C` (checksums ignored) gives the same comparison.

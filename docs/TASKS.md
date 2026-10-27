@@ -41,7 +41,8 @@ Deferred (ADR-0011): Zeek/Suricata input, ICMP tunnel rule, resolver policy, sea
 - [x] **8.11b** 1 h benign baseline + RSS (benign-01, build of `a845dea`): 3640 s, 4245 packets, 0 kernel drops; live 0 = offline 0 final alerts; peak RSS 34.0 MiB; flow states vs Zeek 8.2.2 396/397, differences explained. One low-rate SSH-banner/ping mix, not a production FP rate ([EVALUATION.md § 6](EVALUATION.md))
 - [ ] **8.11c** Live delay with early warnings on: not measured yet (only an estimate from the synthetic benchmark)
 - [ ] **8.12** 👤 Remaining attack experiments (connect/XMAS/FIN/NULL/slow/UDP/sweep/frag/SYN-burst) via `kali-run.sh`; then precision/recall over all lab attacks
-- [ ] **8.14** Flow state: FIN in both directions followed by RST is RSTO in NetGuard, SF in Zeek (seen once in benign-01). Decide whether to follow Zeek, with a test
+- [x] **8.14** Flow state: an RST after the FIN exchange was RSTO, Zeek says SF (seen once in benign-01). Now follows Zeek's endpoint rules for FIN/RST order (ADR-0004); regression test from the real connection, 14 orderings checked against Zeek 8.2.2; benign-01 397/397 TCP/UDP flows match, equal with Zeek's DNS timeout at 60 s
+- [ ] **8.15** Flow state when both endpoints reset: NetGuard RSTO, Zeek RSTR (or REJ without payload). Seen only in synthetic checks, not in a lab capture; decide with care, because REJ feeds the scan detectors
 - [ ] **8.13** Open (needs lab changes): NG-ARP-001 (a third address to impersonate), NG-DNS-001/002 (a resolver on the victim), NG-RATE-001/NG-VOL-001 (>=10 min baseline then a change)
 - [ ] **9.5** Run `deploy/netguard.service` under systemd on the Ubuntu server ([DEPLOYMENT.md](DEPLOYMENT.md))
 - [x] **6.5** Live capture on a real interface: done on the lab VM in live-syn-01 and benign-01 (`monitor --sudo --write`, compared with offline analysis, kernel drops recorded); see 8.11a/b
