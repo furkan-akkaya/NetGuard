@@ -219,7 +219,7 @@ def _run_session(args: argparse.Namespace, source: object, clock_rate: float) ->
         s = engine.stats
         print(
             f"[status] packets {s.packets:,}  bytes {s.bytes:,}  active flows {len(engine.flows):,}  "
-            f"alerts {len(engine.alerts):,}",
+            f"alerts {s.alert_events_total:,}",
             file=sys.stderr,
             flush=True,
         )
@@ -260,10 +260,12 @@ def _run_session(args: argparse.Namespace, source: object, clock_rate: float) ->
     delays = [first_report[a.alert_id] - a.first_seen for a in finals if a.alert_id in first_report]
     summary = (
         f"{outcome.source['source']}: {outcome.stopped_by} after {outcome.seconds:.1f}s; "
-        f"{s.packets:,} packets, {s.flows_total:,} flows, {len(finals)} alerts"
+        f"{s.packets:,} packets, {s.flows_total:,} flows, {s.final_alerts_total} alerts"
     )
-    if delays:
+    if delays and not s.alert_history_dropped:
         summary += f" (detection delay median {sorted(delays)[len(delays) // 2]:.1f}s, max {max(delays):.1f}s)"
+    if s.alert_history_dropped:
+        summary += f"; {s.alert_history_dropped:,} older alert events not kept in memory (all were printed)"
     extra = {k: v for k, v in outcome.source.items() if k != "source"}
     if extra:
         summary += "; " + ", ".join(f"{k.replace('_', ' ')}: {v}" for k, v in extra.items())

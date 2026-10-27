@@ -352,9 +352,12 @@ class LiveSession:
         clock_rate: float = 1.0,
         on_status: Callable[[Engine], None] | None = None,
         status_every: float | None = None,
+        max_alert_history: int = 10_000,
     ) -> None:
         self.source = source
-        self.engine = Engine(config, on_alert=on_alert, on_flow=on_flow)
+        # A session can run for days: keep only the latest alert events in memory.
+        # on_alert receives every one of them as it happens.
+        self.engine = Engine(config, on_alert=on_alert, on_flow=on_flow, max_alert_history=max_alert_history)
         self.duration = duration
         self.idle_advance = idle_advance
         # Capture seconds per wall second (replay speed); 0 = never advance on idle.

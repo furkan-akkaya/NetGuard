@@ -268,3 +268,55 @@ def test_tcpdump_that_cannot_be_executed_is_explained(tmp_path):
     source = TcpdumpSource(CaptureSpec("en0"), command=[str(script)])
     with pytest.raises(SourceError, match="not permitted to run"):
         LiveSession(source, Config()).run()
+
+
+def test_alert_history_stays_bounded_over_25_hours_of_capture_time():
+    """Accelerated capture clock (1 500 sweep incidents), not a 25-hour wall-clock soak."""
+    from netguard.detectors.hostsweep import HostSweepDetector
+
+    config = _early_config()
+    streamed: list[str] = []
+    engine = Engine(
+        config, detectors=[HostSweepDetector(config)], on_alert=lambda a: streamed.append(a.stage), max_alert_history=64
+    )
+    for cycle in range(1500):
+        for host in range(30):
+            engine.process(icmp(cycle * 60 + host * 0.1, SCANNER, f"10.0.1.{host + 1}"))
+        engine.advance(cycle * 60 + 20)
+        assert len(engine.alerts) <= 64
+    result = engine.finish()
+    assert result.stats.duration > 24 * 3600
+    assert len(streamed) == result.stats.alert_events_total == 3000  # the callback saw every event
+    assert streamed.count("final") == result.stats.final_alerts_total == 1500
+    assert len(result.alerts) == 64
+    assert result.stats.alert_history_dropped == 3000 - 64
+    assert result.stats.to_dict()["alerts"] == {"events_total": 3000, "final_total": 1500, "history_dropped": 2936}
+
+
+def test_offline_analysis_keeps_every_alert(tmp_path):
+    with open_capture(_pcap(tmp_path, "syn_scan_1000")) as frames:
+        result = analyze_frames(frames, Config())
+    assert result.stats.alert_history_dropped == 0
+    assert len(result.alerts) == result.stats.alert_events_total == 2
+
+
+def test_live_session_bounds_history_and_streams_everything(tmp_path):
+    seen: list[str] = []
+    path = _pcap(tmp_path, "syn_scan_1000")
+    session = LiveSession(
+        ReplaySource(path, speed=0),
+        _early_config(),
+        on_alert=lambda a: seen.append(a.rule_id),
+        clock_rate=0,
+        max_alert_history=1,
+    )
+    outcome = session.run()
+    assert len(outcome.result.alerts) == 1
+    assert outcome.result.stats.alert_events_total == len(seen) >= 2
+    assert outcome.result.stats.alert_history_dropped == len(seen) - 1
+    assert set(seen) == {"NG-SCAN-001", "NG-SCAN-002"}
+
+
+def test_alert_history_limit_must_be_positive():
+    with pytest.raises(ValueError, match="positive"):
+        Engine(max_alert_history=0)

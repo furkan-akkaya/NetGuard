@@ -62,3 +62,23 @@ def test_stats_document_is_json_serializable():
     assert doc["flows"]["top_services"] == [{"service": "udp/53", "flows": 5}]
     assert doc["endpoints"]["top_by_bytes"][0]["ip"] == "10.0.0.20"
     assert doc["timeseries"]["bucket_seconds"] == 1.0
+
+
+def test_sparse_timeseries_never_exceeds_its_bucket_limit():
+    from netguard.stats import TimeSeries
+
+    series = TimeSeries(max_buckets=4)
+    for i in range(100):
+        series.add(i * 1000.0, 64)
+        assert len(series.buckets) <= 4
+    assert sum(cell[0] for cell in series.buckets.values()) == 100  # nothing lost while merging
+    assert sum(cell[1] for cell in series.buckets.values()) == 6400
+
+
+def test_timeseries_limit_must_allow_merging():
+    import pytest
+
+    from netguard.stats import TimeSeries
+
+    with pytest.raises(ValueError, match="at least 2"):
+        TimeSeries(max_buckets=1)

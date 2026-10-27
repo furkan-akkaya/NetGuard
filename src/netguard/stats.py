@@ -67,11 +67,18 @@ class TimeSeries:
     width: float = 1.0
     buckets: dict[float, list[int]] = field(default_factory=dict)  # start -> [packets, bytes]
 
+    def __post_init__(self) -> None:
+        if self.max_buckets < 2:
+            raise ValueError("max_buckets must be at least 2")
+
     def add(self, ts: float, length: int) -> None:
         start = (ts // self.width) * self.width
         cell = self.buckets.get(start)
         if cell is None:
-            if len(self.buckets) >= self.max_buckets:
+            # With sparse traffic one doubling may merge none of the buckets, so
+            # repeat until there is room or the packet falls into a merged one.
+            # Ends: once the width covers the whole span, at most 2 buckets remain.
+            while cell is None and len(self.buckets) >= self.max_buckets:
                 self._downsample()
                 start = (ts // self.width) * self.width
                 cell = self.buckets.get(start)
@@ -103,6 +110,11 @@ class TrafficStats:
     packets: int = 0
     bytes: int = 0
     decode_errors: int = 0
+    # Alert events emitted (early and final stages); a live engine may keep only a
+    # bounded tail of them in memory (Engine max_alert_history).
+    alert_events_total: int = 0
+    final_alerts_total: int = 0
+    alert_history_dropped: int = 0
     first_ts: float | None = None
     last_ts: float | None = None
     protocols: Counter[str] = field(default_factory=Counter)
@@ -199,6 +211,11 @@ class TrafficStats:
             "packets": self.packets,
             "bytes": self.bytes,
             "decode_errors": self.decode_errors,
+            "alerts": {
+                "events_total": self.alert_events_total,
+                "final_total": self.final_alerts_total,
+                "history_dropped": self.alert_history_dropped,
+            },
             "unsupported_linktype_frames": {str(k): v for k, v in sorted(self.unsupported_linktypes.items())},
             "fragments": self.fragments,
             "first_seen": iso_ts(self.first_ts) if self.first_ts is not None else None,
