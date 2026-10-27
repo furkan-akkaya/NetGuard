@@ -155,7 +155,7 @@ expected = [
 name = "exp14-rate-volume"
 kind = "attack"
 script = "python3 kali_rate_burst.py  (then python3 victim_volume_burst.py on Ubuntu when told)"
-note = "13 min paced benign baseline, then 300 SSH banner reads at 10/s from Kali (connection rate) and one 48 MB upload from the victim to Kali (volume). Each source is judged against its own baseline"
+note = "13 min paced benign baseline, then 300 SSH banner reads at 10/s from Kali (connection rate) and one 48 MB upload from the victim to Kali, paced at 4 MB/s so the capture keeps up (volume). Each source is judged against its own baseline"
 expected = [
   { detector = "connrate", entity = "10.77.0.10" },
   { detector = "volume", entity = "10.77.0.20" },
