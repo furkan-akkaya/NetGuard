@@ -31,7 +31,16 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 GENERATED = ("src/netguard/web/static/",)  # built by pnpm before `uv build`
 BUILD_FILES = {"PKG-INFO", "pyproject.toml.orig"}
-REQUIRED = ("uv.lock", "tests/", "frontend/package.json", "frontend/pnpm-lock.yaml", "frontend/src/", "docs/")
+REQUIRED = (
+    "uv.lock",
+    "tests/",
+    "frontend/package.json",
+    "frontend/pnpm-lock.yaml",
+    "frontend/src/",
+    "frontend/public/THIRD_PARTY_NOTICES.txt",
+    "frontend/scripts/licenses.mjs",
+    "docs/",
+)
 IGNORED_DISTS = {"netguard", "pip", "setuptools", "wheel"}
 
 
@@ -81,6 +90,14 @@ def check_installed(requirements: Path) -> list[str]:
         pinned[_norm(name)] = (version.strip(), bool(marker.strip()))
     installed = {_norm(d.metadata["Name"]): d.version for d in importlib.metadata.distributions()}
     errors = []
+    notice = Path(
+        importlib.metadata.distribution("netguard").locate_file("netguard/web/static/THIRD_PARTY_NOTICES.txt")
+    )
+    expected_notice = ROOT / "frontend/public/THIRD_PARTY_NOTICES.txt"
+    if not notice.is_file():
+        errors.append("installed wheel is missing frontend third-party notices")
+    elif notice.read_bytes() != expected_notice.read_bytes():
+        errors.append("installed frontend notices differ from the reviewed source")
     for name, version in sorted(installed.items()):
         if name in IGNORED_DISTS:
             continue

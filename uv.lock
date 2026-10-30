@@ -518,7 +518,7 @@ wheels = [
 
 [[package]]
 name = "netguard"
-version = "1.0.0rc2"
+version = "1.0.0rc3"
 source = { editable = "." }
 dependencies = [
     { name = "dpkt" },

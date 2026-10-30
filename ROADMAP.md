@@ -1,6 +1,6 @@
 # NetGuard Yol Haritası
 
-> Son güncelleme: **2026-10-27** · Mevcut sürüm: **v0.8.0** (aday: **1.0.0rc1**, etiketlenmedi) · Aktif faz: **Faz 10 — Release hazırlığı** (👤 kalan Faz 8 lab koşuları bekliyor)
+> Son güncelleme: **2026-10-30** · Mevcut sürüm: **1.0.0rc3** (sürüm adayı; `v1.0.0rc2` taslak olarak kaldı) · Aktif faz: **Faz 10 — Public yayın** (👤 uzun ve tekrarlı canlı lab koşuları bekliyor)
 >
 > Bu dosya projenin **tek** yol haritasıdır. Güncel iş listesi
 > [docs/TASKS.md](docs/TASKS.md), ölçülmüş sonuçlar
@@ -52,12 +52,12 @@ mikroservis yok.
 | 5 | Web dashboard | ✅ | **v0.5.0 = MVP** |
 | 6 | Canlı yakalama ve replay | ✅ (👤 lab doğrulaması) | **v0.6.0** |
 | 7 | İleri tespit ve tehdit istihbaratı | ✅ | **v0.7.0** |
-| 8 | Test, benchmark, değerlendirme | 🔄 ilk gerçek ölçümler var · 👤 kalan lab koşuları | 1.0.0rc1 |
+| 8 | Test, benchmark, değerlendirme | 🔄 17 gerçek yakalama · 👤 uzun/yük altında canlı koşular | 1.0.0rc3 |
 | 9 | Güvenlik sertleştirme ve CI/CD | ✅ | **v0.8.0** |
-| 10 | Dokümantasyon, release, portföy | 🔄 aday hazır · 👤 inceleme, merge ve etiket kararı | **1.0.0rc1** aday; v1.0.0 lab'den sonra |
+| 10 | Dokümantasyon, release, portföy | 🔄 RC3 public yayın | **1.0.0rc3**; v1.0.0 saha ölçümlerinden sonra |
 
-**Ölçülmüş durum (1.0.0rc1 adayı):** 11 tespit kuralı, güven puanı ve korelasyon,
-REST API, web dashboard, canlı yakalama; 425 Python testi (3.11–3.14) ve 14
+**Ölçülmüş durum (1.0.0rc3):** 11 tespit kuralı, güven puanı ve korelasyon,
+REST API, web dashboard, canlı yakalama; 452 Python testi (3.11–3.14) ve 14
 frontend testi, kapsama %93; ruff, mypy `--strict`, TypeScript strict temiz;
 bilinen açığı olan bağımlılık yok (pip-audit, pnpm audit). Yazılı tehdit
 modeli ([THREAT_MODEL.md](docs/THREAT_MODEL.md)); kurulum temiz ortamda ve
@@ -338,6 +338,9 @@ taslağı.
 hepsi kanıtla karşılanmış; karşılanamayan madde varsa açıkça yazılır ve tam
 uyum iddia edilmez.
 
+**Durum (2026-10-30):** RC2 etiketi taslakta kaldı; RC3 public yayın yolu
+[PUBLICATION_RC3.md](docs/PUBLICATION_RC3.md) içinde. Aşağısı 27 Ekim kaydıdır.
+
 **Durum (2026-10-27):** 10.1–10.4, 10.6–10.8 tamam. `1.0.0rc1` adayı
 `fix/audit-2026-10-27` dalında (PR #9; PR #8'i içerir) hazır, etiketlenmedi.
 Kontrol listesi ([RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md)): 12
@@ -403,8 +406,7 @@ Kapsama eşiği %90 (CI'da zorunlu). Gerçek pcap'ler git'e girmez (`.gitignore`
 
 - Kalan lab koşuları (8.4, 8.11c, 8.12, 8.13): [eval/lab/RUN.md](eval/lab/RUN.md);
   yalnızca sahip olunan, izole ağda.
-- PR #8 ve #9'un incelenip birleştirilmesi, `v1.0.0rc1` etiketi.
-- GitHub: repo görünürlüğünü değiştirmek (şu an private), release yayınlamak.
+- Uzun ve kademeli yük altında canlı deneyler: [FIELD_VALIDATION_PLAN.md](docs/FIELD_VALIDATION_PLAN.md).
 - Canlı yakalama testleri için yetkili arayüz seçimi ve `sudo`.
 
 ## 10. Bu dosyanın bakımı
@@ -414,6 +416,9 @@ Kapsama eşiği %90 (CI'da zorunlu). Gerçek pcap'ler git'e girmez (`.gitignore`
 - Plan değişirse nedeni bir satırla aşağıya yazılır; mimari etkisi varsa ADR açılır.
 
 ### Değişiklik kaydı
+
+- **2026-10-30:** PR #10 ve #11 birleşti (kısmi baseline aralıkları, görev 8.17). RC2 lisans bildirimleri eksik olduğu için
+  taslak kaldı; RC3 bildirimleri ekliyor ve public yayın adayı. Uzun ve yük altında canlı deneyler hâlâ açık.
 
 - **2026-10-27:** Dış denetim düzeltmeleri, ilk gerçek lab ölçümleri (exp01,
   live-syn-01, benign-01) ve Zeek ile flow durumu uyumu (FIN/RST sırası, iki

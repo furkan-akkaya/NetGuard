@@ -1,6 +1,6 @@
 [project]
 name = "netguard"
-version = "1.0.0rc2"
+version = "1.0.0rc3"
 description = "Network intrusion detection & traffic analyzer with explainable, measurable detections."
 readme = "README.md"
 license = "MIT"
@@ -97,7 +97,7 @@ skip_covered = true
 source-include = [
     "README.tr.md", "CHANGELOG.md", "ROADMAP.md", "CONTRIBUTING.md", "SECURITY.md", "netguard.example.toml", "uv.lock",
     "docs/**", "tests/**", "benchmarks/**", "deploy/**", "eval/captures.example.toml", "eval/lab/**",
-    "frontend/src/**", "frontend/public/**", "frontend/index.html", "frontend/package.json",
+    "frontend/src/**", "frontend/public/**", "frontend/scripts/**", "frontend/index.html", "frontend/package.json",
     "frontend/pnpm-lock.yaml", "frontend/tsconfig.json", "frontend/vite.config.ts",
 ]
 source-exclude = ["*.pcap", "*.pcapng", "*.cap", "node_modules"]

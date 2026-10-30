@@ -16,9 +16,9 @@ Bir alarm yalnızca “şüpheli trafik var” demez.
 Kaynak ve hedefi, gözlenen davranışı, aşılan eşiği ve güven puanının gerekçelerini gösterir.
 İlgili alarmları tek bir olay altında toplar.
 
-> **Durum: 1.0.0rc2 — sürüm adayı.** Geliştirme ve doğrulama geçmişi [PR #9](https://github.com/furkan-akkaya/NetGuard/pull/9) içinde kayıtlı.
+> **Durum: 1.0.0rc3 — sürüm adayı.** Geliştirme ve doğrulama geçmişi [PR #9](https://github.com/furkan-akkaya/NetGuard/pull/9) içinde kayıtlı.
 > Mevcut 17 kabul edilmiş lab kaydı ve otomatik testlerle yeniden doğrulandı. Yeni uzun canlı deney ve yük deneyi bekliyor.
-> Kanıtlar ve sınırlar [RC2 doğrulamasında](docs/PUBLICATION_RC2.md); paketler [RC yayınında](https://github.com/furkan-akkaya/NetGuard/releases/tag/v1.0.0rc2).
+> Kanıtlar ve sınırlar [RC3 yayın kaydında](docs/PUBLICATION_RC3.md); paketler [RC yayınında](https://github.com/furkan-akkaya/NetGuard/releases/tag/v1.0.0rc3).
 
 ## Kısaca, teknik olmayan dille
 
@@ -148,7 +148,7 @@ Depo özelse, klonlamak için GitHub erişiminiz gerekir.
 
 ### Örnek sonuç
 
-Yukarıdaki `compromised_workstation` senaryosunun `1.0.0rc2` çıktısından kısa bölüm:
+Yukarıdaki `compromised_workstation` senaryosunun `1.0.0rc3` çıktısından kısa bölüm:
 
 ```text
 Packets: 582   Bytes: 39,748   Duration: 70.2s   Flows: 321   Decode errors: 0
@@ -234,7 +234,7 @@ Aynı `alert_id` ile gelen bu iki aşamayı ayrı saldırılar gibi saymayın.
 
 | Kontrol | Ölçülen sonuç | Kapsam |
 |---|---|---|
-| Otomatik Python testleri | 425 test | Linux/macOS, Python 3.11–3.14 CI matrisi |
+| Otomatik Python testleri | 452 test | Linux/macOS, Python 3.11–3.14 CI matrisi |
 | Web paneli | 14 test ve başarılı üretim derlemesi | Arayüz testleri |
 | Sentetik saldırılar | 15/15 senaryo tespit edildi | Projeyle birlikte tasarlanan etiketli senaryolar |
 | Sentetik normal trafik | 12 senaryonun 9’unda yanlış alarm yok | Üç bilinen yanlış alarm düşük güven puanıyla raporlandı |
@@ -272,7 +272,8 @@ Web bileşeni FastAPI/Uvicorn, SQLite ve React/TypeScript kullanır.
 Canlı yakalama `tcpdump` üzerinden yürür.
 
 Dosya okuyucuları ve analiz durumu için kaynak sınırları uygulanır.
-API analizleri ayrı işçi süreçlerinde süre ve bellek sınırlarıyla çalışır.
+API analizleri ayrı işçi süreçlerinde çalışır; süre ve CPU sınırı Linux ve macOS'ta uygulanır.
+İşçi bellek sınırı (`RLIMIT_AS`) yalnız Linux'ta uygulanır; macOS bu sınırı uygulamaz.
 Çevrimdışı kurallar kayıt zamanlarını kullanır; aynı dosya ve yapılandırma aynı analiz sonucunu üretir.
 Bileşenler ve tasarım gerekçeleri için [mimari](docs/ARCHITECTURE.md) ve [karar kayıtlarını](docs/adr/) inceleyin.
 

@@ -38,6 +38,10 @@ After the fix, neither partial interval trains or scores.
 
 Regression tests cover exact boundaries, six partial start offsets, silent gaps,
 clipped learning, warm-up, repeated drain and both rate/volume detectors.
+Engine-level tests run both rules together: a busy partial start must not satisfy
+warm-up, and silent intervals, a partial start and a heavy partial tail in one
+capture must still yield exactly the complete burst interval. Both fail on the
+pre-fix code for every non-boundary start.
 Thresholds and fixed-window alignment are unchanged.
 A burst split across two complete windows can still miss the threshold.
 A burst wholly inside the discarded tail can also be missed.
