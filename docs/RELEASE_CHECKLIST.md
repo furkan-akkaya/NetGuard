@@ -36,7 +36,8 @@ fixes.
 
 ## Current release path
 
-PR #8, #9 and #10 are already merged. The candidate is `1.0.0rc3`.
+PR #8-#11 are merged; PR #12 (dashboard notices) is the RC3 base. The candidate is `1.0.0rc3`.
+The tag workflow has run once, for `v1.0.0rc2` (draft only, never published), so row 12's missing release run is no longer the gap.
 Task 8.17 is resolved by [BASELINE_INTERVALS.md](BASELINE_INTERVALS.md).
 The [confidence review](CONFIDENCE_REVIEW_RC2.md) leaves weights unchanged and states their evidence limits.
 Long and repeated live experiments remain open under [FIELD_VALIDATION_PLAN.md](FIELD_VALIDATION_PLAN.md).

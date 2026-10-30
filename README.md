@@ -17,7 +17,7 @@ Related alerts are grouped into incidents.
 
 > **Status: 1.0.0rc3 — release candidate.** Development and validation history is recorded in [PR #9](https://github.com/furkan-akkaya/NetGuard/pull/9).
 > Rechecked against 17 existing accepted lab captures and automated tests. New long/live load validation remains pending.
-> See [RC2 validation](docs/PUBLICATION_RC3.md) and the [RC release](https://github.com/furkan-akkaya/NetGuard/releases/tag/v1.0.0rc3) for evidence, packages and remaining limits.
+> See [RC3 publication](docs/PUBLICATION_RC3.md) and the [RC release](https://github.com/furkan-akkaya/NetGuard/releases/tag/v1.0.0rc3) for evidence, packages and remaining limits.
 
 ## In plain words
 
@@ -233,7 +233,7 @@ Do not count these two stages, sharing the same `alert_id`, as separate attacks.
 
 | Check | Measured result | Scope |
 |---|---|---|
-| Automated Python tests | 425 tests | Linux/macOS × Python 3.11–3.14 CI matrix |
+| Automated Python tests | 452 tests | Linux/macOS × Python 3.11–3.14 CI matrix |
 | Dashboard | 14 tests and successful production build | UI tests |
 | Synthetic attacks | 15/15 scenarios detected | Labelled scenarios designed with the project |
 | Synthetic benign traffic | 9/12 scenarios without false positives | Three known false positives reported with low confidence |
@@ -271,7 +271,8 @@ The web application uses FastAPI/Uvicorn, SQLite and React/TypeScript.
 Live capture runs through `tcpdump`.
 
 Resource bounds apply to capture readers and analysis state.
-API analyses run in separate worker processes with time and memory limits.
+API analyses run in separate worker processes with time and CPU limits on Linux and macOS.
+The worker memory limit (`RLIMIT_AS`) is enforced only on Linux; macOS does not apply it.
 Offline rules use capture timestamps, so the same file and configuration produce the same analysis result.
 See the [architecture](docs/ARCHITECTURE.md) and [decision records](docs/adr/) for components and design rationale.
 

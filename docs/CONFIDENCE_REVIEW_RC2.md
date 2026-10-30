@@ -75,3 +75,4 @@ Do not remove a factor solely because this narrow lab cannot exercise it.
 ## Reproduce
 
 Run `uv run python eval/lab/review_confidence.py CAPTURE_DIR OTHER_CAPTURE_DIR`. The script verifies pinned hashes and respects each synthetic scenario’s configuration. It lists missing records explicitly. Never commit the capture directories.
+Its output is a fuller per-alert record than the condensed `eval/lab/confidence-review-rc2.json`; on 30 October 2026 the RC3 code reproduced the same 17 captures, 21 alerts, scores and factors.
