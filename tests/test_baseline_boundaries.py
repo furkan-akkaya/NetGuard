@@ -99,3 +99,48 @@ def test_rate_and_volume_share_complete_interval_policy(start, complete_tail):
     if complete_tail:
         pkts.append(udp(boundary + 180, "10.0.0.30", "10.0.0.10", 443))
         assert {a.rule_id for a in analyze_packets(pkts, cfg).alerts} & rules == rules
+
+
+def _burst(t, count, sport, span=1.0):
+    return [udp(t + k * span / count, "10.0.0.20", "10.0.0.10", 443, sport=sport + k) for k in range(count)]
+
+
+def _edge(start, count, sport):
+    """Packets that stay inside the first (possibly partial) interval."""
+    return _burst(start, count, sport, span=((start // 60 + 1) * 60 - start) / 2)
+
+
+def _baseline_alerts(pkts):
+    cfg = Config(
+        connrate=ConnRateConfig(warmup_intervals=2, min_count=50),
+        volume=VolumeConfig(warmup_intervals=2, min_bytes=1000),
+    )
+    return [a for a in analyze_packets(pkts, cfg).alerts if a.rule_id in {"NG-RATE-001", "NG-VOL-001"}]
+
+
+@pytest.mark.parametrize("start", [0.0, 0.01, 30.0, 59.99])
+def test_partial_start_does_not_satisfy_warmup_for_either_rule(start):
+    # One busy partial edge, one complete quiet interval, then a burst. Only an exact
+    # boundary start gives two complete intervals, so only then is warm-up satisfied.
+    first = (start // 60) * 60
+    pkts = _edge(start, 5, 9000)
+    pkts += _burst(first + 60, 5, 10000) + _burst(first + 120, 100, 20000)
+    pkts.append(udp(first + 180, "10.0.0.30", "10.0.0.10", 443))  # completes the burst interval
+    rules = {a.rule_id for a in _baseline_alerts(pkts)}
+    assert rules == ({"NG-RATE-001", "NG-VOL-001"} if start == first else set())
+
+
+@pytest.mark.parametrize("start", [0.01, 30.0, 59.99])
+def test_silent_intervals_partial_edges_and_tail_together(start):
+    boundary = (start // 60 + 1) * 60
+    pkts = _edge(start, 50, 9000)  # partial start: heavy, but never learned
+    pkts += _burst(boundary, 5, 10000) + _burst(boundary + 60, 5, 11000)
+    # three complete silent intervals [boundary+120, boundary+300) count as zero
+    pkts += _burst(boundary + 300, 100, 20000)
+    pkts.append(udp(boundary + 360, "10.0.0.30", "10.0.0.10", 443))  # completes the burst interval
+    pkts += _burst(boundary + 361, 400, 30000)  # partial tail: neither scored nor extends the alert
+    alerts = _baseline_alerts(pkts)
+    assert {a.rule_id for a in alerts} == {"NG-RATE-001", "NG-VOL-001"}
+    for a in alerts:
+        assert a.src == "10.0.0.20"
+        assert (a.first_seen, a.last_seen) == (boundary + 300, boundary + 360)
