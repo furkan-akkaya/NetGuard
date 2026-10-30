@@ -16,9 +16,9 @@ Bir alarm yalnızca “şüpheli trafik var” demez.
 Kaynak ve hedefi, gözlenen davranışı, aşılan eşiği ve güven puanının gerekçelerini gösterir.
 İlgili alarmları tek bir olay altında toplar.
 
-> **Durum: 1.0.0rc1 — sürüm adayı.** Geliştirme ve doğrulama geçmişi [PR #9](https://github.com/furkan-akkaya/NetGuard/pull/9) içinde kayıtlı.
-> 17 kabul edilmiş gerçek lab kaydı ve otomatik testlerle doğrulandı.
-> Henüz tag veya GitHub release yok. Açık sınırlar ve yayın adımları [teslim raporunda](docs/DELIVERY_REPORT.md).
+> **Durum: 1.0.0rc2 — sürüm adayı.** Geliştirme ve doğrulama geçmişi [PR #9](https://github.com/furkan-akkaya/NetGuard/pull/9) içinde kayıtlı.
+> Mevcut 17 kabul edilmiş lab kaydı ve otomatik testlerle yeniden doğrulandı. Yeni uzun canlı deney ve yük deneyi bekliyor.
+> Kanıtlar ve sınırlar [RC2 doğrulamasında](docs/PUBLICATION_RC2.md); paketler [RC yayınında](https://github.com/furkan-akkaya/NetGuard/releases/tag/v1.0.0rc2).
 
 ## Kısaca, teknik olmayan dille
 
@@ -114,7 +114,7 @@ Güven puanı istatistiksel saldırı olasılığı değildir; [belgelenmiş kan
 | **tcpdump** | Ağ paketlerini kaydeden standart komut satırı aracı. NetGuard canlı yakalama için bunu kullanır. |
 | **Komut satırı / REST API / web paneli** | NetGuard'ı kullanmanın üç yolu: yazılan komutlar, başka programlardan gelen istekler ve tarayıcıdaki web sayfası. |
 | **Pasif** | Yalnızca gözlemler; trafiği engellemez, değiştirmez veya göndermez. |
-| **Çekirdek paket kaybı** | İşletim sisteminin yetişemeyip analizden önce kaybettiği paketler. Sıfır, hiçbir şeyin kaçırılmadığı anlamına gelir. |
+| **Çekirdek paket kaybı** | İşletim sisteminin yetişemeyip analizden önce kaybettiği paketler. Sıfır, bu çekirdek sayacının kayıp bildirmediğini gösterir; diğer yakalama kayıpları hâlâ mümkündür. |
 | **RSS** | Programın gerçekten kullandığı bellek miktarı. |
 | **Zeek** | Yaygın kullanılan bir ağ analiz aracı; burada bağımsız karşılaştırma için kullanıldı. |
 | **SBOM** | Yazılım malzeme listesi: bir sürümün içindeki bütün bileşenlerin listesi. |
@@ -148,7 +148,7 @@ Depo özelse, klonlamak için GitHub erişiminiz gerekir.
 
 ### Örnek sonuç
 
-Yukarıdaki `compromised_workstation` senaryosunun `1.0.0rc1` çıktısından kısa bölüm:
+Yukarıdaki `compromised_workstation` senaryosunun `1.0.0rc2` çıktısından kısa bölüm:
 
 ```text
 Packets: 582   Bytes: 39,748   Duration: 70.2s   Flows: 321   Decode errors: 0
@@ -257,7 +257,7 @@ Yöntem, kaynak sürümleri ve ayrıntılar: [değerlendirme](docs/EVALUATION.md
 - **Şifreli uygulama içeriği çözülmez.** NetGuard görünen paket ve bağlantı bilgileri üzerinden çalışır.
 - **Görünürlük ve kayıp sonucu etkiler.** Tek yönlü veya eksik yakalama bağlantı durumlarını ve alarmları değiştirebilir.
 - **Canlı yük doğrulaması sınırlıdır.** Bir saatten uzun veya yoğun canlı trafik koşusu henüz yapılmadı.
-- **Trafik artışı kuralları başlangıç verisine bağlıdır.** İlk eksik zaman aralığının öğrenmeye etkisi açık tasarım kararıdır; görev 8.17.
+- **Trafik artışı kuralları tam gözlem aralıkları ister.** RC2 ilk ve son kısmi aralığı dışarıda bırakır. Sabit aralık sınırı hâlâ patlamayı bölebilir; [kararı oku](docs/BASELINE_INTERVALS.md).
 - **Alarm bir inceleme başlangıcıdır.** Meşru tarayıcıları, DNS davranışlarını ve cihaz değişikliklerini kendi ağınıza göre değerlendirin.
 
 API varsayılan olarak localhost’a bağlanır.

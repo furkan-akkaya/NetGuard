@@ -2,9 +2,9 @@
 
 This guide describes the **isolated** lab used to measure NetGuard on real
 traffic, and the scripts in [`eval/lab/`](../eval/lab/) that run the
-experiments with as few manual steps as possible. No result from this lab
-exists yet; [EVALUATION.md § 6](EVALUATION.md#6-real-captures) says so until
-it does.
+experiments with as few manual steps as possible. Seventeen accepted captures
+are documented in [EVALUATION.md § 6](EVALUATION.md#6-real-captures).
+The [remaining live plan](FIELD_VALIDATION_PLAN.md) separates old evidence from unexecuted experiments.
 
 ```mermaid
 flowchart LR

@@ -1,5 +1,7 @@
 # Delivery report: NetGuard 1.0.0rc1 (release candidate)
 
+> Historical review: superseded for current publication by [RC2 validation](PUBLICATION_RC2.md).
+
 State on 27 October 2026, branch `fix/audit-2026-10-27` (pull request #9,
 which contains #8). Nothing is tagged, released or public. This page says what
 the candidate contains, what backs each claim, and what is still open. It
@@ -88,8 +90,7 @@ that variant (`a993fcfc…` and `d39c2bd8…`).
 - exp14's raw connection-rate detection depends on how the burst lines up
   with the 60 s intervals while the lab bridge adds ~120 connections per
   interval (r02: one interval, detected; run 01: split, missed, but that run
-  is excluded for kernel drops). Task 8.17 (partial first baseline interval)
-  is an open design decision.
+  is excluded for kernel drops). Task 8.17 was open at this review; RC2 resolves it by discarding partial observation intervals.
 - Live early-warning delay: one run of one scan type, not a guarantee.
 - False-positive rate on real networks: the benign hour is one narrow traffic
   mix, not a rate.
@@ -97,11 +98,7 @@ that variant (`a993fcfc…` and `d39c2bd8…`).
 - The tag-triggered release workflow (draft creation) has never run.
 - systemd unit on a real host (`systemd-analyze` only).
 
-## Remaining steps for the owner
+## Current follow-up
 
-1. Optional clean-up: delete the bridge token files on the two guests (the
-   bridge servers are already stopped).
-2. Review and merge pull request #8, then #9.
-3. Decide on the tag `v1.0.0rc1` (private draft pre-release).
-4. Decide task 8.17, then on `v1.0.0` and repository visibility
-   ([RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md), recommended path).
+PR #8, #9 and #10 are merged. Task 8.17 is resolved in RC2.
+The original results above remain historical; current release gates and live limitations are in [PUBLICATION_RC2.md](PUBLICATION_RC2.md).

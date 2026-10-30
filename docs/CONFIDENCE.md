@@ -78,3 +78,7 @@ incidents. Correlation never adds or removes detections.
 Where it appears: `netguard analyze` (text: an *Incidents* section; JSON:
 `incidents`), the API (`/analyses/{id}/incidents`) and the dashboard's
 analysis page.
+
+## RC2 evidence review
+
+The [30 October review](CONFIDENCE_REVIEW_RC2.md) replays 17 existing real lab captures and 12 synthetic benign look-alikes. No weight changed. Real benign-alert comparisons and independent holdout data are missing; no numerical weight is field-calibrated.

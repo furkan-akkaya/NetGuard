@@ -1,0 +1,655 @@
+{
+  "policy": "No weights fitted; descriptive reuse of existing lab records, not independent validation or calibrated attack probabilities.",
+  "real": [
+    {
+      "capture": "exp01-syn-scan",
+      "sha256": "376d4b6c4d54af96fdb01c9e79b74869ca605e63e7969c3d11a12979bbbd93a9",
+      "kind": "bounded_lab_attack",
+      "alerts": [
+        {
+          "rule": "NG-SCAN-001",
+          "score": 90,
+          "factors": [
+            {
+              "reason": "at least 90% of probed ports were closed or silent: the source did not know what was there",
+              "weight": 20
+            },
+            {
+              "reason": "100 or more ports on one host",
+              "weight": 10
+            }
+          ]
+        },
+        {
+          "rule": "NG-SCAN-002",
+          "score": 95,
+          "factors": [
+            {
+              "reason": "fewer than 10% of first contacts succeeded",
+              "weight": 20
+            },
+            {
+              "reason": "20 or more failed first contacts",
+              "weight": 10
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "capture": "live-syn-01",
+      "sha256": "65533b5b4a7f2ecb5389295367e2a42df08ee9d7f6f580d2d53bae9a3ff3ffce",
+      "kind": "bounded_lab_attack",
+      "alerts": [
+        {
+          "rule": "NG-SCAN-001",
+          "score": 90,
+          "factors": [
+            {
+              "reason": "at least 90% of probed ports were closed or silent: the source did not know what was there",
+              "weight": 20
+            },
+            {
+              "reason": "100 or more ports on one host",
+              "weight": 10
+            }
+          ]
+        },
+        {
+          "rule": "NG-SCAN-002",
+          "score": 95,
+          "factors": [
+            {
+              "reason": "fewer than 10% of first contacts succeeded",
+              "weight": 20
+            },
+            {
+              "reason": "20 or more failed first contacts",
+              "weight": 10
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "capture": "benign-01",
+      "sha256": "f3c6a7f9ddc48642a6189158476cf3f83bdc4d0aeef76de74f33499fe1e7b849",
+      "kind": "benign",
+      "alerts": []
+    },
+    {
+      "capture": "exp02-connect-scan-r02",
+      "sha256": "a31528ab77ffcd96e9b17a93a02650872c21acba8b20264daacee47ceb87eba0",
+      "kind": "bounded_lab_attack",
+      "alerts": [
+        {
+          "rule": "NG-SCAN-001",
+          "score": 90,
+          "factors": [
+            {
+              "reason": "at least 90% of probed ports were closed or silent: the source did not know what was there",
+              "weight": 20
+            },
+            {
+              "reason": "100 or more ports on one host",
+              "weight": 10
+            }
+          ]
+        },
+        {
+          "rule": "NG-SCAN-002",
+          "score": 95,
+          "factors": [
+            {
+              "reason": "fewer than 10% of first contacts succeeded",
+              "weight": 20
+            },
+            {
+              "reason": "20 or more failed first contacts",
+              "weight": 10
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "capture": "exp03-xmas-scan",
+      "sha256": "73df30a771337db92cbf25b71406423243a42ed3d3d1720911b255594a30944e",
+      "kind": "bounded_lab_attack",
+      "alerts": [
+        {
+          "rule": "NG-SCAN-001",
+          "score": 95,
+          "factors": [
+            {
+              "reason": "at least 90% of probed ports were closed or silent: the source did not know what was there",
+              "weight": 20
+            },
+            {
+              "reason": "non-SYN probe types (NULL/FIN/XMAS) have no legitimate client use",
+              "weight": 15
+            },
+            {
+              "reason": "100 or more ports on one host",
+              "weight": 10
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "capture": "exp04-fin-scan",
+      "sha256": "632cbe9ad41e1efe9fe93b6d16c66f93e37f560d93d2161b8398bd06ee63b369",
+      "kind": "bounded_lab_attack",
+      "alerts": [
+        {
+          "rule": "NG-SCAN-001",
+          "score": 95,
+          "factors": [
+            {
+              "reason": "at least 90% of probed ports were closed or silent: the source did not know what was there",
+              "weight": 20
+            },
+            {
+              "reason": "non-SYN probe types (NULL/FIN/XMAS) have no legitimate client use",
+              "weight": 15
+            },
+            {
+              "reason": "100 or more ports on one host",
+              "weight": 10
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "capture": "exp05-null-scan",
+      "sha256": "ad82734e2bc2adbc37ba6f398d6b384ea34276bcb85e4bd24b245d5ba64abf4e",
+      "kind": "bounded_lab_attack",
+      "alerts": [
+        {
+          "rule": "NG-SCAN-001",
+          "score": 95,
+          "factors": [
+            {
+              "reason": "at least 90% of probed ports were closed or silent: the source did not know what was there",
+              "weight": 20
+            },
+            {
+              "reason": "non-SYN probe types (NULL/FIN/XMAS) have no legitimate client use",
+              "weight": 15
+            },
+            {
+              "reason": "100 or more ports on one host",
+              "weight": 10
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "capture": "exp07-udp-scan",
+      "sha256": "fa948c0d99ef0c0b972e679abb5f9732ae1d50c9241def29644eb159ac8b2bfb",
+      "kind": "bounded_lab_attack",
+      "alerts": [
+        {
+          "rule": "NG-SCAN-003",
+          "score": 85,
+          "factors": [
+            {
+              "reason": "at least 90% of probed UDP ports did not answer or were closed",
+              "weight": 20
+            },
+            {
+              "reason": "100 or more UDP ports on one host",
+              "weight": 10
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "capture": "exp08-ping-sweep",
+      "sha256": "4dc29eb4210b4ec55916961f3e682cb6ecbe5ade7a30a03a361205530eeca5d3",
+      "kind": "bounded_lab_attack",
+      "alerts": [
+        {
+          "rule": "NG-SWEEP-001",
+          "score": 80,
+          "factors": [
+            {
+              "reason": "most probed addresses did not answer: the source was searching for hosts",
+              "weight": 15
+            },
+            {
+              "reason": "100 or more hosts probed",
+              "weight": 10
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "capture": "exp09-frag-scan",
+      "sha256": "b880c33e83ec291e99c4a82caa63d0e8275320d0a78b4a3287ae66f2cee401dc",
+      "kind": "bounded_lab_attack",
+      "alerts": [
+        {
+          "rule": "NG-FRAG-001",
+          "score": 85,
+          "factors": [
+            {
+              "reason": "transport headers split across fragments: no normal stack does this",
+              "weight": 25
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "capture": "exp10-syn-burst",
+      "sha256": "60e39ca954fe506b97c65e5095809507320fe6702152a426c574750ae6cc7965",
+      "kind": "bounded_lab_attack",
+      "alerts": [
+        {
+          "rule": "NG-SYN-001",
+          "score": 60,
+          "factors": [
+            {
+              "reason": "almost no handshake completed",
+              "weight": 20
+            },
+            {
+              "reason": "the target barely answered: an outage or filtering looks the same",
+              "weight": -20
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "capture": "exp06-slow-scan",
+      "sha256": "ef05fabd6069ed6671372698372949fff866fe6583950d22e2c1918f169bef30",
+      "kind": "bounded_lab_attack",
+      "alerts": [
+        {
+          "rule": "NG-SCAN-002",
+          "score": 95,
+          "factors": [
+            {
+              "reason": "fewer than 10% of first contacts succeeded",
+              "weight": 20
+            },
+            {
+              "reason": "20 or more failed first contacts",
+              "weight": 10
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "capture": "exp11-arp-binding",
+      "sha256": "0e841fc89c1603ca21a89b09d1223250490d6c834440daec008d6fb7c877c0be",
+      "kind": "bounded_lab_attack",
+      "alerts": [
+        {
+          "rule": "NG-ARP-001",
+          "score": 65,
+          "factors": [
+            {
+              "reason": "unsolicited ARP reply: nobody asked for this IP",
+              "weight": 15
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "capture": "exp12-dns-nxdomain",
+      "sha256": "68642e5a79cc3232b91a24f02d50c09bd9a6cc700bdd6d04c79f67f7eef0b9d6",
+      "kind": "bounded_lab_attack",
+      "alerts": [
+        {
+          "rule": "NG-DNS-002",
+          "score": 85,
+          "factors": [
+            {
+              "reason": "almost every failed name is a different domain, as a DGA produces",
+              "weight": 25
+            },
+            {
+              "reason": "random-looking labels",
+              "weight": 10
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "capture": "exp13-dns-tunnel",
+      "sha256": "dff0f36391efd8ffb6988087dae3427ed85736874be22516e6645672cf23e528",
+      "kind": "bounded_lab_attack",
+      "alerts": [
+        {
+          "rule": "NG-DNS-001",
+          "score": 65,
+          "factors": [
+            {
+              "reason": "high-entropy names, like encoded data",
+              "weight": 10
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "capture": "live-early-01",
+      "sha256": "a58b0a0e6178fdacf67fa7cf0b024d4b547c84b93a04230f24ba7fb37516ae2b",
+      "kind": "bounded_lab_attack",
+      "alerts": [
+        {
+          "rule": "NG-SCAN-001",
+          "score": 90,
+          "factors": [
+            {
+              "reason": "at least 90% of probed ports were closed or silent: the source did not know what was there",
+              "weight": 20
+            },
+            {
+              "reason": "100 or more ports on one host",
+              "weight": 10
+            }
+          ]
+        },
+        {
+          "rule": "NG-SCAN-002",
+          "score": 95,
+          "factors": [
+            {
+              "reason": "fewer than 10% of first contacts succeeded",
+              "weight": 20
+            },
+            {
+              "reason": "20 or more failed first contacts",
+              "weight": 10
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "capture": "exp14-rate-volume-r02",
+      "sha256": "0808fe99ac005bf74a0a2f05288efcbe6c0ec6623af8742656a9dfe4f4753103",
+      "kind": "bounded_lab_attack",
+      "alerts": [
+        {
+          "rule": "NG-RATE-001",
+          "score": 30,
+          "factors": [
+            {
+              "reason": "short history: the baseline may not capture this host's normal range yet",
+              "weight": -10
+            }
+          ]
+        },
+        {
+          "rule": "NG-VOL-001",
+          "score": 45,
+          "factors": [
+            {
+              "reason": "20 times or more above this host's baseline",
+              "weight": 15
+            },
+            {
+              "reason": "short history: the baseline may not capture this host's normal range yet",
+              "weight": -10
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "synthetic_benign": [
+    {
+      "scenario": "benign_office",
+      "alerts": []
+    },
+    {
+      "scenario": "monitoring_poller",
+      "alerts": [
+        {
+          "rule": "NG-SWEEP-001",
+          "confidence": {
+            "score": 30,
+            "level": "low",
+            "base": 55,
+            "factors": [
+              {
+                "reason": "every probed host answered: a known inventory, as polled by monitoring systems",
+                "weight": -25
+              }
+            ]
+          }
+        },
+        {
+          "rule": "NG-SWEEP-001",
+          "confidence": {
+            "score": 30,
+            "level": "low",
+            "base": 55,
+            "factors": [
+              {
+                "reason": "every probed host answered: a known inventory, as polled by monitoring systems",
+                "weight": -25
+              }
+            ]
+          }
+        },
+        {
+          "rule": "NG-SWEEP-001",
+          "confidence": {
+            "score": 30,
+            "level": "low",
+            "base": 55,
+            "factors": [
+              {
+                "reason": "every probed host answered: a known inventory, as polled by monitoring systems",
+                "weight": -25
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "scenario": "monitoring_poller_allowlisted",
+      "alerts": []
+    },
+    {
+      "scenario": "dhcp_reassignment",
+      "alerts": [
+        {
+          "rule": "NG-ARP-001",
+          "confidence": {
+            "score": 30,
+            "level": "low",
+            "base": 50,
+            "factors": [
+              {
+                "reason": "a single change announced by gratuitous ARP, as a newly connected device does",
+                "weight": -20
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "scenario": "dhcp_reassignment_seen",
+      "alerts": []
+    },
+    {
+      "scenario": "passive_ftp",
+      "alerts": []
+    },
+    {
+      "scenario": "flash_crowd",
+      "alerts": []
+    },
+    {
+      "scenario": "voip_call",
+      "alerts": []
+    },
+    {
+      "scenario": "cdn_lookups",
+      "alerts": []
+    },
+    {
+      "scenario": "search_suffix_nxdomain",
+      "alerts": [
+        {
+          "rule": "NG-DNS-002",
+          "confidence": {
+            "score": 25,
+            "level": "low",
+            "base": 50,
+            "factors": [
+              {
+                "reason": "failures concentrate on one or two domains, as with a wrong search suffix",
+                "weight": -25
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "scenario": "fragmented_udp",
+      "alerts": []
+    },
+    {
+      "scenario": "growing_workload",
+      "alerts": []
+    }
+  ],
+  "factors_observed_real": {
+    "NG-SCAN-001": [
+      {
+        "reason": "at least 90% of probed ports were closed or silent: the source did not know what was there",
+        "weight": 20,
+        "count": 7
+      },
+      {
+        "reason": "100 or more ports on one host",
+        "weight": 10,
+        "count": 7
+      },
+      {
+        "reason": "non-SYN probe types (NULL/FIN/XMAS) have no legitimate client use",
+        "weight": 15,
+        "count": 3
+      }
+    ],
+    "NG-SCAN-002": [
+      {
+        "reason": "fewer than 10% of first contacts succeeded",
+        "weight": 20,
+        "count": 5
+      },
+      {
+        "reason": "20 or more failed first contacts",
+        "weight": 10,
+        "count": 5
+      }
+    ],
+    "NG-SCAN-003": [
+      {
+        "reason": "at least 90% of probed UDP ports did not answer or were closed",
+        "weight": 20,
+        "count": 1
+      },
+      {
+        "reason": "100 or more UDP ports on one host",
+        "weight": 10,
+        "count": 1
+      }
+    ],
+    "NG-SWEEP-001": [
+      {
+        "reason": "most probed addresses did not answer: the source was searching for hosts",
+        "weight": 15,
+        "count": 1
+      },
+      {
+        "reason": "100 or more hosts probed",
+        "weight": 10,
+        "count": 1
+      }
+    ],
+    "NG-FRAG-001": [
+      {
+        "reason": "transport headers split across fragments: no normal stack does this",
+        "weight": 25,
+        "count": 1
+      }
+    ],
+    "NG-SYN-001": [
+      {
+        "reason": "almost no handshake completed",
+        "weight": 20,
+        "count": 1
+      },
+      {
+        "reason": "the target barely answered: an outage or filtering looks the same",
+        "weight": -20,
+        "count": 1
+      }
+    ],
+    "NG-ARP-001": [
+      {
+        "reason": "unsolicited ARP reply: nobody asked for this IP",
+        "weight": 15,
+        "count": 1
+      }
+    ],
+    "NG-DNS-002": [
+      {
+        "reason": "almost every failed name is a different domain, as a DGA produces",
+        "weight": 25,
+        "count": 1
+      },
+      {
+        "reason": "random-looking labels",
+        "weight": 10,
+        "count": 1
+      }
+    ],
+    "NG-DNS-001": [
+      {
+        "reason": "high-entropy names, like encoded data",
+        "weight": 10,
+        "count": 1
+      }
+    ],
+    "NG-RATE-001": [
+      {
+        "reason": "short history: the baseline may not capture this host's normal range yet",
+        "weight": -10,
+        "count": 1
+      }
+    ],
+    "NG-VOL-001": [
+      {
+        "reason": "20 times or more above this host's baseline",
+        "weight": 15,
+        "count": 1
+      },
+      {
+        "reason": "short history: the baseline may not capture this host's normal range yet",
+        "weight": -10,
+        "count": 1
+      }
+    ]
+  }
+}

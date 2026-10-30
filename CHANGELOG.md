@@ -4,6 +4,24 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning: [S
 
 ## [Unreleased]
 
+## [1.0.0rc2] - 2026-10-30
+
+Release candidate; stable 1.0 criteria remain incomplete.
+
+### Fixed
+- Baseline rules now learn and score only fully observed epoch-aligned intervals. Discard partial first and EOF intervals; preserve final alerts from completed intervals. No threshold changes.
+- Add regression coverage for start offsets, exact boundaries, warm-up, silence, clipped learning, EOF and both rate/volume rules.
+
+### Documentation and validation
+- Include the plain-language bilingual README from PR #10; #8 and #9 are already merged.
+- Record the baseline decision and its edge blind spots in docs/BASELINE_INTERVALS.md.
+- Recheck 17 existing real captures, including Zeek comparisons with documented timeout/fragment limits; synthetic scorecard stays TP=20, FP=3, FN=1.
+- Review confidence factors without fitting weights to reused lab data. Scores are not calibrated attack probabilities.
+- Prepare a bounded stepped-load helper and analyser CPU sampling. New >1-hour live and repeated load runs remain unexecuted without guest sudo/control access.
+
+Install verified release assets with `pip install -c netguard-1.0.0rc2-requirements.txt "netguard-1.0.0rc2-py3-none-any.whl[web]"`.
+See docs/PUBLICATION_RC2.md for checks, limits and upgrade/rollback instructions.
+
 ## [1.0.0rc1] - 2026-10-27
 
 Release **candidate**, not v1.0.0: the Definition of Done is not fully met
