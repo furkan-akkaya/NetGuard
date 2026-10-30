@@ -4,6 +4,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning: [S
 
 ## [Unreleased]
 
+## [1.0.0rc3] - 2026-10-30
+
+Release candidate; supersedes the unpublished RC2 draft without replacing its tag.
+
+### Fixed
+- Preserve the complete upstream copyright and license notices for the locked dashboard dependencies. The notices ship in the wheel's static directory and the source archive, even when minification removes comments.
+- Generate notices during every dashboard build and fail when an upstream license file is missing.
+- Require the notice and generator in source-archive release checks.
+
+The baseline fix, measured checks and field limits from RC2 remain applicable. No new live experiment or stable 1.0 claim is added. See docs/PUBLICATION_RC3.md.
+
 ## [1.0.0rc2] - 2026-10-30
 
 Release candidate; stable 1.0 criteria remain incomplete.

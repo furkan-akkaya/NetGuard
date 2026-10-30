@@ -1,15 +1,16 @@
 {
   "name": "netguard-dashboard",
   "private": true,
-  "version": "1.0.0rc2",
+  "version": "1.0.0rc3",
   "type": "module",
   "description": "NetGuard web dashboard (built into src/netguard/web/static)",
   "license": "MIT",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -p tsconfig.json --noEmit && vite build",
+    "build": "pnpm run licenses && tsc -p tsconfig.json --noEmit && vite build",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "licenses": "node scripts/licenses.mjs"
   },
   "dependencies": {
     "react": "19.3.1",

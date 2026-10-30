@@ -15,9 +15,9 @@ Results are available through the command line, a web dashboard and a REST API.
 Each alert identifies the source and target, describes the observed behaviour, shows the crossed threshold and explains its confidence score.
 Related alerts are grouped into incidents.
 
-> **Status: 1.0.0rc2 — release candidate.** Development and validation history is recorded in [PR #9](https://github.com/furkan-akkaya/NetGuard/pull/9).
+> **Status: 1.0.0rc3 — release candidate.** Development and validation history is recorded in [PR #9](https://github.com/furkan-akkaya/NetGuard/pull/9).
 > Rechecked against 17 existing accepted lab captures and automated tests. New long/live load validation remains pending.
-> See [RC2 validation](docs/PUBLICATION_RC2.md) and the [RC release](https://github.com/furkan-akkaya/NetGuard/releases/tag/v1.0.0rc2) for evidence, packages and remaining limits.
+> See [RC2 validation](docs/PUBLICATION_RC3.md) and the [RC release](https://github.com/furkan-akkaya/NetGuard/releases/tag/v1.0.0rc3) for evidence, packages and remaining limits.
 
 ## In plain words
 
@@ -147,7 +147,7 @@ Generated files are synthetic; real lab captures are not included in the reposit
 
 ### Example result
 
-An excerpt from `1.0.0rc2` analysing the `compromised_workstation` scenario above:
+An excerpt from `1.0.0rc3` analysing the `compromised_workstation` scenario above:
 
 ```text
 Packets: 582   Bytes: 39,748   Duration: 70.2s   Flows: 321   Decode errors: 0

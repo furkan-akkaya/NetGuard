@@ -36,13 +36,13 @@ fixes.
 
 ## Current release path
 
-PR #8, #9 and #10 are already merged. The candidate is `1.0.0rc2`.
+PR #8, #9 and #10 are already merged. The candidate is `1.0.0rc3`.
 Task 8.17 is resolved by [BASELINE_INTERVALS.md](BASELINE_INTERVALS.md).
 The [confidence review](CONFIDENCE_REVIEW_RC2.md) leaves weights unchanged and states their evidence limits.
 Long and repeated live experiments remain open under [FIELD_VALIDATION_PLAN.md](FIELD_VALIDATION_PLAN.md).
 
 1. Require CI success on the exact final main commit.
-2. Push the new signed `v1.0.0rc2` tag without replacing any existing tag.
+2. Push the new signed `v1.0.0rc3` tag without replacing any existing tag.
 3. Let the tag workflow create the draft pre-release and verify its successful result.
 4. Download actual assets and verify checksums, contents and a clean wheel installation.
 5. Make the reviewed source public and publish the verified RC assets.
@@ -50,3 +50,5 @@ Long and repeated live experiments remain open under [FIELD_VALIDATION_PLAN.md](
 
 The user's publication instruction authorizes these steps. No stable 1.0 claim follows from source publication.
 Final run URLs and asset digests are recorded in the publication report.
+
+RC2 remains an unpublished draft because its built dashboard omitted third-party notices. RC3 adds notices; its new tag preserves the RC2 tag. See [current publication](PUBLICATION_RC3.md).
