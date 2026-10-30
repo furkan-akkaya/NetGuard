@@ -17,5 +17,5 @@ for (const pkg of packages) {
   for (const file of files) notices.push(readFileSync(join(root, file), 'utf8').trim());
   notices.push('');
 }
-writeFileSync(new URL('../public/THIRD_PARTY_NOTICES.txt', import.meta.url), `${notices.join('\n')}\n`);
+writeFileSync(new URL('../public/THIRD_PARTY_NOTICES.txt', import.meta.url), `${notices.join('\n').trimEnd()}\n`);
 console.log(`Preserved upstream notices for ${packages.length} frontend packages`);
