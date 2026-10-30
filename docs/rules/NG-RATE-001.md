@@ -42,4 +42,8 @@ updates), a host that was idle during warm-up. Gradual growth is learned
 
 Captures shorter than the warm-up (default 10 minutes) can never alert; slow
 activity that grows gradually; activity below `min_count`. Overlaps with the
-scan rules by design; correlation is planned (Phase 7).
+scan rules by design; correlation groups related alerts into incidents.
+
+## Observation boundaries (1.0.0rc2)
+
+Only complete epoch-aligned intervals train and score. Discard the partial first interval and unfinished EOF tail. Silent complete intervals count as zero. Warm-up counts complete intervals only. See [boundary decision](../BASELINE_INTERVALS.md). Fixed-window splitting and activity in the partial tail can still be missed.

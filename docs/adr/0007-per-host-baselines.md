@@ -42,3 +42,7 @@ its output explains itself ("47× its baseline of 9.2 ± 1.6").
   detected (`growing_workload` demonstrates the benign side of that).
 - Cost is O(tracked hosts) once per interval, never per packet, with at most
   `max_sources` hosts (LRU).
+
+## Observation boundaries (1.0.0rc2)
+
+Only complete epoch-aligned intervals train and score. Discard the partial first interval and unfinished EOF tail. Silent complete intervals count as zero. Warm-up counts complete intervals only. See [boundary decision](../BASELINE_INTERVALS.md). Fixed-window splitting and activity in the partial tail can still be missed.
