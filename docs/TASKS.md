@@ -42,7 +42,7 @@ Deferred (ADR-0011): Zeek/Suricata input, ICMP tunnel rule, resolver policy, sea
 - [x] **8.11b** 1 h benign baseline + RSS (benign-01, build of `a845dea`): 3640 s, 4245 packets, 0 kernel drops; live 0 = offline 0 final alerts; peak RSS 34.0 MiB; flow states vs Zeek 8.2.2 396/397, differences explained. One low-rate SSH-banner/ping mix, not a production FP rate ([EVALUATION.md § 6](EVALUATION.md))
 - [x] **8.11c** Live delay with early warnings on (live-early-01, 120 s, 0 kernel drops): early warnings 0.683 s (NG-SCAN-001) and 0.757 s (NG-SCAN-002) after the threshold-crossing packet; final alerts equal offline except `reported_at`. One run, one scan type ([EVALUATION.md § 6](EVALUATION.md)); `live_delay.py --pcap` now replays the capture to find the crossing
 - [ ] **8.12** 👤 Remaining attack experiments: connect (r02), Xmas, FIN, NULL, UDP, sweep, frag and SYN burst done on 27 Oct 2026 (each exactly its declared detections; [EVALUATION.md § 6](EVALUATION.md)); slow scan exp06 done too (NG-SCAN-002 only, as declared). All attack experiments of 8.12 measured once each
-- [ ] **8.17** Decide: the baselines (NG-RATE-001, NG-VOL-001) learn from the partial first interval of a capture or live session as if it were a full one; in the failed exp14 run 01 that inflated the deviation and put the threshold 4 connections above the burst. Options: skip the partial first interval, or keep it and document. Not changed: r02 was analysed with the unchanged code
+- [x] **8.17** Resolved in 1.0.0rc2: discard first partial and EOF intervals, count only complete intervals for learning and warm-up. See BASELINE_INTERVALS.md; fixed-window splitting remains a limit.
 - [x] **8.16** Connections without a SYN (NULL/FIN/Xmas probes) follow Zeek's endpoint states (`RSTRH`/`RSTR`/`SH` instead of `OTH`): 17 cases checked against Zeek 8.2.2, regression test from the real probes, exp03-exp05 now equal to Zeek; no alert changes. exp09's difference is the documented no-reassembly limit, pinned by size
 - [x] **8.14** Flow state: an RST after the FIN exchange was RSTO, Zeek says SF (seen once in benign-01). Now follows Zeek's endpoint rules for FIN/RST order (ADR-0004); regression test from the real connection, 14 orderings checked against Zeek 8.2.2; benign-01 397/397 TCP/UDP flows match, equal with Zeek's DNS timeout at 60 s
 - [x] **8.15** Flow state when both endpoints reset now follows Zeek (RSTR, or REJ without payload). The REJ *label* does not feed the detectors (they use connection events; pinned by a test); 33 orderings and pre-handshake cases checked against Zeek 8.2.2; real-capture regression unchanged (`eval/lab/real_regression.py`)
@@ -58,3 +58,7 @@ Deferred (ADR-0011): Zeek/Suricata input, ICMP tunnel rule, resolver policy, sea
 ## Known issues
 
 Tracked with their target phase in [ROADMAP.md § 8](../ROADMAP.md#8-bilinen-sorunlar).
+
+## 30 October 2026 release follow-up
+
+Task 8.17 is resolved by the complete-interval policy in BASELINE_INTERVALS.md. Long live and repeated load validation remain open. PR #8 and #9 are merged; PR #10 content is included in the RC2 branch.

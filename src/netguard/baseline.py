@@ -29,6 +29,11 @@ Intervals in which an entity is silent count as zero. Cost: O(tracked
 entities) once per interval, never per packet; at most ``max_entities`` are
 tracked (least recently active evicted). Offline captures shorter than
 ``warmup`` intervals can never alert, which is reported as a limitation.
+
+Only fully observed, epoch-aligned intervals are learned and scored. The
+first interval is discarded unless observation starts exactly on its boundary.
+End of input discards the unfinished interval; it finalizes only anomalies
+from completed intervals. Counts are never extrapolated from partial time.
 """
 
 from __future__ import annotations
@@ -92,6 +97,7 @@ class IntervalBaselines:
         self.min_value = min_value
         self.max_entities = max_entities
         self._slot: float | None = None
+        self._complete = False
         self._current: dict[str, float] = {}
         self._baselines: OrderedDict[str, Ewma] = OrderedDict()  # least recently active first
         self._open: dict[str, Anomaly] = {}
@@ -109,12 +115,17 @@ class IntervalBaselines:
         """Close every interval that ended before ``now``; return anomalies that ended."""
         if self._slot is None:
             self._slot = (now // self.interval) * self.interval
+            self._complete = now == self._slot
             return []
         ended: list[Anomaly] = []
         closed = 0
         while now >= self._slot + self.interval:
             # The first closed interval holds the data; later ones are silent (all zero).
-            ended += self._close_interval()
+            if self._complete:
+                ended += self._close_interval()
+            else:
+                self._current.clear()
+                self._complete = True
             self._slot += self.interval
             closed += 1
             if closed >= _MAX_EMPTY_INTERVALS:
@@ -165,8 +176,8 @@ class IntervalBaselines:
         return opened
 
     def drain(self) -> list[Anomaly]:
-        """End of input: close the current interval and every open anomaly."""
-        ended = self._close_interval() if self._slot is not None and self._current else []
-        ended += self._open.values()
+        """Discard the partial tail; finalize only already scored, complete intervals."""
+        self._current.clear()
+        ended = list(self._open.values())
         self._open.clear()
         return ended

@@ -15,9 +15,9 @@ Results are available through the command line, a web dashboard and a REST API.
 Each alert identifies the source and target, describes the observed behaviour, shows the crossed threshold and explains its confidence score.
 Related alerts are grouped into incidents.
 
-> **Status: 1.0.0rc1 — release candidate.** Development and validation history is recorded in [PR #9](https://github.com/furkan-akkaya/NetGuard/pull/9).
-> Validated against 17 accepted real lab captures and automated tests.
-> No tag or GitHub release exists yet. See the [delivery report](docs/DELIVERY_REPORT.md) for open limitations and release steps.
+> **Status: 1.0.0rc2 — release candidate.** Development and validation history is recorded in [PR #9](https://github.com/furkan-akkaya/NetGuard/pull/9).
+> Rechecked against 17 existing accepted lab captures and automated tests. New long/live load validation remains pending.
+> See [RC2 validation](docs/PUBLICATION_RC2.md) and the [RC release](https://github.com/furkan-akkaya/NetGuard/releases/tag/v1.0.0rc2) for evidence, packages and remaining limits.
 
 ## In plain words
 
@@ -113,7 +113,7 @@ Confidence is not a statistical attack probability; it comes from [documented ev
 | **tcpdump** | A standard command-line tool that records network packets. NetGuard uses it for live capture. |
 | **CLI / REST API / dashboard** | Three ways to use NetGuard: typed commands, requests from other programs, and a web page in the browser. |
 | **Passive** | Only observes; never blocks, changes or sends traffic. |
-| **Kernel packet drops** | Packets the operating system could not keep up with and lost before analysis. Zero means nothing was missed. |
+| **Kernel packet drops** | Packets the operating system could not keep up with and lost before analysis. Zero means no drops were reported by this kernel capture counter; other capture losses remain possible. |
 | **RSS** | How much memory the program actually uses. |
 | **Zeek** | A widely used network analysis tool, used here as an independent comparison. |
 | **SBOM** | Software bill of materials: a list of every component inside a release. |
@@ -147,7 +147,7 @@ Generated files are synthetic; real lab captures are not included in the reposit
 
 ### Example result
 
-An excerpt from `1.0.0rc1` analysing the `compromised_workstation` scenario above:
+An excerpt from `1.0.0rc2` analysing the `compromised_workstation` scenario above:
 
 ```text
 Packets: 582   Bytes: 39,748   Duration: 70.2s   Flows: 321   Decode errors: 0
@@ -256,7 +256,7 @@ See the [evaluation](docs/EVALUATION.md) and [delivery report](docs/DELIVERY_REP
 - **No encrypted application payload decryption.** Analysis uses visible packet and connection information.
 - **Visibility and loss affect results.** One-sided or incomplete captures can change connection states and detections.
 - **Limited live-load validation.** Live runs longer than one hour or under high traffic load have not been completed.
-- **Burst rules depend on initial observations.** Learning from the first partial interval remains an open design decision, task 8.17.
+- **Burst rules need complete observation intervals.** RC2 excludes partial first and final intervals. Fixed-window splitting can still hide a burst; see [the boundary decision](docs/BASELINE_INTERVALS.md).
 - **An alert starts an investigation.** Evaluate legitimate scanners, DNS patterns and device changes in your own network context.
 
 The API binds to localhost by default.

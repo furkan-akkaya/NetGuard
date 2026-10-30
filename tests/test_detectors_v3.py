@@ -251,7 +251,7 @@ def test_silent_intervals_count_as_zero():
 def test_entity_table_is_bounded():
     b = _baselines(max_entities=3)
     for i in range(10):
-        b.add(f"h{i}", 1.0, 1)
+        b.add(f"h{i}", 0.0, 1)  # fully observed interval; partial starts are discarded
     b.roll(61.0)
     assert len(b._baselines) == 3
     assert b.evicted == 7
@@ -266,6 +266,8 @@ def test_connrate_needs_a_baseline():
             udp(minute * 60 + k * 0.1, "10.0.0.20", "10.0.0.10", 1000 + k, sport=9000 + minute * 1000 + k)
             for k in range(n)
         ]
+    # A packet at the next boundary completes the burst's observation interval.
+    pkts.append(udp(360, "10.0.0.30", "10.0.0.10", 443))
     (alert,) = _only(analyze_packets(pkts, cfg).alerts, "connrate")
     assert alert.evidence["peak_connections_per_interval"] == 200
 

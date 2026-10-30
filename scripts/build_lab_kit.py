@@ -34,6 +34,7 @@ SCRIPTS = [
     "experiments.toml",
     "victim-capture.sh",
     "victim-live-rss.sh",
+    "stepped_connections.py",
     "victim_dns_queries.py",
     "victim_volume_burst.py",
     "kali-run.sh",

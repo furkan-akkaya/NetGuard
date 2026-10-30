@@ -39,3 +39,7 @@ business context.
 Low-and-slow exfiltration below `min_bytes` or within normal variance; short
 captures (warm-up); bytes are captured lengths, so a short snaplen
 under-counts (later detection, never false).
+
+## Observation boundaries (1.0.0rc2)
+
+Only complete epoch-aligned intervals train and score. Discard the partial first interval and unfinished EOF tail. Silent complete intervals count as zero. Warm-up counts complete intervals only. See [boundary decision](../BASELINE_INTERVALS.md). Fixed-window splitting and activity in the partial tail can still be missed.

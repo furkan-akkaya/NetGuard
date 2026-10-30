@@ -46,11 +46,16 @@ sudo -v || { echo "sudo failed: not starting. Nothing was captured." >&2; exit 1
   echo "interface: $iface $(ip -o -4 addr show dev "$iface" | awk '{print $4}')"
   echo "netguard: $("${ng[@]}" --version 2>&1 | head -1)"
   echo "tcpdump: $(tcpdump --version 2>&1 | head -1)"
+  echo "python: $(python3 --version 2>&1)"
+  echo "logical_cpus: $(getconf _NPROCESSORS_ONLN)"
+  echo "cpu_ticks_per_second: $(getconf CLK_TCK)"
+  echo "memory_kb: $(awk '/^MemTotal:/ {print $2}' /proc/meminfo)"
+  echo "config: default CLI settings; no --config argument"
   echo "duration_requested_s: $duration"
   echo "start_utc: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 } > "$meta"
 
-echo "epoch,rss_kb,hwm_kb" > "$rss"
+echo "epoch,rss_kb,hwm_kb,cpu_ticks,monotonic_s" > "$rss"
 start_mono=$(awk '{print $1; exit}' /proc/uptime)   # CLOCK_MONOTONIC seconds (immune to wall-clock jumps)
 "${ng[@]}" monitor -i "$iface" --sudo --duration "$duration" --write "$pcap" -f jsonl > "$jsonl" 2> "$mon" &
 ngpid=$!
@@ -79,7 +84,9 @@ fi
 # RSS high-water mark, so it catches a startup peak the 5 s sampling would miss.
 while kill -0 "$ngpid" 2>/dev/null; do
   read -r rss_kb hwm_kb < <(awk '/^VmRSS:/ {r=$2} /^VmHWM:/ {h=$2} END {print r+0, h+0}' "/proc/$ngpid/status" 2>/dev/null || echo "0 0")
-  [[ "$rss_kb" -gt 0 ]] && echo "$(date +%s),$rss_kb,$hwm_kb" >> "$rss"
+  cpu_ticks=$(awk '{sub(/^.*\) /, ""); print $12+$13}' "/proc/$ngpid/stat" 2>/dev/null || echo 0)
+  mono=$(awk '{print $1; exit}' /proc/uptime)
+  [[ "$rss_kb" -gt 0 ]] && echo "$(date +%s),$rss_kb,$hwm_kb,$cpu_ticks,$mono" >> "$rss"
   sleep "$SAMPLE_SECONDS"
 done
 status=0; wait "$ngpid" || status=$?
