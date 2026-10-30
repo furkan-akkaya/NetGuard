@@ -20,6 +20,20 @@ Kaynak ve hedefi, gözlenen davranışı, aşılan eşiği ve güven puanının 
 > 17 kabul edilmiş gerçek lab kaydı ve otomatik testlerle doğrulandı.
 > Henüz tag veya GitHub release yok. Açık sınırlar ve yayın adımları [teslim raporunda](docs/DELIVERY_REPORT.md).
 
+## Kısaca, teknik olmayan dille
+
+Ağdaki her cihaz **paket** adı verilen küçük veri parçalarıyla konuşur.
+NetGuard bu paketlerin bir kaydını okur ya da onları canlı izler; birinin ağı yokladığını veya kötüye kullandığını gösteren örüntüleri arar.
+
+Çok kapılı bir bina düşün. Tek bir ofise giden ziyaretçi normaldir.
+Bir dakikada bin kapının kolunu deneyen ziyaretçi ise normal değildir — kapıların hepsi kilitli kalsa bile.
+NetGuard koridor kamerasını izleyen görevli gibidir: denenen kapıları sayar, hangilerinin açıldığını not eder ve **kim**, **ne**, **ne zaman** ve **neden şüpheli** sorularını yanıtlayan bir rapor yazar.
+Kapı kilitlemez, kimseyi kovalamaz; yalnızca izler ve açıklar.
+
+**Adım adım gör:** [Etkileşimli anlatım](https://furkan-akkaya.vercel.app/netguard/), bir port taramasının nasıl alarma dönüştüğünü ve normal trafiğin neden dönüşmediğini animasyonla gösterir.
+
+Ağ terimlerine yabancı mısın? Aşağıdaki [sözlük](#sözlük) bu README'deki bütün terimleri açıklar.
+
 ## Nasıl çalışır?
 
 ```mermaid
@@ -48,24 +62,63 @@ Aynı ağda bulunmak, diğer cihazların bütün trafiğini görebileceği anlam
 
 ## Neleri tespit eder?
 
-| Kural | Aradığı davranış |
-|---|---|
-| [NG-SCAN-001](docs/rules/NG-SCAN-001.md) | SYN, connect, NULL, FIN ve XMAS port taramaları |
-| [NG-SCAN-002](docs/rules/NG-SCAN-002.md) | Başarılı ve başarısız bağlantılara göre taramalar; yavaş taramalar dahil |
-| [NG-SCAN-003](docs/rules/NG-SCAN-003.md) | UDP port taramaları |
-| [NG-SWEEP-001](docs/rules/NG-SWEEP-001.md) | ICMP/ARP ile cihaz arama ve yatay TCP taramaları |
-| [NG-SYN-001](docs/rules/NG-SYN-001.md) | Çok sayıda SYN girişimi ve az tamamlanan el sıkışma |
-| [NG-ARP-001](docs/rules/NG-ARP-001.md) | Şüpheli IP–MAC eşleşmesi değişiklikleri |
-| [NG-DNS-001](docs/rules/NG-DNS-001.md) | DNS tünellemeyle uyumlu uzun ve benzersiz alt alan adı sorguları |
-| [NG-DNS-002](docs/rules/NG-DNS-002.md) | DGA benzeri etkinliğe işaret edebilen NXDOMAIN yanıt artışları |
-| [NG-FRAG-001](docs/rules/NG-FRAG-001.md) | Küçük veya başlığı bölen şüpheli IP parçaları |
-| [NG-RATE-001](docs/rules/NG-RATE-001.md) | Cihazın kendi geçmişine göre yeni bağlantı sayısındaki artış |
-| [NG-VOL-001](docs/rules/NG-VOL-001.md) | Cihazın kendi geçmişine göre gönderilen bayt miktarındaki artış |
+| Kural | Aradığı davranış | Basitçe |
+|---|---|---|
+| [NG-SCAN-001](docs/rules/NG-SCAN-001.md) | SYN, connect, NULL, FIN ve XMAS port taramaları | Bir cihazın birçok kapısını (portunu) kısa sürede deneyip hangilerinin açık olduğuna bakmak |
+| [NG-SCAN-002](docs/rules/NG-SCAN-002.md) | Başarılı ve başarısız bağlantılara göre taramalar; yavaş taramalar dahil | Aynı fikir; denemelerin yanıtlanıp reddedilmesine göre değerlendirilir, zamana yayılmış yavaş taramaları da yakalar |
+| [NG-SCAN-003](docs/rules/NG-SCAN-003.md) | UDP port taramaları | Bağlantı el sıkışması olmayan UDP protokolüyle kapı denemek |
+| [NG-SWEEP-001](docs/rules/NG-SWEEP-001.md) | ICMP/ARP ile cihaz arama ve yatay TCP taramaları | Ağda hangi cihazların olduğunu bulmak ya da aynı kapıyı birçok cihazda denemek |
+| [NG-SYN-001](docs/rules/NG-SYN-001.md) | Çok sayıda SYN girişimi ve az tamamlanan el sıkışma | Başlatılıp hiç tamamlanmayan çok sayıda bağlantı; sunucuyu yorabilir (SYN flood) |
+| [NG-ARP-001](docs/rules/NG-ARP-001.md) | Şüpheli IP–MAC eşleşmesi değişiklikleri | Bir cihazın birdenbire başka bir cihazın adresini sahiplenmesi; trafiğin arasına girmek için sık kullanılan bir hile |
+| [NG-DNS-001](docs/rules/NG-DNS-001.md) | DNS tünellemeyle uyumlu uzun ve benzersiz alt alan adı sorguları | Çok uzun ve hiç tekrar etmeyen alan adı sorgularının içine gizlenerek dışarı taşınan veri |
+| [NG-DNS-002](docs/rules/NG-DNS-002.md) | DGA benzeri etkinliğe işaret edebilen NXDOMAIN yanıt artışları | Var olmayan adlar için çok sayıda sorgu; komuta sunucusunu arayan zararlı yazılımlarda görülür |
+| [NG-FRAG-001](docs/rules/NG-FRAG-001.md) | Küçük veya başlığı bölen şüpheli IP parçaları | Olağandışı küçük parçalara bölünmüş paketler; inceleme araçlarını atlatmak için kullanılabilir |
+| [NG-RATE-001](docs/rules/NG-RATE-001.md) | Cihazın kendi geçmişine göre yeni bağlantı sayısındaki artış | Bir cihazın normalde açtığından çok daha fazla yeni bağlantı açması |
+| [NG-VOL-001](docs/rules/NG-VOL-001.md) | Cihazın kendi geçmişine göre gönderilen bayt miktarındaki artış | Bir cihazın normalde gönderdiğinden çok daha fazla veriyi dışarı göndermesi; veri sızıntısı olabilir |
 
 Bu davranışlar tek başına saldırı kanıtı değildir.
 Örneğin NXDOMAIN yanıtları yanlış DNS ayarlarından, uzun DNS adları meşru telemetriden kaynaklanabilir.
 [Kural kataloğu](docs/rules/README.md), her kuralın eşiklerini ve bilinen yanlış alarm nedenlerini açıklar.
 Güven puanı istatistiksel saldırı olasılığı değildir; [belgelenmiş kanıt faktörlerinden](docs/CONFIDENCE.md) hesaplanır.
+
+## Sözlük
+
+| Terim | Anlamı |
+|---|---|
+| **Paket** | Ağda gönderilen küçük veri parçası. İnternetteki her şey — bir web sayfası, bir mesaj — çok sayıda paket olarak taşınır. |
+| **PCAP / PCAPNG** | Paketleri kaydeden dosya biçimi; ağ trafiğinin video kaydı gibi düşünülebilir. |
+| **Canlı trafik / yakalama** | Bir kaydı okumak yerine paketleri oluştukları anda izlemek. |
+| **Yakalama noktası** | Trafiğin kaydedildiği yer. NetGuard yalnızca bu noktadan geçeni görür. |
+| **IP adresi** | Cihazın ağdaki adresi, örneğin `10.0.0.20`. |
+| **MAC adresi** | Ağ kartının donanım kimliği; yerel ağ içinde kullanılır. |
+| **Port** | Bir cihazdaki hizmetin numaralı giriş noktası. 443 genellikle HTTPS (güvenli web), 22 genellikle SSH (uzaktan giriş) içindir. |
+| **Port taraması** | Hangi hizmetlerin çalıştığını bulmak için çok sayıda portu denemek. Çoğu zaman saldırıdan önceki ilk adımdır. |
+| **TCP / UDP** | Veri göndermenin iki temel yolu. TCP el sıkışmayla başlar ve teslimi doğrular; UDP doğrudan gönderir. |
+| **SYN, SYN-ACK, RST** | TCP el sıkışma mesajları. SYN = “konuşabilir miyiz?”, SYN-ACK = “evet, bu port açık”, RST = “hayır, bu port kapalı”. |
+| **Akış / bağlantı** | İki cihaz arasındaki bir konuşmaya ait, iki yönde eşleştirilmiş bütün paketler. |
+| **DNS** | İnternetin telefon rehberi: `example.com` gibi bir adı IP adresine çevirir. |
+| **NXDOMAIN** | DNS'in “böyle bir ad yok” yanıtı. |
+| **DNS tünelleme** | Veriyi güvenlik duvarından kaçırmak için DNS sorgularının içine gizlemek. |
+| **DGA** | Alan adı üretme algoritması: komuta sunucusunu bulmak için çok sayıda rastgele ad üreten zararlı yazılım tekniği. |
+| **ARP** | Yerel ağda IP adreslerini MAC adresleriyle eşleştiren protokol. Sahtesi, saldırganın trafiği araya girerek görmesini sağlar. |
+| **ICMP** | Ağ kontrol mesajları; `ping` bunu kullanır. |
+| **IP parçası** | Çok büyük olduğu için bölünmüş paketin bir parçası. Çok küçük parçalar incelemeyi atlatmak için kullanılabilir. |
+| **Temel çizgi (baseline)** | Belirli bir cihaz için neyin normal olduğu; cihazın kendi önceki trafiğinden öğrenilir. |
+| **Eşik** | Bir kuralın tepki vermesi için aşılması gereken sınır; örneğin 60 saniyede 15 farklı port. |
+| **Alarm** | Bir kuralın kanıtıyla birlikte ürettiği tek bulgu. |
+| **Olay (incident)** | Aynı aktörle aynı zaman aralığında ilişkili olduğu için birlikte toplanan alarmlar. |
+| **Güven puanı** | Alarmın kanıtının ne kadar güçlü olduğu; belgelenmiş etkenlerden hesaplanır. Saldırı olasılığı değildir. |
+| **Yanlış pozitif** | Zararsız bir etkinlik için üretilen alarm. |
+| **Erken uyarı / son alarm** | Canlı modda NetGuard eşik aşılır aşılmaz uyarabilir, etkinlik bitince de tam alarmı gönderir. İkisi aynı olayı anlatır. |
+| **MITRE ATT&CK** | Saldırgan tekniklerinin herkese açık kataloğu. Örneğin `T1046`, ağ hizmetlerini keşfetme demektir. |
+| **tcpdump** | Ağ paketlerini kaydeden standart komut satırı aracı. NetGuard canlı yakalama için bunu kullanır. |
+| **Komut satırı / REST API / web paneli** | NetGuard'ı kullanmanın üç yolu: yazılan komutlar, başka programlardan gelen istekler ve tarayıcıdaki web sayfası. |
+| **Pasif** | Yalnızca gözlemler; trafiği engellemez, değiştirmez veya göndermez. |
+| **Çekirdek paket kaybı** | İşletim sisteminin yetişemeyip analizden önce kaybettiği paketler. Sıfır, hiçbir şeyin kaçırılmadığı anlamına gelir. |
+| **RSS** | Programın gerçekten kullandığı bellek miktarı. |
+| **Zeek** | Yaygın kullanılan bir ağ analiz aracı; burada bağımsız karşılaştırma için kullanıldı. |
+| **SBOM** | Yazılım malzeme listesi: bir sürümün içindeki bütün bileşenlerin listesi. |
+| **Sürüm adayı (rc)** | Hazır olduğu düşünülen ama henüz resmî olarak yayınlanmamış sürüm. |
 
 ## Hızlı başlangıç
 
