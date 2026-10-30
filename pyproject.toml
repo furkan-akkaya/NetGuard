@@ -1,6 +1,6 @@
 [project]
 name = "netguard"
-version = "1.0.0rc3"
+version = "1.0.0"
 description = "Network intrusion detection & traffic analyzer with explainable, measurable detections."
 readme = "README.md"
 license = "MIT"

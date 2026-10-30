@@ -1,6 +1,6 @@
 # NetGuard Yol Haritası
 
-> Son güncelleme: **2026-10-30** · Mevcut sürüm: **1.0.0rc3** (sürüm adayı; `v1.0.0rc2` taslak olarak kaldı) · Aktif faz: **Faz 10 — Public yayın** (👤 uzun ve tekrarlı canlı lab koşuları bekliyor)
+> Son güncelleme: **2026-10-31** · Mevcut sürüm: **1.0.0** (kararlı; saha doğrulaması [docs/FIELD_VALIDATION_RC3.md](docs/FIELD_VALIDATION_RC3.md)) · Aktif faz: **Faz 10 — 1.0.0 yayını**
 >
 > Bu dosya projenin **tek** yol haritasıdır. Güncel iş listesi
 > [docs/TASKS.md](docs/TASKS.md), ölçülmüş sonuçlar
@@ -52,11 +52,11 @@ mikroservis yok.
 | 5 | Web dashboard | ✅ | **v0.5.0 = MVP** |
 | 6 | Canlı yakalama ve replay | ✅ (👤 lab doğrulaması) | **v0.6.0** |
 | 7 | İleri tespit ve tehdit istihbaratı | ✅ | **v0.7.0** |
-| 8 | Test, benchmark, değerlendirme | 🔄 17 gerçek yakalama · 👤 uzun/yük altında canlı koşular | 1.0.0rc3 |
+| 8 | Test, benchmark, değerlendirme | ✅ 17 gerçek yakalama · 75 dk canlı zararsız koşu, 3 kademeli yük koşusu, hacim tekrarı | **1.0.0** |
 | 9 | Güvenlik sertleştirme ve CI/CD | ✅ | **v0.8.0** |
-| 10 | Dokümantasyon, release, portföy | 🔄 RC3 public yayın | **1.0.0rc3**; v1.0.0 saha ölçümlerinden sonra |
+| 10 | Dokümantasyon, release, portföy | ✅ saha ölçümlerinden sonra kararlı yayın | **1.0.0** |
 
-**Ölçülmüş durum (1.0.0rc3):** 11 tespit kuralı, güven puanı ve korelasyon,
+**Ölçülmüş durum (1.0.0):** 11 tespit kuralı, güven puanı ve korelasyon,
 REST API, web dashboard, canlı yakalama; 452 Python testi (3.11–3.14) ve 14
 frontend testi, kapsama %93; ruff, mypy `--strict`, TypeScript strict temiz;
 bilinen açığı olan bağımlılık yok (pip-audit, pnpm audit). Yazılı tehdit

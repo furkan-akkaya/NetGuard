@@ -49,5 +49,5 @@ instead of opening a public issue. Include a minimal pcap if possible.
 
 ## Supported versions
 
-There is no stable release yet. Only the latest release candidate on `main`
-(currently `1.0.0rc3`) receives fixes; earlier candidates are not patched.
+Only the latest release on `main` (currently `1.0.0`) receives fixes;
+earlier releases and release candidates are not patched.

@@ -4,6 +4,24 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning: [S
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-10-31
+
+First stable release. The code is RC3's: no detection threshold, dependency version or runtime algorithm changed.
+
+### Validation
+- Execute the preregistered field plan on the rc3 lab kit (docs/FIELD_VALIDATION_RC3.md). A 4,504 s benign live run raised 0 alerts.
+- Three 1,205 s stepped-load live runs (0.2 to 25 successful connections/s) each raised only NG-RATE-001, on the first complete interval dominated by 5/s.
+- A repeat of the exp14 volume experiment raised exactly NG-RATE-001 and NG-VOL-001.
+- Every capture had 0 kernel drops. Live final alerts equalled offline analysis in all four live runs.
+- The analyser stayed at or below 2 % of one CPU and 35.6 MiB peak RSS.
+
+### Changed
+- Versions, README, SECURITY, release checklist and roadmap state the stable release and its documented limits.
+
+The evidence comes from one isolated lab host pair with generated traffic. It is not a false-positive rate for real networks.
+Confidence scores remain heuristic. Fixed-window blind spots, Linux-only worker memory limits and lack of fragment reassembly are unchanged.
+Install verified release assets with `pip install -c netguard-1.0.0-requirements.txt "netguard-1.0.0-py3-none-any.whl[web]"`.
+
 ## [1.0.0rc3] - 2026-10-30
 
 Release candidate; supersedes the unpublished RC2 draft without replacing its tag.

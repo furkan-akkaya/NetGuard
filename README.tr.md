@@ -16,9 +16,9 @@ Bir alarm yalnızca “şüpheli trafik var” demez.
 Kaynak ve hedefi, gözlenen davranışı, aşılan eşiği ve güven puanının gerekçelerini gösterir.
 İlgili alarmları tek bir olay altında toplar.
 
-> **Durum: 1.0.0rc3 — sürüm adayı.** Geliştirme ve doğrulama geçmişi [PR #9](https://github.com/furkan-akkaya/NetGuard/pull/9) içinde kayıtlı.
-> Mevcut 17 kabul edilmiş lab kaydı ve otomatik testlerle yeniden doğrulandı. Yeni uzun canlı deney ve yük deneyi bekliyor.
-> Kanıtlar ve sınırlar [RC3 yayın kaydında](docs/PUBLICATION_RC3.md); paketler [RC yayınında](https://github.com/furkan-akkaya/NetGuard/releases/tag/v1.0.0rc3).
+> **Durum: 1.0.0 — kararlı sürüm.** Geliştirme ve doğrulama geçmişi [PR #9](https://github.com/furkan-akkaya/NetGuard/pull/9) içinde kayıtlı.
+> Otomatik testler, 17 kabul edilmiş lab kaydı ve [saha doğrulamasıyla](docs/FIELD_VALIDATION_RC3.md) doğrulandı: 75 dakikalık zararsız canlı koşu, üç kademeli yük koşusu ve bir hacim tekrarı; hepsinde çekirdek kaybı sıfır.
+> Kanıt tek bir yalıtılmış lab makine çiftinden geliyor; neyi göstermediği saha raporunda, paketler [yayında](https://github.com/furkan-akkaya/NetGuard/releases/tag/v1.0.0).
 
 ## Kısaca, teknik olmayan dille
 
@@ -148,7 +148,7 @@ Depo özelse, klonlamak için GitHub erişiminiz gerekir.
 
 ### Örnek sonuç
 
-Yukarıdaki `compromised_workstation` senaryosunun `1.0.0rc3` çıktısından kısa bölüm:
+Yukarıdaki `compromised_workstation` senaryosunun `1.0.0` çıktısından kısa bölüm:
 
 ```text
 Packets: 582   Bytes: 39,748   Duration: 70.2s   Flows: 321   Decode errors: 0
