@@ -17,7 +17,7 @@ Related alerts are grouped into incidents.
 
 > **Status: 1.0.0 — stable.** Development and validation history is recorded in [PR #9](https://github.com/furkan-akkaya/NetGuard/pull/9).
 > Validated by automated tests, 17 accepted lab captures and the [field validation](docs/FIELD_VALIDATION_RC3.md): a 75-minute benign live run, three stepped-load live runs and a volume repeat, all with zero kernel drops.
-> Evidence comes from one isolated lab host pair; see the field report for what it does not show, and the [release](https://github.com/furkan-akkaya/NetGuard/releases/tag/v1.0.0) for packages.
+> Evidence comes from one isolated lab host pair; see the field report for what it does not show, the [release](https://github.com/furkan-akkaya/NetGuard/releases/tag/v1.0.0) for packages and the [publication record](docs/PUBLICATION_1.0.0.md) for digests.
 
 ## In plain words
 
