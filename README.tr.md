@@ -18,7 +18,7 @@ Kaynak ve hedefi, gözlenen davranışı, aşılan eşiği ve güven puanının 
 
 > **Durum: 1.0.0 — kararlı sürüm.** Geliştirme ve doğrulama geçmişi [PR #9](https://github.com/furkan-akkaya/NetGuard/pull/9) içinde kayıtlı.
 > Otomatik testler, 17 kabul edilmiş lab kaydı ve [saha doğrulamasıyla](docs/FIELD_VALIDATION_RC3.md) doğrulandı: 75 dakikalık zararsız canlı koşu, üç kademeli yük koşusu ve bir hacim tekrarı; hepsinde çekirdek kaybı sıfır.
-> Kanıt tek bir yalıtılmış lab makine çiftinden geliyor; neyi göstermediği saha raporunda, paketler [yayında](https://github.com/furkan-akkaya/NetGuard/releases/tag/v1.0.0).
+> Kanıt tek bir yalıtılmış lab makine çiftinden geliyor; neyi göstermediği saha raporunda, paketler [yayında](https://github.com/furkan-akkaya/NetGuard/releases/tag/v1.0.0), özetler [yayın kaydında](docs/PUBLICATION_1.0.0.md).
 
 ## Kısaca, teknik olmayan dille
 
