@@ -1,6 +1,7 @@
 # Remaining live validation
 
-These are preregistered experiments, not executed results.
+These are preregistered experiments, written before execution and left unchanged.
+They were executed on 30 October 2026; results and deviations are in [FIELD_VALIDATION_RC3.md](FIELD_VALIDATION_RC3.md).
 The release remains an RC until field evidence supports a stable claim.
 Use only the isolated Kali `10.77.0.10` and Ubuntu `10.77.0.20` VMs.
 Do not use the physical bistlab server, home network or internet targets.

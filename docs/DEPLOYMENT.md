@@ -7,7 +7,7 @@ NetGuard needs Python ≥ 3.11 (tested on 3.11–3.14, Linux and macOS).
 ### From release artefacts (recommended)
 
 A release (and every `release-dryrun.yml` run) ships, for version `V`
-(currently `1.0.0rc3`):
+(currently `1.0.0`):
 
 | File | What it is |
 |---|---|
