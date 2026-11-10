@@ -17,17 +17,12 @@ Related alerts are grouped into incidents.
 
 > **Status: 1.0.0 — stable.** Development and validation history is recorded in [PR #9](https://github.com/furkan-akkaya/NetGuard/pull/9).
 > Validated by automated tests, 17 accepted lab captures and the [field validation](docs/FIELD_VALIDATION_RC3.md): a 75-minute benign live run, three stepped-load live runs and a volume repeat, all with zero kernel drops.
-> Evidence comes from one isolated lab host pair; see the field report for what it does not show, and the [release](https://github.com/furkan-akkaya/NetGuard/releases/tag/v1.0.0) for packages.
+> Packages are available on the [release page](https://github.com/furkan-akkaya/NetGuard/releases/tag/v1.0.0).
 
-## In plain words
+## Overview
 
 Every device on a network talks by sending small pieces of data called **packets**.
 NetGuard reads a recording of those packets, or watches them live, and looks for patterns that usually mean someone is probing or misusing the network.
-
-Think of a building with many doors. A visitor who walks to one office is normal.
-A visitor who tries the handle of a thousand doors in a minute is not — even if every door stays locked.
-NetGuard is the guard who watches the corridor camera: it counts the doors that were tried, notes which ones opened, and writes a report saying **who**, **what**, **when** and **why it looks suspicious**.
-It never locks a door or chases anyone; it only watches and explains.
 
 **See it step by step:** an [interactive walkthrough](https://furkan-akkaya.vercel.app/netguard/) (Turkish) animates how one port scan becomes an alert, next to normal traffic that does not.
 
@@ -57,7 +52,6 @@ flowchart TD
 
 **NetGuard is passive:** it does not block traffic, write firewall rules or launch attacks automatically.
 It can only analyse traffic visible at the capture point.
-Being on the same network does not give it visibility into every other device's traffic.
 
 ## What it detects
 
@@ -75,10 +69,8 @@ Being on the same network does not give it visibility into every other device's 
 | [NG-RATE-001](docs/rules/NG-RATE-001.md) | Increased new connections relative to a host's own baseline | A device opens far more new connections than it normally does |
 | [NG-VOL-001](docs/rules/NG-VOL-001.md) | Increased outbound bytes relative to a host's own baseline | A device sends far more data out than it normally does; possible data theft |
 
-These behaviours alone do not prove an attack.
-For example, DNS misconfiguration can produce NXDOMAIN responses, and legitimate telemetry can use long DNS names.
 The [rule catalog](docs/rules/README.md) documents thresholds and known false positives.
-Confidence is not a statistical attack probability; it comes from [documented evidence factors](docs/CONFIDENCE.md).
+Confidence scores are built from [documented evidence factors](docs/CONFIDENCE.md).
 
 ## Glossary
 
@@ -125,7 +117,7 @@ Requires Python **3.11–3.14**, Linux or macOS, and `uv`.
 The example generates traffic files locally; analysing them needs no capture privileges or network access.
 Installing dependencies for the first time requires internet access.
 
-There is no published release yet. Install the current source from `main`:
+Install from source (packages are on the [release page](https://github.com/furkan-akkaya/NetGuard/releases/tag/v1.0.0)):
 
 ```bash
 git clone --branch main https://github.com/furkan-akkaya/NetGuard.git
@@ -142,7 +134,6 @@ uv run netguard analyze lab-pcaps/compromised_workstation.pcap
 uv run netguard lab evaluate
 ```
 
-Cloning a private repository requires GitHub access.
 Generated files are synthetic; real lab captures are not included in the repository.
 
 ### Example result
@@ -246,8 +237,6 @@ Accepted real lab captures reported zero kernel packet drops.
 Two initial runs with packet loss were rejected; their results and retries remain documented.
 Connections were compared with Zeek 8.2.2, with timeout settings and fragmentation differences explicitly recorded.
 
-These results do not establish general accuracy, false-positive rates or latency guarantees for real networks.
-Each attack experiment is a single run; the benign hour covers a narrow traffic mix.
 See the [evaluation](docs/EVALUATION.md) and [delivery report](docs/DELIVERY_REPORT.md) for methods, source versions and details.
 
 ## Limitations and security

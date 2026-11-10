@@ -18,17 +18,12 @@ Kaynak ve hedefi, gözlenen davranışı, aşılan eşiği ve güven puanının 
 
 > **Durum: 1.0.0 — kararlı sürüm.** Geliştirme ve doğrulama geçmişi [PR #9](https://github.com/furkan-akkaya/NetGuard/pull/9) içinde kayıtlı.
 > Otomatik testler, 17 kabul edilmiş lab kaydı ve [saha doğrulamasıyla](docs/FIELD_VALIDATION_RC3.md) doğrulandı: 75 dakikalık zararsız canlı koşu, üç kademeli yük koşusu ve bir hacim tekrarı; hepsinde çekirdek kaybı sıfır.
-> Kanıt tek bir yalıtılmış lab makine çiftinden geliyor; neyi göstermediği saha raporunda, paketler [yayında](https://github.com/furkan-akkaya/NetGuard/releases/tag/v1.0.0).
+> Paketler [sürüm sayfasında](https://github.com/furkan-akkaya/NetGuard/releases/tag/v1.0.0).
 
-## Kısaca, teknik olmayan dille
+## Genel bakış
 
 Ağdaki her cihaz **paket** adı verilen küçük veri parçalarıyla konuşur.
 NetGuard bu paketlerin bir kaydını okur ya da onları canlı izler; birinin ağı yokladığını veya kötüye kullandığını gösteren örüntüleri arar.
-
-Çok kapılı bir bina düşün. Tek bir ofise giden ziyaretçi normaldir.
-Bir dakikada bin kapının kolunu deneyen ziyaretçi ise normal değildir — kapıların hepsi kilitli kalsa bile.
-NetGuard koridor kamerasını izleyen görevli gibidir: denenen kapıları sayar, hangilerinin açıldığını not eder ve **kim**, **ne**, **ne zaman** ve **neden şüpheli** sorularını yanıtlayan bir rapor yazar.
-Kapı kilitlemez, kimseyi kovalamaz; yalnızca izler ve açıklar.
 
 **Adım adım gör:** [Etkileşimli anlatım](https://furkan-akkaya.vercel.app/netguard/), bir port taramasının nasıl alarma dönüştüğünü ve normal trafiğin neden dönüşmediğini animasyonla gösterir.
 
@@ -58,7 +53,6 @@ flowchart TD
 
 **NetGuard pasiftir:** trafiği engellemez, güvenlik duvarı kuralı yazmaz ve kendiliğinden saldırı başlatmaz.
 Yalnızca yakalama noktasının görebildiği trafiği analiz eder.
-Aynı ağda bulunmak, diğer cihazların bütün trafiğini görebileceği anlamına gelmez.
 
 ## Neleri tespit eder?
 
@@ -76,10 +70,8 @@ Aynı ağda bulunmak, diğer cihazların bütün trafiğini görebileceği anlam
 | [NG-RATE-001](docs/rules/NG-RATE-001.md) | Cihazın kendi geçmişine göre yeni bağlantı sayısındaki artış | Bir cihazın normalde açtığından çok daha fazla yeni bağlantı açması |
 | [NG-VOL-001](docs/rules/NG-VOL-001.md) | Cihazın kendi geçmişine göre gönderilen bayt miktarındaki artış | Bir cihazın normalde gönderdiğinden çok daha fazla veriyi dışarı göndermesi; veri sızıntısı olabilir |
 
-Bu davranışlar tek başına saldırı kanıtı değildir.
-Örneğin NXDOMAIN yanıtları yanlış DNS ayarlarından, uzun DNS adları meşru telemetriden kaynaklanabilir.
 [Kural kataloğu](docs/rules/README.md), her kuralın eşiklerini ve bilinen yanlış alarm nedenlerini açıklar.
-Güven puanı istatistiksel saldırı olasılığı değildir; [belgelenmiş kanıt faktörlerinden](docs/CONFIDENCE.md) hesaplanır.
+Güven puanı [belgelenmiş kanıt faktörlerinden](docs/CONFIDENCE.md) hesaplanır.
 
 ## Sözlük
 
@@ -126,7 +118,7 @@ Python **3.11–3.14**, Linux veya macOS ve `uv` gerekir.
 İlk deneme için ağ erişimi veya yönetici yetkisi gerekmez; örnek trafik dosyaları yerel olarak üretilir.
 Bağımlılıkların ilk kurulumu internet erişimi gerektirir.
 
-Henüz yayınlanmış sürüm yok. Aşağıdaki komutlar güncel kaynak kodu `main` dalından kurar:
+Kaynak koddan kurulum (paketler [sürüm sayfasında](https://github.com/furkan-akkaya/NetGuard/releases/tag/v1.0.0)):
 
 ```bash
 git clone --branch main https://github.com/furkan-akkaya/NetGuard.git
@@ -143,7 +135,6 @@ uv run netguard analyze lab-pcaps/compromised_workstation.pcap
 uv run netguard lab evaluate
 ```
 
-Depo özelse, klonlamak için GitHub erişiminiz gerekir.
 Üretilen dosyalar sentetiktir; gerçek lab kayıtları depoya dahil edilmez.
 
 ### Örnek sonuç
@@ -247,8 +238,6 @@ Gerçek labda kabul edilen kayıtlarda bildirilen çekirdek paket kaybı sıfır
 Paket kaybeden iki ilk deneme kabul edilmedi; sonuçları ve tekrarları belgelerde korunur.
 Bağlantılar Zeek 8.2.2 ile karşılaştırıldı; zaman aşımı ayarları ve parçalanmış trafik farkı açıkça kaydedildi.
 
-Bu sonuçlar gerçek ağlar için genel doğruluk, yanlış alarm oranı veya gecikme garantisi oluşturmaz.
-Her saldırı deneyi tek koşudur; bir saatlik normal trafik de sınırlı bir trafik karışımıdır.
 Yöntem, kaynak sürümleri ve ayrıntılar: [değerlendirme](docs/EVALUATION.md), [teslim raporu](docs/DELIVERY_REPORT.md).
 
 ## Sınırlar ve güvenlik
